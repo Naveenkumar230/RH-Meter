@@ -1,6 +1,8 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const bodyParser = require('body-parser');
+const cron = require('node-cron');
+const axios = require('axios');
 
 const app = express();
 app.use(bodyParser.json());
@@ -19,6 +21,16 @@ const SensorData = mongoose.model('SensorData', {
     tempLevel: String,
     humLevel: String,
     timestamp: { type: Date, default: Date.now }
+});
+
+// Ping itself every 10 minutes to stay awake
+cron.schedule('*/10 * * * *', async () => {
+    try {
+        await axios.get('https://rh-meter-bridge.onrender.com/');
+        console.log('⚡ Self-ping successful: Staying awake!');
+    } catch (error) {
+        console.error('Self-ping failed:', error.message);
+    }
 });
 
 // ── ENDPOINT FOR THINGSBOARD ────────────────────────────────
