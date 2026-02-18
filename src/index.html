@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Factory Monitor Pro</title>
+  <link rel="icon" href="data:,">
+
+  <!-- External Libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.11/package/xlsx.full.min.js"></script>
+
+  <!-- App Styles -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="container">
+
+  <!-- ═══════════════════════════════════════════════════════
+       DASHBOARD VIEW
+  ════════════════════════════════════════════════════════ -->
+  <div id="dashboardView" class="dashboard-view">
+
+    <!-- Header -->
+    <div class="header">
+      <div class="header-left">
+        <h1>Relative & Humidity Monitoring System</h1>
+        <div class="subtitle">UNIT-2<span id="ipAddr"></span></div>
+      </div>
+      <div class="header-right">
+        <div class="records-badge">Records: <span id="dataCount">0</span></div>
+        <div class="status-badge" id="statusBadge">
+          <div class="status-dot"></div>
+          <span id="statusText">Online</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Data Cards -->
+    <div class="main-grid">
+
+      <!-- Temperature Card -->
+      <div class="data-card temperature" onclick="showDetailPage('temperature')">
+        <div class="card-header">
+          <div class="card-title">
+            <span class="card-icon">🌡️</span>
+            Temperature
+          </div>
+          <div class="click-hint">Click for details →</div>
+        </div>
+        <div class="card-value">
+          <span class="value-display" id="tempValue">--</span>
+          <span class="value-unit">°C</span>
+        </div>
+        <div class="card-status">
+          <div class="trend">
+            <span class="trend-icon" id="tempTrend">→</span>
+            <span id="tempTrendText">Stable</span>
+          </div>
+          <div class="status-badge-inline status-normal" id="tempStatus">Normal</div>
+        </div>
+      </div>
+
+      <!-- Humidity Card -->
+      <div class="data-card humidity" onclick="showDetailPage('humidity')">
+        <div class="card-header">
+          <div class="card-title">
+            <span class="card-icon">💧</span>
+            Humidity
+          </div>
+          <div class="click-hint">Click for details →</div>
+        </div>
+        <div class="card-value">
+          <span class="value-display" id="humValue">--</span>
+          <span class="value-unit">%</span>
+        </div>
+        <div class="card-status">
+          <div class="trend">
+            <span class="trend-icon" id="humTrend">→</span>
+            <span id="humTrendText">Stable</span>
+          </div>
+          <div class="status-badge-inline status-normal" id="humStatus">Normal</div>
+        </div>
+      </div>
+
+    </div><!-- /.main-grid -->
+
+    <!-- Statistics Grid -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">Min Temp</div>
+        <div class="stat-value green" id="statMinTemp">--</div>
+        <div class="stat-unit">°C</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Max Temp</div>
+        <div class="stat-value red" id="statMaxTemp">--</div>
+        <div class="stat-unit">°C</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Avg Temp</div>
+        <div class="stat-value blue" id="statAvgTemp">--</div>
+        <div class="stat-unit">°C</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Min Humidity</div>
+        <div class="stat-value green" id="statMinHum">--</div>
+        <div class="stat-unit">%</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Max Humidity</div>
+        <div class="stat-value red" id="statMaxHum">--</div>
+        <div class="stat-unit">%</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Avg Humidity</div>
+        <div class="stat-value cyan" id="statAvgHum">--</div>
+        <div class="stat-unit">%</div>
+      </div>
+    </div><!-- /.stats-grid -->
+
+    <!-- Today's Charts -->
+    <div class="chart-section">
+      <div class="chart-header">
+        <div class="chart-title">📈 Today's Temperature Trend</div>
+      </div>
+      <div class="chart-container">
+        <canvas id="chartTempToday"></canvas>
+      </div>
+    </div>
+
+    <div class="chart-section">
+      <div class="chart-header">
+        <div class="chart-title">💧 Today's Humidity Trend</div>
+      </div>
+      <div class="chart-container">
+        <canvas id="chartHumToday"></canvas>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="actions">
+      <button class="btn" onclick="exportExcel()">📥 Export Excel</button>
+      <button class="btn" onclick="exportCSV()">📄 Export CSV</button>
+    </div>
+
+  </div><!-- /#dashboardView -->
+
+
+  <!-- ═══════════════════════════════════════════════════════
+       TEMPERATURE DETAIL PAGE
+  ════════════════════════════════════════════════════════ -->
+  <div id="temperatureDetail" class="detail-page">
+    <button class="back-button" onclick="showDashboard()">← Back to Dashboard</button>
+
+    <div class="detail-header">
+      <div class="detail-title">🌡️ Temperature Analysis</div>
+      <div class="date-range-picker">
+        <label>From:</label>
+        <input type="date" id="tempDateFrom">
+        <label>To:</label>
+        <input type="date" id="tempDateTo">
+        <button class="btn-today" onclick="setTodayTemp()">Today</button>
+      </div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">Minimum</div>
+        <div class="stat-value green" id="tempDetailMin">--</div>
+        <div class="stat-unit">°C</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Maximum</div>
+        <div class="stat-value red" id="tempDetailMax">--</div>
+        <div class="stat-unit">°C</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Average</div>
+        <div class="stat-value blue" id="tempDetailAvg">--</div>
+        <div class="stat-unit">°C</div>
+      </div>
+    </div>
+
+    <div class="chart-section">
+      <div class="chart-header">
+        <div class="chart-title" id="tempChartTitle">📈 Temperature Data</div>
+      </div>
+      <div class="chart-container">
+        <canvas id="chartTempDetail"></canvas>
+      </div>
+    </div>
+  </div><!-- /#temperatureDetail -->
+
+
+  <!-- ═══════════════════════════════════════════════════════
+       HUMIDITY DETAIL PAGE
+  ════════════════════════════════════════════════════════ -->
+  <div id="humidityDetail" class="detail-page">
+    <button class="back-button" onclick="showDashboard()">← Back to Dashboard</button>
+
+    <div class="detail-header">
+      <div class="detail-title">💧 Humidity Analysis</div>
+      <div class="date-range-picker">
+        <label>From:</label>
+        <input type="date" id="humDateFrom">
+        <label>To:</label>
+        <input type="date" id="humDateTo">
+        <button class="btn-today" onclick="setTodayHum()">Today</button>
+      </div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">Minimum</div>
+        <div class="stat-value green" id="humDetailMin">--</div>
+        <div class="stat-unit">%</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Maximum</div>
+        <div class="stat-value red" id="humDetailMax">--</div>
+        <div class="stat-unit">%</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Average</div>
+        <div class="stat-value cyan" id="humDetailAvg">--</div>
+        <div class="stat-unit">%</div>
+      </div>
+    </div>
+
+    <div class="chart-section">
+      <div class="chart-header">
+        <div class="chart-title" id="humChartTitle">💧 Humidity Data</div>
+      </div>
+      <div class="chart-container">
+        <canvas id="chartHumDetail"></canvas>
+      </div>
+    </div>
+  </div><!-- /#humidityDetail -->
+
+</div><!-- /.container -->
+
+<!-- App Logic -->
+<script src="app.js"></script>
+</body>
+</html>

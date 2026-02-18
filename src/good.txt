@@ -1,0 +1,2011 @@
+#include <Arduino.h>
+#include <WiFi.h>
+#include <WebServer.h>
+#include <ESPmDNS.h>
+#include <WiFiUdp.h>
+#include <ArduinoOTA.h>
+#include <Wire.h>
+#include <WEMOS_SHT3X.h>
+#include <Preferences.h>
+#include <time.h>
+#include <WiFiManager.h>
+#include <LiquidCrystal_I2C.h>
+
+// ================= CONFIGURATION =================
+const char* OTA_HOSTNAME  = "FactoryMonitor";
+const char* OTA_PASSWORD  = "admin123";
+
+const char* NTP_SERVER    = "pool.ntp.org";
+const long  GMT_OFFSET    = 19800;  // India: GMT+5:30 = 19800 seconds
+const int   DAYLIGHT_OFFSET = 0;
+
+// Thresholds for alerts
+struct Thresholds {
+  float tempNormal   = 27.0;
+  float tempWarning  = 35.0;
+  float humDryLimit  = 40.0;
+  float humGoodUpper = 70.0;
+} thresholds;
+
+// Pin definitions
+#define SENSOR_SDA 21
+#define SENSOR_SCL 22
+#define LCD_ADDRESS 0x27  // Try 0x3F if 0x27 doesn't work
+
+// Timing constants
+#define SAMPLE_INTERVAL     1000   // Sample sensor every 1 second
+#define LCD_UPDATE_INTERVAL 2000   // Update LCD every 2 seconds
+#define MODE_SWITCH_TIME    10000  // Switch display mode every 10 seconds
+#define MAX_STORED_READINGS 2880   // 48 hours at 1 reading/minute
+
+// ================= OBJECTS =================
+SHT3X      sht30(0x44);
+WebServer  server(80);
+Preferences preferences;
+LiquidCrystal_I2C lcd(LCD_ADDRESS, 20, 4);  // 20 columns, 4 rows
+
+// ================= DATA STRUCTURES =================
+struct SensorReading {
+  time_t timestamp;
+  float  temperature;
+  float  humidity;
+};
+
+// ================= GLOBAL VARIABLES =================
+SensorReading readings[MAX_STORED_READINGS];
+int   readingIndex   = 0;
+int   totalReadings  = 0;
+float currentTemp    = 0.0;
+float currentHum     = 0.0;
+float lastTemp       = 0.0;
+float lastHum        = 0.0;
+bool  otaInProgress  = false;
+bool  wifiConnected  = false;
+
+unsigned long lastSampleTime = 0;
+unsigned long lastLCDUpdate = 0;
+unsigned long modeStartTime = 0;
+uint8_t displayMode = 0;  // 0=main, 1=stats, 2=status
+
+// ================= CUSTOM LCD CHARACTERS =================
+// Degree symbol °
+byte degreeChar[8] = {
+  0b00110,
+  0b01001,
+  0b01001,
+  0b00110,
+  0b00000,
+  0b00000,
+  0b00000,
+  0b00000
+};
+
+// Up arrow ↑
+byte upArrow[8] = {
+  0b00100,
+  0b01110,
+  0b11111,
+  0b00100,
+  0b00100,
+  0b00100,
+  0b00100,
+  0b00000
+};
+
+// Down arrow ↓
+byte downArrow[8] = {
+  0b00100,
+  0b00100,
+  0b00100,
+  0b00100,
+  0b11111,
+  0b01110,
+  0b00100,
+  0b00000
+};
+
+// WiFi icon
+byte wifiChar[8] = {
+  0b00000,
+  0b01110,
+  0b10001,
+  0b00100,
+  0b01010,
+  0b00000,
+  0b00100,
+  0b00000
+};
+
+// Droplet for humidity
+byte droplet[8] = {
+  0b00100,
+  0b00100,
+  0b01010,
+  0b01010,
+  0b10001,
+  0b10001,
+  0b10001,
+  0b01110
+};
+
+// Thermometer
+byte thermometer[8] = {
+  0b00100,
+  0b01010,
+  0b01010,
+  0b01010,
+  0b10001,
+  0b10001,
+  0b10001,
+  0b01110
+};
+
+// Check mark ✓
+byte checkMark[8] = {
+  0b00000,
+  0b00001,
+  0b00011,
+  0b10110,
+  0b11100,
+  0b01000,
+  0b00000,
+  0b00000
+};
+
+// Warning !
+byte warningChar[8] = {
+  0b00100,
+  0b00100,
+  0b00100,
+  0b00100,
+  0b00100,
+  0b00000,
+  0b00100,
+  0b00000
+};
+
+// ================= UTILITY FUNCTIONS =================
+String getHumidityAlertLevel(float hum) {
+  if (hum < thresholds.humDryLimit)    return "critical";
+  if (hum <= thresholds.humGoodUpper)  return "normal";
+  return "warning";
+}
+
+String getAlertLevel(float value, float normal, float warning) {
+  if (value <= normal)  return "normal";
+  if (value <= warning) return "warning";
+  return "critical";
+}
+
+String formatISOTime(time_t timestamp) {
+  struct tm timeinfo;
+  localtime_r(&timestamp, &timeinfo);
+  char buf[25];
+  strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S", &timeinfo);
+  return String(buf);
+}
+
+// ================= CIRCULAR BUFFER =================
+void addReading(float temp, float hum) {
+  if (isnan(temp) || temp > 125.0 || temp < -40.0) return;
+  if (isnan(hum)  || hum  > 100.0 || hum  <   0.0) return;
+
+  time_t now;
+  time(&now);
+
+  readings[readingIndex].timestamp   = now;
+  readings[readingIndex].temperature = temp;
+  readings[readingIndex].humidity    = hum;
+
+  readingIndex = (readingIndex + 1) % MAX_STORED_READINGS;
+  if (totalReadings < MAX_STORED_READINGS) totalReadings++;
+}
+
+// ================= LCD DISPLAY FUNCTIONS =================
+
+void createCustomChars() {
+  lcd.createChar(0, degreeChar);
+  lcd.createChar(1, upArrow);
+  lcd.createChar(2, downArrow);
+  lcd.createChar(4, droplet);
+  lcd.createChar(5, thermometer);
+  lcd.createChar(6, checkMark);
+  lcd.createChar(7, warningChar);
+}
+
+void initLCD() {
+  lcd.init();
+  lcd.backlight();
+  createCustomChars();
+  
+  // Startup animation
+  lcd.clear();
+  lcd.setCursor(1, 1);
+  lcd.print("==================");
+  lcd.setCursor(2, 2);
+  lcd.print("FACTORY MONITOR");
+  lcd.setCursor(1, 3);
+  lcd.print("==================");
+  delay(2000);
+  
+  lcd.clear();
+  lcd.setCursor(3, 1);
+  lcd.print("System Starting");
+  lcd.setCursor(6, 2);
+  lcd.print("........");
+  delay(1500);
+  
+  lcd.clear();
+  lcd.setCursor(2, 1);
+  lcd.print("Initializing I2C");
+  delay(800);
+  
+  lcd.setCursor(2, 2);
+  lcd.print("Sensor: ");
+  delay(500);
+  if (sht30.get() == 0) {
+    lcd.print("OK!");
+    lcd.write(6);  // Check mark
+  } else {
+    lcd.print("FAIL");
+    lcd.write(7);  // Warning
+  }
+  delay(1500);
+}
+
+void displayWiFiConfig() {
+  lcd.clear();
+  lcd.setCursor(1, 0);
+  lcd.print("*** SETUP MODE ***");
+  lcd.setCursor(0, 1);
+  lcd.print("Connect WiFi to:");
+  lcd.setCursor(0, 2);
+  lcd.print("FactoryMonitor_Setup");
+  lcd.setCursor(0, 3);
+  lcd.print("Pass: password123");
+}
+
+// PAGE 1: Temperature Display
+void displayTemperaturePage() {
+  lcd.clear();
+  
+  // Line 1: Header
+  lcd.setCursor(0, 0);
+  lcd.print("*** TEMPERATURE ***");
+  lcd.setCursor(19, 0);
+  lcd.print("1");
+  
+  // Line 2: Large Temperature Display
+  lcd.setCursor(0, 1);
+  if (currentTemp > -40 && currentTemp < 125) {
+    lcd.setCursor(4, 1);
+    lcd.write(5);  // Thermometer icon
+    lcd.print(" ");
+    
+    // Center the temperature value
+    if (currentTemp < 10) lcd.print(" ");
+    lcd.print(currentTemp, 1);
+    lcd.write(0);  // Degree symbol
+    lcd.print("C");
+  } else {
+    lcd.setCursor(6, 1);
+    lcd.print("--.-");
+    lcd.write(0);
+    lcd.print("C");
+  }
+  
+  // Line 3: Trend
+  lcd.setCursor(0, 2);
+  lcd.print("Trend: ");
+  if (currentTemp > lastTemp + 0.2) {
+    lcd.print("Rising   ");
+    lcd.write(1);  // Up arrow
+  } else if (currentTemp < lastTemp - 0.2) {
+    lcd.print("Falling  ");
+    lcd.write(2);  // Down arrow
+  } else {
+    lcd.print("Stable   =");
+  }
+  
+  // Line 4: Status
+  lcd.setCursor(0, 3);
+  lcd.print("Status: ");
+  String tempLevel = getAlertLevel(currentTemp, thresholds.tempNormal, thresholds.tempWarning);
+  if (tempLevel == "normal") {
+    lcd.print("NORMAL   ");
+    lcd.write(6);  // Check mark
+  } else if (tempLevel == "warning") {
+    lcd.print("WARNING  ");
+    lcd.write(7);  // Warning icon
+  } else {
+    lcd.print("CRITICAL!");
+  }
+}
+
+// PAGE 2: Humidity Display
+void displayHumidityPage() {
+  lcd.clear();
+  
+  // Line 1: Header
+  lcd.setCursor(0, 0);
+  lcd.print("**** HUMIDITY ****");
+  lcd.setCursor(19, 0);
+  lcd.print("2");
+  
+  // Line 2: Large Humidity Display
+  lcd.setCursor(0, 1);
+  if (currentHum >= 0 && currentHum <= 100) {
+    lcd.setCursor(4, 1);
+    lcd.write(4);  // Droplet icon
+    lcd.print(" ");
+    
+    // Center the humidity value
+    if (currentHum < 10) lcd.print(" ");
+    lcd.print(currentHum, 1);
+    lcd.print(" %");
+  } else {
+    lcd.setCursor(6, 1);
+    lcd.print("--.- %");
+  }
+  
+  // Line 3: Trend
+  lcd.setCursor(0, 2);
+  lcd.print("Trend: ");
+  if (currentHum > lastHum + 0.5) {
+    lcd.print("Rising   ");
+    lcd.write(1);  // Up arrow
+  } else if (currentHum < lastHum - 0.5) {
+    lcd.print("Falling  ");
+    lcd.write(2);  // Down arrow
+  } else {
+    lcd.print("Stable   =");
+  }
+  
+  // Line 4: Status
+  lcd.setCursor(0, 3);
+  lcd.print("Status: ");
+  String humLevel = getHumidityAlertLevel(currentHum);
+  if (humLevel == "normal") {
+    lcd.print("NORMAL   ");
+    lcd.write(6);  // Check mark
+  } else if (humLevel == "warning") {
+    lcd.print("WARNING  ");
+    lcd.write(7);  // Warning icon
+  } else {
+    lcd.print("CRITICAL!");
+  }
+}
+
+// // PAGE 3: Temperature MIN/MAX
+// void displayTempMinMaxPage() {
+//   if (totalReadings == 0) {
+//     lcd.clear();
+//     lcd.setCursor(2, 1);
+//     lcd.print("NO DATA YET");
+//     lcd.setCursor(1, 2);
+//     lcd.print("Collecting data...");
+//     return;
+//   }
+  
+//   lcd.clear();
+  
+//   // Calculate temperature stats
+//   float minTemp = 999, maxTemp = -999;
+  
+//   int start = (readingIndex - totalReadings + MAX_STORED_READINGS) % MAX_STORED_READINGS;
+  
+//   for (int i = 0; i < totalReadings; i++) {
+//     int idx = (start + i) % MAX_STORED_READINGS;
+//     if (readings[idx].temperature > -40 && readings[idx].temperature < 125) {
+//       if (readings[idx].temperature < minTemp) minTemp = readings[idx].temperature;
+//       if (readings[idx].temperature > maxTemp) maxTemp = readings[idx].temperature;
+//     }
+//   }
+  
+//   // Display Temperature Min/Max
+//   lcd.setCursor(0, 0);
+//   lcd.print("** TEMP MIN/MAX **");
+//   lcd.setCursor(19, 0);
+//   lcd.print("3");
+  
+//   // Line 2: Minimum Temperature
+//   lcd.setCursor(0, 1);
+//   lcd.write(5);  // Thermometer icon
+//   lcd.print(" MINIMUM:");
+//   lcd.setCursor(0, 2);
+//   lcd.print("    ");
+//   lcd.print(minTemp, 1);
+//   lcd.write(0);  // Degree symbol
+//   lcd.print("C");
+  
+//   // Line 4: Maximum Temperature
+//   lcd.setCursor(0, 3);
+//   lcd.write(5);  // Thermometer icon
+//   lcd.print(" MAXIMUM: ");
+//   lcd.print(maxTemp, 1);
+//   lcd.write(0);  // Degree symbol
+//   lcd.print("C");
+// }
+
+// // PAGE 4: Humidity MIN/MAX
+// void displayHumMinMaxPage() {
+//   if (totalReadings == 0) {
+//     lcd.clear();
+//     lcd.setCursor(2, 1);
+//     lcd.print("NO DATA YET");
+//     lcd.setCursor(1, 2);
+//     lcd.print("Collecting data...");
+//     return;
+//   }
+  
+//   lcd.clear();
+  
+//   // Calculate humidity stats
+//   float minHum = 999, maxHum = -999;
+  
+//   int start = (readingIndex - totalReadings + MAX_STORED_READINGS) % MAX_STORED_READINGS;
+  
+//   for (int i = 0; i < totalReadings; i++) {
+//     int idx = (start + i) % MAX_STORED_READINGS;
+//     if (readings[idx].temperature > -40 && readings[idx].temperature < 125) {
+//       if (readings[idx].humidity < minHum) minHum = readings[idx].humidity;
+//       if (readings[idx].humidity > maxHum) maxHum = readings[idx].humidity;
+//     }
+//   }
+  
+//   // Display Humidity Min/Max
+//   lcd.setCursor(0, 0);
+//   lcd.print("** HUM MIN/MAX **");
+//   lcd.setCursor(19, 0);
+//   lcd.print("4");
+  
+//   // Line 2: Minimum Humidity
+//   lcd.setCursor(0, 1);
+//   lcd.write(4);  // Droplet icon
+//   lcd.print(" MINIMUM:");
+//   lcd.setCursor(0, 2);
+//   lcd.print("    ");
+//   lcd.print(minHum, 1);
+//   lcd.print(" %");
+  
+//   // Line 4: Maximum Humidity
+//   lcd.setCursor(0, 3);
+//   lcd.write(4);  // Droplet icon
+//   lcd.print(" MAXIMUM: ");
+//   lcd.print(maxHum, 1);
+//   lcd.print(" %");
+// }
+
+void updateLCD() {
+  unsigned long now = millis();
+  
+  // Auto-rotate through 4 display modes every MODE_SWITCH_TIME
+  if (now - modeStartTime > MODE_SWITCH_TIME) {
+    displayMode = (displayMode + 1) % 4;  // 0, 1, 2, 3
+    modeStartTime = now;
+    
+    switch(displayMode) {
+      case 0:
+        displayTemperaturePage();
+        break;
+      case 1:
+        displayHumidityPage();
+        break;
+    }
+  } else if (displayMode == 0 || displayMode == 1) {
+    // Update temperature and humidity pages more frequently (for real-time data)
+    if (displayMode == 0) {
+      displayTemperaturePage();
+    } else {
+      displayHumidityPage();
+    }
+  }
+}
+
+
+// ================= WEB SERVER HTML =================
+const char HTML_PAGE[] PROGMEM = R"rawliteral(
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Factory Monitor Pro</title>
+<link rel="icon" href="data:,">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.11/package/xlsx.full.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  --bg: #f8fafc;
+  --bg-card: #ffffff;
+  --border: #e2e8f0;
+  --text: #1e293b;
+  --text-dim: #475569;
+  --text-muted: #64748b;
+  --accent-blue: #3b82f6;
+  --accent-cyan: #06b6d4;
+  --accent-green: #10b981;
+  --accent-orange: #f59e0b;
+  --accent-red: #ef4444;
+  --glow-blue: rgba(59, 130, 246, 0.15);
+  --glow-cyan: rgba(6, 182, 212, 0.15);
+  --shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  --radius: 16px;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  padding: 20px;
+  background-image: 
+    radial-gradient(circle at 20% 80%, rgba(59, 130, 246, 0.05) 0%, transparent 50%),
+    radial-gradient(circle at 80% 20%, rgba(6, 182, 212, 0.05) 0%, transparent 50%);
+}
+
+.container {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+/* Header */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24px 32px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 24px;
+  box-shadow: var(--shadow);
+}
+
+.header-left h1 {
+  font-size: 1.5rem;
+  font-weight: 800;
+  background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 4px;
+}
+
+.header-left .subtitle {
+  font-size: 0.875rem;
+  color: var(--text-dim);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.header-right {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.status-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: rgba(52, 211, 153, 0.1);
+  border: 1px solid rgba(52, 211, 153, 0.3);
+  border-radius: 24px;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-green);
+  box-shadow: 0 0 12px var(--accent-green);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.status-badge.offline {
+  background: rgba(248, 113, 113, 0.1);
+  border-color: rgba(248, 113, 113, 0.3);
+}
+
+.status-badge.offline .status-dot {
+  background: var(--accent-red);
+  box-shadow: 0 0 12px var(--accent-red);
+  animation: none;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(0.9); }
+}
+
+.records-badge {
+  padding: 8px 16px;
+  background: rgba(96, 165, 250, 0.1);
+  border: 1px solid rgba(96, 165, 250, 0.3);
+  border-radius: 24px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Main Grid - Data Cards */
+.main-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 24px;
+  margin-bottom: 32px;
+}
+
+.data-card {
+  position: relative;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 32px;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  transition: all 0.3s ease;
+  overflow: hidden;
+}
+
+.data-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, var(--accent-blue), var(--accent-cyan));
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.data-card:hover {
+  border-color: var(--accent-blue);
+  transform: translateY(-4px);
+  box-shadow: 0 8px 32px rgba(59, 130, 246, 0.15);
+}
+
+.data-card:hover::before {
+  opacity: 1;
+}
+
+.data-card.humidity::before {
+  background: linear-gradient(90deg, var(--accent-cyan), var(--accent-green));
+}
+
+.data-card.humidity:hover {
+  border-color: var(--accent-cyan);
+  box-shadow: 0 8px 32px rgba(6, 182, 212, 0.15);
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.card-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: var(--text-dim);
+}
+
+.card-icon {
+  font-size: 1.5rem;
+}
+
+.click-hint {
+  font-size: 0.75rem;
+  color: var(--accent-blue);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  font-weight: 600;
+}
+
+.data-card:hover .click-hint {
+  opacity: 1;
+}
+
+.card-value {
+  text-align: center;
+  margin: 32px 0;
+}
+
+.value-display {
+  font-size: 4rem;
+  font-weight: 800;
+  font-family: 'JetBrains Mono', monospace;
+  line-height: 1;
+  background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.humidity .value-display {
+  background: linear-gradient(135deg, var(--accent-cyan), var(--accent-green));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.value-unit {
+  font-size: 1.5rem;
+  color: var(--text-dim);
+  margin-left: 8px;
+}
+
+.card-status {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+}
+
+.trend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.875rem;
+  color: var(--text-dim);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.trend-icon {
+  font-size: 1.25rem;
+}
+
+.status-badge-inline {
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.status-normal {
+  background: rgba(52, 211, 153, 0.15);
+  color: var(--accent-green);
+  border: 1px solid rgba(52, 211, 153, 0.3);
+}
+
+.status-warning {
+  background: rgba(251, 146, 60, 0.15);
+  color: var(--accent-orange);
+  border: 1px solid rgba(251, 146, 60, 0.3);
+}
+
+.status-critical {
+  background: rgba(248, 113, 113, 0.15);
+  color: var(--accent-red);
+  border: 1px solid rgba(248, 113, 113, 0.3);
+}
+
+/* Stats Grid */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.stat-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  text-align: center;
+  box-shadow: var(--shadow);
+}
+
+.stat-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+}
+
+.stat-value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.stat-value.green { color: var(--accent-green); }
+.stat-value.red { color: var(--accent-red); }
+.stat-value.blue { color: var(--accent-blue); }
+.stat-value.cyan { color: var(--accent-cyan); }
+
+.stat-unit {
+  font-size: 0.875rem;
+  color: var(--text-dim);
+  margin-left: 4px;
+}
+
+/* Charts */
+.chart-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 28px;
+  margin-bottom: 24px;
+  box-shadow: var(--shadow);
+}
+
+.chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.chart-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+}
+
+.chart-container {
+  position: relative;
+  height: 240px;
+}
+
+/* Action Buttons */
+.actions {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 32px;
+}
+
+.btn {
+  padding: 12px 28px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: var(--shadow);
+}
+
+.btn:hover {
+  background: rgba(59, 130, 246, 0.08);
+  border-color: var(--accent-blue);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 24px rgba(59, 130, 246, 0.2);
+}
+
+/* Detail Page Styles */
+.detail-page {
+  display: none;
+}
+
+.detail-page.active {
+  display: block;
+}
+
+.back-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-bottom: 24px;
+  transition: all 0.3s ease;
+}
+
+.back-button:hover {
+  background: rgba(59, 130, 246, 0.08);
+  border-color: var(--accent-blue);
+  transform: translateX(-4px);
+}
+
+.detail-header {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 32px;
+  margin-bottom: 24px;
+  box-shadow: var(--shadow);
+}
+
+.detail-title {
+  font-size: 2rem;
+  font-weight: 800;
+  background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 16px;
+}
+
+.date-range-picker {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 20px;
+}
+
+.date-range-picker label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.date-range-picker input[type="date"] {
+  padding: 10px 16px;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.875rem;
+  outline: none;
+  transition: border-color 0.3s ease;
+}
+
+.date-range-picker input[type="date"]:focus {
+  border-color: var(--accent-blue);
+}
+
+.btn-today {
+  padding: 10px 20px;
+  background: var(--accent-blue);
+  border: none;
+  border-radius: 8px;
+  color: white;
+  font-weight: 600;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-today:hover {
+  background: var(--accent-cyan);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(96, 165, 250, 0.4);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .header {
+    flex-direction: column;
+    gap: 16px;
+    text-align: center;
+  }
+  
+  .main-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .value-display {
+    font-size: 3rem;
+  }
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <!-- Dashboard View -->
+  <div id="dashboardView" class="dashboard-view">
+    <div class="header">
+      <div class="header-left">
+        <h1>Factory Monitor Pro</h1>
+        <div class="subtitle">Unit: AIPL-01 · IP: <span id="ipAddr">—</span></div>
+      </div>
+      <div class="header-right">
+        <div class="records-badge">Records: <span id="dataCount">0</span></div>
+        <div class="status-badge" id="statusBadge">
+          <div class="status-dot"></div>
+          <span id="statusText">Online</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Data Cards -->
+    <div class="main-grid">
+      <!-- Temperature Card -->
+      <div class="data-card temperature" onclick="showDetailPage('temperature')">
+        <div class="card-header">
+          <div class="card-title">
+            <span class="card-icon">🌡️</span>
+            Temperature
+          </div>
+          <div class="click-hint">Click for details →</div>
+        </div>
+        <div class="card-value">
+          <span class="value-display" id="tempValue">--</span>
+          <span class="value-unit">°C</span>
+        </div>
+        <div class="card-status">
+          <div class="trend">
+            <span class="trend-icon" id="tempTrend">→</span>
+            <span id="tempTrendText">Stable</span>
+          </div>
+          <div class="status-badge-inline status-normal" id="tempStatus">Normal</div>
+        </div>
+      </div>
+
+      <!-- Humidity Card -->
+      <div class="data-card humidity" onclick="showDetailPage('humidity')">
+        <div class="card-header">
+          <div class="card-title">
+            <span class="card-icon">💧</span>
+            Humidity
+          </div>
+          <div class="click-hint">Click for details →</div>
+        </div>
+        <div class="card-value">
+          <span class="value-display" id="humValue">--</span>
+          <span class="value-unit">%</span>
+        </div>
+        <div class="card-status">
+          <div class="trend">
+            <span class="trend-icon" id="humTrend">→</span>
+            <span id="humTrendText">Stable</span>
+          </div>
+          <div class="status-badge-inline status-normal" id="humStatus">Normal</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Statistics Grid -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">Min Temp</div>
+        <div class="stat-value green" id="statMinTemp">--</div>
+        <div class="stat-unit">°C</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Max Temp</div>
+        <div class="stat-value red" id="statMaxTemp">--</div>
+        <div class="stat-unit">°C</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Avg Temp</div>
+        <div class="stat-value blue" id="statAvgTemp">--</div>
+        <div class="stat-unit">°C</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Min Humidity</div>
+        <div class="stat-value green" id="statMinHum">--</div>
+        <div class="stat-unit">%</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Max Humidity</div>
+        <div class="stat-value red" id="statMaxHum">--</div>
+        <div class="stat-unit">%</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Avg Humidity</div>
+        <div class="stat-value cyan" id="statAvgHum">--</div>
+        <div class="stat-unit">%</div>
+      </div>
+    </div>
+
+    <!-- Today's Charts -->
+    <div class="chart-section">
+      <div class="chart-header">
+        <div class="chart-title">📈 Today's Temperature Trend</div>
+      </div>
+      <div class="chart-container">
+        <canvas id="chartTempToday"></canvas>
+      </div>
+    </div>
+
+    <div class="chart-section">
+      <div class="chart-header">
+        <div class="chart-title">💧 Today's Humidity Trend</div>
+      </div>
+      <div class="chart-container">
+        <canvas id="chartHumToday"></canvas>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="actions">
+      <button class="btn" onclick="exportExcel()">📥 Export Excel</button>
+      <button class="btn" onclick="exportCSV()">📄 Export CSV</button>
+    </div>
+  </div>
+
+  <!-- Temperature Detail Page -->
+  <div id="temperatureDetail" class="detail-page">
+    <button class="back-button" onclick="showDashboard()">← Back to Dashboard</button>
+    
+    <div class="detail-header">
+      <div class="detail-title">🌡️ Temperature Analysis</div>
+      <div class="date-range-picker">
+        <label>From:</label>
+        <input type="date" id="tempDateFrom">
+        <label>To:</label>
+        <input type="date" id="tempDateTo">
+        <button class="btn-today" onclick="setTodayTemp()">Today</button>
+      </div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">Minimum</div>
+        <div class="stat-value green" id="tempDetailMin">--</div>
+        <div class="stat-unit">°C</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Maximum</div>
+        <div class="stat-value red" id="tempDetailMax">--</div>
+        <div class="stat-unit">°C</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Average</div>
+        <div class="stat-value blue" id="tempDetailAvg">--</div>
+        <div class="stat-unit">°C</div>
+      </div>
+    </div>
+
+    <div class="chart-section">
+      <div class="chart-header">
+        <div class="chart-title" id="tempChartTitle">📈 Temperature Data</div>
+      </div>
+      <div class="chart-container">
+        <canvas id="chartTempDetail"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Humidity Detail Page -->
+  <div id="humidityDetail" class="detail-page">
+    <button class="back-button" onclick="showDashboard()">← Back to Dashboard</button>
+    
+    <div class="detail-header">
+      <div class="detail-title">💧 Humidity Analysis</div>
+      <div class="date-range-picker">
+        <label>From:</label>
+        <input type="date" id="humDateFrom">
+        <label>To:</label>
+        <input type="date" id="humDateTo">
+        <button class="btn-today" onclick="setTodayHum()">Today</button>
+      </div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">Minimum</div>
+        <div class="stat-value green" id="humDetailMin">--</div>
+        <div class="stat-unit">%</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Maximum</div>
+        <div class="stat-value red" id="humDetailMax">--</div>
+        <div class="stat-unit">%</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Average</div>
+        <div class="stat-value cyan" id="humDetailAvg">--</div>
+        <div class="stat-unit">%</div>
+      </div>
+    </div>
+
+    <div class="chart-section">
+      <div class="chart-header">
+        <div class="chart-title" id="humChartTitle">💧 Humidity Data</div>
+      </div>
+      <div class="chart-container">
+        <canvas id="chartHumDetail"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let allData = [];
+let chartTempToday = null;
+let chartHumToday = null;
+let chartTempDetail = null;
+let chartHumDetail = null;
+let failCount = 0;
+let lastTemp = null;
+let lastHum = null;
+
+// Utility Functions
+function pad(n) { return n < 10 ? '0' + n : '' + n; }
+function dateStr(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+function timeLabel(ts) {
+  const d = new Date(ts);
+  return pad(d.getHours()) + ':' + pad(d.getMinutes());
+}
+
+function filterDate(ds) {
+  return allData.filter(r => dateStr(new Date(r.timestamp)) === ds);
+}
+
+function filterRange(from, to) {
+  return allData.filter(r => {
+    const d = dateStr(new Date(r.timestamp));
+    return d >= from && d <= to;
+  });
+}
+
+function bucket5min(arr) {
+  const map = {};
+  arr.forEach(r => {
+    const d = new Date(r.timestamp);
+    const m = d.getMinutes();
+    const key = dateStr(d) + ' ' + pad(d.getHours()) + ':' + pad(m - m % 5);
+    if (!map[key]) map[key] = { temps: [], hums: [], ts: r.timestamp, key };
+    map[key].temps.push(r.temp);
+    map[key].hums.push(r.hum);
+  });
+  return Object.keys(map).sort().map(k => {
+    const b = map[k];
+    return {
+      label: b.key.split(' ')[1],
+      temp: +(b.temps.reduce((a, v) => a + v, 0) / b.temps.length).toFixed(1),
+      hum: +(b.hums.reduce((a, v) => a + v, 0) / b.hums.length).toFixed(1)
+    };
+  });
+}
+
+function groupByDay(arr) {
+  const map = {};
+  arr.forEach(r => {
+    const ds = dateStr(new Date(r.timestamp));
+    if (!map[ds]) map[ds] = { temps: [], hums: [] };
+    map[ds].temps.push(r.temp);
+    map[ds].hums.push(r.hum);
+  });
+  return Object.keys(map).sort().map(ds => {
+    const g = map[ds];
+    return {
+      date: ds,
+      tempAvg: +(g.temps.reduce((a, v) => a + v, 0) / g.temps.length).toFixed(1),
+      tempMin: +Math.min(...g.temps).toFixed(1),
+      tempMax: +Math.max(...g.temps).toFixed(1),
+      humAvg: +(g.hums.reduce((a, v) => a + v, 0) / g.hums.length).toFixed(1),
+      humMin: +Math.min(...g.hums).toFixed(1),
+      humMax: +Math.max(...g.hums).toFixed(1)
+    };
+  });
+}
+
+function stats(arr, key) {
+  if (!arr.length) return { min: '--', max: '--', avg: '--' };
+  const v = arr.map(r => r[key]);
+  return {
+    min: Math.min(...v).toFixed(1),
+    max: Math.max(...v).toFixed(1),
+    avg: (v.reduce((a, b) => a + b, 0) / v.length).toFixed(1)
+  };
+}
+
+// Status Badge Functions
+function updateStatusBadge(isOnline) {
+  const badge = document.getElementById('statusBadge');
+  const text = document.getElementById('statusText');
+  
+  if (isOnline) {
+    badge.classList.remove('offline');
+    text.textContent = 'Online';
+  } else {
+    badge.classList.add('offline');
+    text.textContent = 'Offline';
+  }
+}
+
+// Fetch Current Data
+function fetchCurrent() {
+  fetch('/api/current')
+    .then(r => r.json())
+    .then(d => {
+      failCount = 0;
+      updateStatusBadge(true);
+      
+      // Temperature
+      const temp = d.temp;
+      document.getElementById('tempValue').textContent = temp.toFixed(1);
+      
+      // Temperature trend
+      if (lastTemp !== null) {
+        if (temp > lastTemp + 0.2) {
+          document.getElementById('tempTrend').textContent = '↑';
+          document.getElementById('tempTrendText').textContent = 'Rising';
+        } else if (temp < lastTemp - 0.2) {
+          document.getElementById('tempTrend').textContent = '↓';
+          document.getElementById('tempTrendText').textContent = 'Falling';
+        } else {
+          document.getElementById('tempTrend').textContent = '→';
+          document.getElementById('tempTrendText').textContent = 'Stable';
+        }
+      }
+      lastTemp = temp;
+      
+      // Temperature status
+      const tempStatus = document.getElementById('tempStatus');
+      tempStatus.className = 'status-badge-inline status-' + d.tempLevel;
+      tempStatus.textContent = d.tempLevel.charAt(0).toUpperCase() + d.tempLevel.slice(1);
+      
+      // Humidity
+      const hum = d.hum;
+      document.getElementById('humValue').textContent = hum.toFixed(1);
+      
+      // Humidity trend
+      if (lastHum !== null) {
+        if (hum > lastHum + 0.5) {
+          document.getElementById('humTrend').textContent = '↑';
+          document.getElementById('humTrendText').textContent = 'Rising';
+        } else if (hum < lastHum - 0.5) {
+          document.getElementById('humTrend').textContent = '↓';
+          document.getElementById('humTrendText').textContent = 'Falling';
+        } else {
+          document.getElementById('humTrend').textContent = '→';
+          document.getElementById('humTrendText').textContent = 'Stable';
+        }
+      }
+      lastHum = hum;
+      
+      // Humidity status
+      const humStatus = document.getElementById('humStatus');
+      humStatus.className = 'status-badge-inline status-' + d.humLevel;
+      humStatus.textContent = d.humLevel.charAt(0).toUpperCase() + d.humLevel.slice(1);
+    })
+    .catch(() => {
+      failCount++;
+      if (failCount >= 3) updateStatusBadge(false);
+    });
+}
+
+// Fetch All Data
+function fetchAllData() {
+  fetch('/api/all-data')
+    .then(r => r.json())
+    .then(data => {
+      allData = data;
+      document.getElementById('dataCount').textContent = data.length;
+      renderTodayCharts();
+      updateStats();
+    })
+    .catch(() => {});
+}
+
+// Update Statistics
+function updateStats() {
+  const todayData = filterDate(dateStr(new Date()));
+  const tempStats = stats(todayData, 'temp');
+  const humStats = stats(todayData, 'hum');
+  
+  document.getElementById('statMinTemp').textContent = tempStats.min;
+  document.getElementById('statMaxTemp').textContent = tempStats.max;
+  document.getElementById('statAvgTemp').textContent = tempStats.avg;
+  
+  document.getElementById('statMinHum').textContent = humStats.min;
+  document.getElementById('statMaxHum').textContent = humStats.max;
+  document.getElementById('statAvgHum').textContent = humStats.avg;
+}
+
+// Chart Options
+const chartOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  animation: { duration: 400 },
+  plugins: {
+    legend: { display: false }
+  },
+  scales: {
+    x: {
+      grid: { color: '#e2e8f0' },
+      ticks: { color: '#64748b', maxRotation: 0 }
+    },
+    y: {
+      grid: { color: '#e2e8f0' },
+      ticks: { color: '#64748b' },
+      beginAtZero: false
+    }
+  }
+};
+
+// Initialize Charts
+function initCharts() {
+  chartTempToday = new Chart(document.getElementById('chartTempToday').getContext('2d'), {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [{
+        data: [],
+        borderColor: '#3b82f6',
+        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+        fill: true,
+        tension: 0.4,
+        pointRadius: 0,
+        borderWidth: 2
+      }]
+    },
+    options: chartOptions
+  });
+  
+  chartHumToday = new Chart(document.getElementById('chartHumToday').getContext('2d'), {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [{
+        data: [],
+        borderColor: '#06b6d4',
+        backgroundColor: 'rgba(6, 182, 212, 0.1)',
+        fill: true,
+        tension: 0.4,
+        pointRadius: 0,
+        borderWidth: 2
+      }]
+    },
+    options: chartOptions
+  });
+}
+
+// Render Today's Charts
+function renderTodayCharts() {
+  const bucketed = bucket5min(filterDate(dateStr(new Date())));
+  
+  chartTempToday.data.labels = bucketed.map(b => b.label);
+  chartTempToday.data.datasets[0].data = bucketed.map(b => b.temp);
+  chartTempToday.update();
+  
+  chartHumToday.data.labels = bucketed.map(b => b.label);
+  chartHumToday.data.datasets[0].data = bucketed.map(b => b.hum);
+  chartHumToday.update();
+}
+
+// Navigation Functions
+function showDetailPage(type) {
+  document.getElementById('dashboardView').style.display = 'none';
+  
+  if (type === 'temperature') {
+    document.getElementById('temperatureDetail').classList.add('active');
+    const today = dateStr(new Date());
+    document.getElementById('tempDateFrom').value = today;
+    document.getElementById('tempDateTo').value = today;
+    renderTempDetail();
+  } else if (type === 'humidity') {
+    document.getElementById('humidityDetail').classList.add('active');
+    const today = dateStr(new Date());
+    document.getElementById('humDateFrom').value = today;
+    document.getElementById('humDateTo').value = today;
+    renderHumDetail();
+  }
+}
+
+function showDashboard() {
+  document.getElementById('dashboardView').style.display = 'block';
+  document.getElementById('temperatureDetail').classList.remove('active');
+  document.getElementById('humidityDetail').classList.remove('active');
+  
+  // Destroy detail charts
+  if (chartTempDetail) {
+    chartTempDetail.destroy();
+    chartTempDetail = null;
+  }
+  if (chartHumDetail) {
+    chartHumDetail.destroy();
+    chartHumDetail = null;
+  }
+}
+
+// Temperature Detail Page
+function setTodayTemp() {
+  const today = dateStr(new Date());
+  document.getElementById('tempDateFrom').value = today;
+  document.getElementById('tempDateTo').value = today;
+  renderTempDetail();
+}
+
+function renderTempDetail() {
+  const from = document.getElementById('tempDateFrom').value;
+  const to = document.getElementById('tempDateTo').value;
+  const subset = filterRange(from, to);
+  const isSameDay = from === to;
+  
+  // Update stats
+  const tempStats = stats(subset, 'temp');
+  document.getElementById('tempDetailMin').textContent = tempStats.min;
+  document.getElementById('tempDetailMax').textContent = tempStats.max;
+  document.getElementById('tempDetailAvg').textContent = tempStats.avg;
+  
+  // Destroy existing chart
+  if (chartTempDetail) {
+    chartTempDetail.destroy();
+  }
+  
+  if (isSameDay) {
+    // Line chart for single day
+    document.getElementById('tempChartTitle').textContent = '📈 Temperature - Single Day';
+    const bucketed = bucket5min(subset);
+    
+    chartTempDetail = new Chart(document.getElementById('chartTempDetail').getContext('2d'), {
+      type: 'line',
+      data: {
+        labels: bucketed.map(b => b.label),
+        datasets: [{
+          label: 'Temperature (°C)',
+          data: bucketed.map(b => b.temp),
+          borderColor: '#3b82f6',
+          backgroundColor: 'rgba(59, 130, 246, 0.1)',
+          fill: true,
+          tension: 0.4,
+          pointRadius: 2,
+          borderWidth: 2
+        }]
+      },
+      options: {
+        ...chartOptions,
+        plugins: { legend: { display: true, labels: { color: '#475569' } } }
+      }
+    });
+  } else {
+    // Bar chart for multiple days
+    document.getElementById('tempChartTitle').textContent = '📊 Temperature - Multiple Days';
+    const days = groupByDay(subset);
+    
+    chartTempDetail = new Chart(document.getElementById('chartTempDetail').getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels: days.map(d => d.date),
+        datasets: [
+          {
+            label: 'Average',
+            data: days.map(d => d.tempAvg),
+            backgroundColor: 'rgba(59, 130, 246, 0.6)',
+            borderColor: '#3b82f6',
+            borderWidth: 2,
+            borderRadius: 6
+          },
+          {
+            label: 'Min',
+            data: days.map(d => d.tempMin),
+            backgroundColor: 'rgba(16, 185, 129, 0.4)',
+            borderColor: '#10b981',
+            borderWidth: 1,
+            borderRadius: 6
+          },
+          {
+            label: 'Max',
+            data: days.map(d => d.tempMax),
+            backgroundColor: 'rgba(239, 68, 68, 0.4)',
+            borderColor: '#ef4444',
+            borderWidth: 1,
+            borderRadius: 6
+          }
+        ]
+      },
+      options: {
+        ...chartOptions,
+        plugins: { legend: { display: true, labels: { color: '#475569' } } }
+      }
+    });
+  }
+}
+
+// Humidity Detail Page
+function setTodayHum() {
+  const today = dateStr(new Date());
+  document.getElementById('humDateFrom').value = today;
+  document.getElementById('humDateTo').value = today;
+  renderHumDetail();
+}
+
+function renderHumDetail() {
+  const from = document.getElementById('humDateFrom').value;
+  const to = document.getElementById('humDateTo').value;
+  const subset = filterRange(from, to);
+  const isSameDay = from === to;
+  
+  // Update stats
+  const humStats = stats(subset, 'hum');
+  document.getElementById('humDetailMin').textContent = humStats.min;
+  document.getElementById('humDetailMax').textContent = humStats.max;
+  document.getElementById('humDetailAvg').textContent = humStats.avg;
+  
+  // Destroy existing chart
+  if (chartHumDetail) {
+    chartHumDetail.destroy();
+  }
+  
+  if (isSameDay) {
+    // Line chart for single day
+    document.getElementById('humChartTitle').textContent = '💧 Humidity - Single Day';
+    const bucketed = bucket5min(subset);
+    
+    chartHumDetail = new Chart(document.getElementById('chartHumDetail').getContext('2d'), {
+      type: 'line',
+      data: {
+        labels: bucketed.map(b => b.label),
+        datasets: [{
+          label: 'Humidity (%)',
+          data: bucketed.map(b => b.hum),
+          borderColor: '#06b6d4',
+          backgroundColor: 'rgba(6, 182, 212, 0.1)',
+          fill: true,
+          tension: 0.4,
+          pointRadius: 2,
+          borderWidth: 2
+        }]
+      },
+      options: {
+        ...chartOptions,
+        plugins: { legend: { display: true, labels: { color: '#475569' } } }
+      }
+    });
+  } else {
+    // Bar chart for multiple days
+    document.getElementById('humChartTitle').textContent = '📊 Humidity - Multiple Days';
+    const days = groupByDay(subset);
+    
+    chartHumDetail = new Chart(document.getElementById('chartHumDetail').getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels: days.map(d => d.date),
+        datasets: [
+          {
+            label: 'Average',
+            data: days.map(d => d.humAvg),
+            backgroundColor: 'rgba(6, 182, 212, 0.6)',
+            borderColor: '#06b6d4',
+            borderWidth: 2,
+            borderRadius: 6
+          },
+          {
+            label: 'Min',
+            data: days.map(d => d.humMin),
+            backgroundColor: 'rgba(16, 185, 129, 0.4)',
+            borderColor: '#10b981',
+            borderWidth: 1,
+            borderRadius: 6
+          },
+          {
+            label: 'Max',
+            data: days.map(d => d.humMax),
+            backgroundColor: 'rgba(239, 68, 68, 0.4)',
+            borderColor: '#ef4444',
+            borderWidth: 1,
+            borderRadius: 6
+          }
+        ]
+      },
+      options: {
+        ...chartOptions,
+        plugins: { legend: { display: true, labels: { color: '#475569' } } }
+      }
+    });
+  }
+}
+
+// Date change handlers
+document.getElementById('tempDateFrom').addEventListener('change', renderTempDetail);
+document.getElementById('tempDateTo').addEventListener('change', renderTempDetail);
+document.getElementById('humDateFrom').addEventListener('change', renderHumDetail);
+document.getElementById('humDateTo').addEventListener('change', renderHumDetail);
+
+// Export Functions
+function exportCSV() {
+  if (!allData.length) return alert('No data yet.');
+  let csv = "Timestamp,Temperature (°C),Humidity (%)\n";
+  allData.forEach(r => {
+    csv += r.timestamp + ',' + r.temp + ',' + r.hum + '\n';
+  });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  a.download = 'sensor_log_' + dateStr(new Date()) + '.csv';
+  a.click();
+}
+
+function exportExcel() {
+  if (!allData.length) return alert('No data yet.');
+  const rows = [['Timestamp', 'Temperature (°C)', 'Humidity (%)']];
+  allData.forEach(r => rows.push([r.timestamp, r.temp, r.hum]));
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [{ wch: 24 }, { wch: 22 }, { wch: 20 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'SensorData');
+  XLSX.writeFile(wb, 'FactoryMonitor_' + dateStr(new Date()) + '.xlsx');
+}
+
+// Initialize
+fetch('/api/info')
+  .then(r => r.json())
+  .then(d => document.getElementById('ipAddr').textContent = d.ip)
+  .catch(() => {});
+
+initCharts();
+fetchCurrent();
+fetchAllData();
+
+setInterval(fetchCurrent, 2000);
+setInterval(fetchAllData, 10000);
+</script>
+</body>
+</html>
+)rawliteral";
+
+// ================= HTTP HANDLERS =================
+void handleRoot() {
+  server.send_P(200, "text/html", HTML_PAGE);
+}
+
+void handleCurrent() {
+  String tempLevel = getAlertLevel(currentTemp, thresholds.tempNormal, thresholds.tempWarning);
+  String humLevel  = getHumidityAlertLevel(currentHum);
+
+  String json = "{";
+  json += "\"temp\":"        + String(currentTemp, 1) + ",";
+  json += "\"hum\":"         + String(currentHum,  1) + ",";
+  json += "\"tempLevel\":\"" + tempLevel + "\",";
+  json += "\"humLevel\":\""  + humLevel  + "\"";
+  json += "}";
+
+  server.sendHeader("Access-Control-Allow-Origin","*");
+  server.send(200, "application/json", json);
+}
+
+void handleAllData() {
+  String json = "[";
+  int start = (readingIndex - totalReadings + MAX_STORED_READINGS) % MAX_STORED_READINGS;
+  bool first = true;
+
+  for (int i = 0; i < totalReadings; i++) {
+    int idx = (start + i) % MAX_STORED_READINGS;
+    if (readings[idx].temperature > 100 || readings[idx].temperature < -40) continue;
+
+    if (!first) json += ",";
+    first = false;
+
+    json += "{\"timestamp\":\"" + formatISOTime(readings[idx].timestamp) + "\",";
+    json += "\"temp\":"  + String(readings[idx].temperature, 1) + ",";
+    json += "\"hum\":"   + String(readings[idx].humidity, 1)    + "}";
+  }
+  json += "]";
+
+  server.sendHeader("Access-Control-Allow-Origin","*");
+  server.send(200, "application/json", json);
+}
+
+void handleInfo() {
+  server.sendHeader("Access-Control-Allow-Origin","*");
+  server.send(200, "application/json", "{\"ip\":\"" + WiFi.localIP().toString() + "\"}");
+}
+
+// ================= OTA =================
+void setupOTA() {
+  ArduinoOTA.setHostname(OTA_HOSTNAME);
+  ArduinoOTA.setPassword(OTA_PASSWORD);
+  
+  ArduinoOTA.onStart([]() {
+    otaInProgress = true;
+    lcd.clear();
+    lcd.setCursor(5, 1);
+    lcd.print("OTA UPDATE");
+    lcd.setCursor(4, 2);
+    lcd.print("In Progress...");
+  });
+  
+  ArduinoOTA.onEnd([]() {
+    otaInProgress = false;
+    lcd.clear();
+    lcd.setCursor(3, 1);
+    lcd.print("OTA Complete!");
+    lcd.setCursor(4, 2);
+    lcd.print("Restarting...");
+    delay(2000);
+  });
+  
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    unsigned int percent = (progress / (total / 100));
+    lcd.setCursor(0, 3);
+    lcd.print("Progress: ");
+    if (percent < 10) lcd.print(" ");
+    if (percent < 100) lcd.print(" ");
+    lcd.print(percent);
+    lcd.print("%");
+  });
+  
+  ArduinoOTA.onError([](ota_error_t error) {
+    lcd.clear();
+    lcd.setCursor(4, 1);
+    lcd.print("OTA ERROR!");
+    delay(3000);
+    otaInProgress = false;
+  });
+  
+  ArduinoOTA.begin();
+}
+
+// ================= SETUP =================
+void setup() {
+  Serial.begin(115200);
+  delay(1000);
+  
+  Serial.println("\n\n╔══════════════════════════════════════╗");
+  Serial.println("║   FACTORY MONITOR PRO v2.0           ║");
+  Serial.println("║   With 20x4 LCD Display              ║");
+  Serial.println("╚══════════════════════════════════════╝\n");
+
+  Wire.begin(SENSOR_SDA, SENSOR_SCL);
+  Serial.println("✓ I2C initialized");
+
+  // Initialize LCD first
+  initLCD();
+  Serial.println("✓ LCD initialized");
+
+  // Initialize WiFiManager
+  WiFiManager wm;
+  // wm.resetSettings();  // Uncomment to reset WiFi settings
+
+  wm.setAPCallback([](WiFiManager *myWiFiManager) {
+    Serial.println("⚠ Entering Config Portal");
+    Serial.println("  SSID: " + myWiFiManager->getConfigPortalSSID());
+    Serial.println("  IP: " + WiFi.softAPIP().toString());
+    displayWiFiConfig();
+  });
+
+  bool res = wm.autoConnect("FactoryMonitor_Setup", "password123");
+  
+  if (!res) {
+    Serial.println("✗ Failed to connect to WiFi");
+    wifiConnected = false;
+    lcd.clear();
+    lcd.setCursor(3, 1);
+    lcd.print("WiFi Failed!");
+    lcd.setCursor(1, 2);
+    lcd.print("Check Settings");
+    delay(3000);
+  } else {
+    Serial.println("✓ WiFi connected");
+    Serial.println("  SSID: " + WiFi.SSID());
+    Serial.println("  IP: " + WiFi.localIP().toString());
+    Serial.println("  Signal: " + String(WiFi.RSSI()) + " dBm");
+    
+    wifiConnected = true;
+    
+    lcd.clear();
+    lcd.setCursor(2, 1);
+    lcd.print("WiFi Connected!");
+    lcd.setCursor(0, 2);
+    lcd.print("IP:");
+    lcd.print(WiFi.localIP().toString());
+    delay(3000);
+    
+    // Configure NTP
+    configTime(GMT_OFFSET, DAYLIGHT_OFFSET, NTP_SERVER);
+    Serial.println("✓ NTP time sync started");
+    
+    // Setup OTA
+    setupOTA();
+    Serial.println("✓ OTA ready");
+  }
+
+  // Setup web server
+  server.on("/",             handleRoot);
+  server.on("/api/current",  handleCurrent);
+  server.on("/api/all-data", handleAllData);
+  server.on("/api/info",     handleInfo);
+  server.begin();
+  Serial.println("✓ Web server started");
+  
+  if (wifiConnected) {
+    Serial.println("\n╔══════════════════════════════════════╗");
+    Serial.println("║  Access web interface at:            ║");
+    Serial.println("║  http://" + WiFi.localIP().toString() + String(19 - WiFi.localIP().toString().length(), ' ') + "║");
+    Serial.println("╚══════════════════════════════════════╝\n");
+  }
+
+  modeStartTime = millis();
+  lastLCDUpdate = millis();
+  
+  Serial.println("✓ System ready!\n");
+}
+
+void loop() {
+  // 1. Background Tasks
+  if (wifiConnected) {
+    ArduinoOTA.handle();
+  }
+  server.handleClient();
+
+  // 2. Main Monitoring Logic
+  if (!otaInProgress) {
+    
+    // Sample every 1 second
+    if (millis() - lastSampleTime >= SAMPLE_INTERVAL) {
+      
+      int result = sht30.get(); // Read the SHT30
+      
+      if (result == 0) {
+        float rawT = sht30.cTemp;
+        float rawH = sht30.humidity;
+
+        // --- CALIBRATION SETTINGS ---
+        // Temperature: 1.5% offset
+        // Humidity: 6% lower than meter -> +6.0 (UPDATED from 8.0)
+        const float TEMP_OFFSET = -1.5; 
+        const float HUM_OFFSET  = 6.0;  // Changed from 8.0 to 6.0
+
+        // Apply offsets and validate
+        if (!isnan(rawT)) {
+          lastTemp = currentTemp; 
+          currentTemp = rawT + TEMP_OFFSET;
+        }
+
+        if (!isnan(rawH)) {
+          lastHum = currentHum;
+          // Constrain keeps it within 0-100%
+          currentHum = constrain(rawH + HUM_OFFSET, 0.0, 100.0);
+        }
+
+        // Add to web history buffer
+        addReading(currentTemp, currentHum);
+
+      } else {
+        // If sensor fails, we log it but DON'T crash the ESP32
+        if (millis() % 10000 < 50) { 
+          Serial.println("⚠ SHT30 Read Error - Check Wiring!");
+        }
+        // Set to 0 to show there is a problem
+        currentTemp = 0.0;
+        currentHum = 0.0;
+      }
+      
+      lastSampleTime = millis();
+    }
+
+    // 3. LCD Controller (Page rotation)
+    if (millis() - lastLCDUpdate >= LCD_UPDATE_INTERVAL) {
+      updateLCD(); 
+      lastLCDUpdate = millis();
+    }
+    
+    // 4. WiFi Watchdog
+    if (WiFi.status() != WL_CONNECTED && wifiConnected) {
+      wifiConnected = false;
+      Serial.println("⚠ WiFi connection lost");
+    } else if (WiFi.status() == WL_CONNECTED && !wifiConnected) {
+      wifiConnected = true;
+      Serial.println("✓ WiFi reconnected");
+    }
+  }
+
+  delay(5); 
+}
