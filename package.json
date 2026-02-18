@@ -1,0 +1,13 @@
+{
+  "name": "rh-meter-backend",
+  "version": "1.0.0",
+  "description": "Permanent storage for factory data",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "mongoose": "^7.0.0"
+  }
+}
