@@ -445,7 +445,6 @@ function setTodayTemp() {
   document.getElementById('tempDateTo').value   = today;
   renderTempDetail();
 }
-
 function renderTempDetail() {
   const from      = document.getElementById('tempDateFrom').value;
   const to        = document.getElementById('tempDateTo').value;
@@ -624,98 +623,32 @@ function exportCSV() {
   a.download = 'sensor_log_' + dateStr(new Date()) + '.csv';
   a.click();
 }
+
 function exportExcel() {
   if (!allData.length) return alert('No data yet.');
   try {
-    const hourly = bucketHourly(allData);
-    const rows = [['Hour', 'Avg Temperature (°C)', 'Avg Humidity (%)']];
-    hourly.forEach(h => rows.push([h.label, h.temp, h.hum]));
+    const rows = [['Timestamp', 'Temperature (°C)', 'Humidity (%)']];
+    allData.forEach(r => rows.push([r.timestamp, r.temp, r.hum]));
     const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols'] = [{ wch: 12 }, { wch: 24 }, { wch: 22 }];
+    ws['!cols'] = [{ wch: 24 }, { wch: 22 }, { wch: 20 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'SensorData');
     const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
     const blob = new Blob([wbout], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
+    a.href = url;
     a.download = 'FactoryMonitor_' + dateStr(new Date()) + '.xlsx';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   } catch(e) {
     alert('Excel export failed: ' + e.message);
     console.error(e);
   }
 }
 
-function exportFilteredExcel(type) {
-  const isTemp = type === 'temperature';
-  const from = document.getElementById(isTemp ? 'tempDateFrom' : 'humDateFrom').value;
-  const to   = document.getElementById(isTemp ? 'tempDateTo'   : 'humDateTo').value;
-
-  if (!from || !to) return alert('Please select a date range first.');
-  const subset = filterRange(from, to);
-  if (!subset.length) return alert('No data in selected range.');
-
-  try {
-    const isSameDay = from === to;
-
-    let rows, filename;
-    if (isSameDay) {
-      // Hourly summary for single day
-      const hourly = bucketHourly(subset);
-      if (isTemp) {
-        rows = [['Hour', 'Avg Temperature (°C)', 'Min Temperature (°C)', 'Max Temperature (°C)']];
-        hourly.forEach(h => {
-          const raw = subset.filter(r => {
-            const d = new Date(r.timestamp);
-            return pad(d.getHours()) + ':00' === h.label;
-          });
-          const temps = raw.map(r => r.temp);
-          rows.push([h.label, h.temp, +Math.min(...temps).toFixed(1), +Math.max(...temps).toFixed(1)]);
-        });
-      } else {
-        rows = [['Hour', 'Avg Humidity (%)', 'Min Humidity (%)', 'Max Humidity (%)']];
-        hourly.forEach(h => {
-          const raw = subset.filter(r => {
-            const d = new Date(r.timestamp);
-            return pad(d.getHours()) + ':00' === h.label;
-          });
-          const hums = raw.map(r => r.hum);
-          rows.push([h.label, h.hum, +Math.min(...hums).toFixed(1), +Math.max(...hums).toFixed(1)]);
-        });
-      }
-      filename = `${isTemp ? 'Temperature' : 'Humidity'}_Hourly_${from}.xlsx`;
-    } else {
-      // Daily summary for multi-day
-      const days = groupByDay(subset);
-      if (isTemp) {
-        rows = [['Date', 'Avg Temperature (°C)', 'Min Temperature (°C)', 'Max Temperature (°C)']];
-        days.forEach(d => rows.push([d.date, d.tempAvg, d.tempMin, d.tempMax]));
-      } else {
-        rows = [['Date', 'Avg Humidity (%)', 'Min Humidity (%)', 'Max Humidity (%)']];
-        days.forEach(d => rows.push([d.date, d.humAvg, d.humMin, d.humMax]));
-      }
-      filename = `${isTemp ? 'Temperature' : 'Humidity'}_Daily_${from}_to_${to}.xlsx`;
-    }
-
-    const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols'] = [{ wch: 16 }, { wch: 26 }, { wch: 26 }, { wch: 26 }];
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, isTemp ? 'Temperature' : 'Humidity');
-    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-    const blob = new Blob([wbout], { type: 'application/octet-stream' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-  } catch(e) {
-    alert('Excel export failed: ' + e.message);
-    console.error(e);
-  }
-}
 // ── Daily midnight reset ──────────────────────────────────────
 function scheduleMidnightReset() {
   const now  = new Date();
@@ -741,15 +674,9 @@ scheduleMidnightReset();
 //   .then(d => document.getElementById('ipAddr').textContent = d.ip)
 //   .catch(() => {});
 
-document.addEventListener('DOMContentLoaded', async () => {
-  initCharts();
-  await loginTB();
-  fetchCurrent();
-  fetchAllData();
+initCharts();
+fetchCurrent();
+fetchAllData();
 
-  setInterval(fetchCurrent,  2000);
-  setInterval(fetchAllData, 10000);
-});
-
-// setInterval(fetchCurrent,  2000);
-// setInterval(fetchAllData, 10000);
+setInterval(fetchCurrent,  2000);
+setInterval(fetchAllData, 10000);
