@@ -741,9 +741,15 @@ scheduleMidnightReset();
 //   .then(d => document.getElementById('ipAddr').textContent = d.ip)
 //   .catch(() => {});
 
-initCharts();
-fetchCurrent();
-fetchAllData();
+document.addEventListener('DOMContentLoaded', async () => {
+  initCharts();
+  await loginTB();
+  fetchCurrent();
+  fetchAllData();
 
-setInterval(fetchCurrent,  2000);
-setInterval(fetchAllData, 10000);
+  setInterval(fetchCurrent,  2000);
+  setInterval(fetchAllData, 10000);
+});
+
+// setInterval(fetchCurrent,  2000);
+// setInterval(fetchAllData, 10000);
