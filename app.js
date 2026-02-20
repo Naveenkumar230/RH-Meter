@@ -445,26 +445,27 @@ function setTodayTemp() {
   document.getElementById('tempDateTo').value   = today;
   renderTempDetail();
 }
+
 function renderTempDetail() {
-  const from      = document.getElementById('tempDateFrom').value;
-  const to        = document.getElementById('tempDateTo').value;
-  const subset    = filterRange(from, to);
+  const from     = document.getElementById('tempDateFrom').value;
+  const to       = document.getElementById('tempDateTo').value;
+  const subset   = filterRange(from, to);
   const isSameDay = from === to;
 
   const tempStats = stats(subset, 'temp');
-  // Average first, then Min, then Max
-  document.getElementById('tempDetailAvg').textContent = tempStats.avg;
   document.getElementById('tempDetailMin').textContent = tempStats.min;
   document.getElementById('tempDetailMax').textContent = tempStats.max;
+  document.getElementById('tempDetailAvg').textContent = tempStats.avg;
 
   if (chartTempDetail) chartTempDetail.destroy();
 
+  // Remove old table if exists
   const oldTable = document.getElementById('tempDayTable');
   if (oldTable) oldTable.remove();
 
   if (isSameDay) {
-    document.getElementById('tempChartTitle').textContent = '📈 Temperature - Single Day (30 min avg)';
-    const bucketed = bucket30min(subset);
+    document.getElementById('tempChartTitle').textContent = '📈 Temperature - Single Day';
+    const bucketed = bucket5min(subset);
     chartTempDetail = new Chart(document.getElementById('chartTempDetail').getContext('2d'), {
       type: 'line',
       data: {
@@ -474,7 +475,7 @@ function renderTempDetail() {
           data: bucketed.map(b => b.temp),
           borderColor: '#3b82f6',
           backgroundColor: 'rgba(59, 130, 246, 0.1)',
-          fill: true, tension: 0.4, pointRadius: 3, borderWidth: 2
+          fill: true, tension: 0.4, pointRadius: 2, borderWidth: 2
         }]
       },
       options: { ...chartOptions, plugins: { legend: { display: true, labels: { color: '#475569' } } } }
@@ -483,24 +484,25 @@ function renderTempDetail() {
     document.getElementById('tempChartTitle').textContent = '📊 Temperature - Daily Summary';
     const days = groupByDay(subset);
 
+    // Build summary table
     const tableHTML = `
-      <div id="tempDayTable" style="overflow-x:auto; margin-top:20px; display:flex; justify-content:center;">
-        <table style="width:80%; border-collapse:collapse; font-family:'Inter',sans-serif; font-size:0.875rem; text-align:center;">
+      <div id="tempDayTable" style="overflow-x:auto; margin-top:20px;">
+        <table style="width:100%; border-collapse:collapse; font-family:'Inter',sans-serif; font-size:0.875rem;">
           <thead>
             <tr style="background:#f1f5f9;">
-              <th style="padding:10px 16px; border:1px solid #e2e8f0; color:#475569;">Date</th>
-              <th style="padding:10px 16px; border:1px solid #e2e8f0; color:#3b82f6;">Avg (°C)</th>
-              <th style="padding:10px 16px; border:1px solid #e2e8f0; color:#10b981;">Min (°C)</th>
-              <th style="padding:10px 16px; border:1px solid #e2e8f0; color:#ef4444;">Max (°C)</th>
+              <th style="padding:10px 16px; text-align:left; border:1px solid #e2e8f0; color:#475569;">Date</th>
+              <th style="padding:10px 16px; text-align:center; border:1px solid #e2e8f0; color:#3b82f6;">Avg (°C)</th>
+              <th style="padding:10px 16px; text-align:center; border:1px solid #e2e8f0; color:#10b981;">Min (°C)</th>
+              <th style="padding:10px 16px; text-align:center; border:1px solid #e2e8f0; color:#ef4444;">Max (°C)</th>
             </tr>
           </thead>
           <tbody>
             ${days.map(d => `
               <tr>
                 <td style="padding:10px 16px; border:1px solid #e2e8f0; font-weight:600;">${d.date}</td>
-                <td style="padding:10px 16px; border:1px solid #e2e8f0; color:#3b82f6; font-weight:700;">${d.tempAvg}</td>
-                <td style="padding:10px 16px; border:1px solid #e2e8f0; color:#10b981; font-weight:700;">${d.tempMin}</td>
-                <td style="padding:10px 16px; border:1px solid #e2e8f0; color:#ef4444; font-weight:700;">${d.tempMax}</td>
+                <td style="padding:10px 16px; border:1px solid #e2e8f0; text-align:center; color:#3b82f6; font-weight:700;">${d.tempAvg}</td>
+                <td style="padding:10px 16px; border:1px solid #e2e8f0; text-align:center; color:#10b981; font-weight:700;">${d.tempMin}</td>
+                <td style="padding:10px 16px; border:1px solid #e2e8f0; text-align:center; color:#ef4444; font-weight:700;">${d.tempMax}</td>
               </tr>`).join('')}
           </tbody>
         </table>
@@ -521,26 +523,27 @@ function renderTempDetail() {
     });
   }
 }
+
 function renderHumDetail() {
-  const from      = document.getElementById('humDateFrom').value;
-  const to        = document.getElementById('humDateTo').value;
-  const subset    = filterRange(from, to);
+  const from     = document.getElementById('humDateFrom').value;
+  const to       = document.getElementById('humDateTo').value;
+  const subset   = filterRange(from, to);
   const isSameDay = from === to;
 
   const humStats = stats(subset, 'hum');
-  // Average first, then Min, then Max
-  document.getElementById('humDetailAvg').textContent = humStats.avg;
   document.getElementById('humDetailMin').textContent = humStats.min;
   document.getElementById('humDetailMax').textContent = humStats.max;
+  document.getElementById('humDetailAvg').textContent = humStats.avg;
 
   if (chartHumDetail) chartHumDetail.destroy();
 
+  // Remove old table if exists
   const oldTable = document.getElementById('humDayTable');
   if (oldTable) oldTable.remove();
 
   if (isSameDay) {
-    document.getElementById('humChartTitle').textContent = '💧 Humidity - Single Day (30 min avg)';
-    const bucketed = bucket30min(subset);
+    document.getElementById('humChartTitle').textContent = '💧 Humidity - Single Day';
+    const bucketed = bucket5min(subset);
     chartHumDetail = new Chart(document.getElementById('chartHumDetail').getContext('2d'), {
       type: 'line',
       data: {
@@ -550,7 +553,7 @@ function renderHumDetail() {
           data: bucketed.map(b => b.hum),
           borderColor: '#06b6d4',
           backgroundColor: 'rgba(6, 182, 212, 0.1)',
-          fill: true, tension: 0.4, pointRadius: 3, borderWidth: 2
+          fill: true, tension: 0.4, pointRadius: 2, borderWidth: 2
         }]
       },
       options: { ...chartOptions, plugins: { legend: { display: true, labels: { color: '#475569' } } } }
@@ -560,23 +563,23 @@ function renderHumDetail() {
     const days = groupByDay(subset);
 
     const tableHTML = `
-      <div id="humDayTable" style="overflow-x:auto; margin-top:20px; display:flex; justify-content:center;">
-        <table style="width:80%; border-collapse:collapse; font-family:'Inter',sans-serif; font-size:0.875rem; text-align:center;">
+      <div id="humDayTable" style="overflow-x:auto; margin-top:20px;">
+        <table style="width:100%; border-collapse:collapse; font-family:'Inter',sans-serif; font-size:0.875rem;">
           <thead>
             <tr style="background:#f1f5f9;">
-              <th style="padding:10px 16px; border:1px solid #e2e8f0; color:#475569;">Date</th>
-              <th style="padding:10px 16px; border:1px solid #e2e8f0; color:#06b6d4;">Avg (%)</th>
-              <th style="padding:10px 16px; border:1px solid #e2e8f0; color:#10b981;">Min (%)</th>
-              <th style="padding:10px 16px; border:1px solid #e2e8f0; color:#ef4444;">Max (%)</th>
+              <th style="padding:10px 16px; text-align:left; border:1px solid #e2e8f0; color:#475569;">Date</th>
+              <th style="padding:10px 16px; text-align:center; border:1px solid #e2e8f0; color:#06b6d4;">Avg (%)</th>
+              <th style="padding:10px 16px; text-align:center; border:1px solid #e2e8f0; color:#10b981;">Min (%)</th>
+              <th style="padding:10px 16px; text-align:center; border:1px solid #e2e8f0; color:#ef4444;">Max (%)</th>
             </tr>
           </thead>
           <tbody>
             ${days.map(d => `
               <tr>
                 <td style="padding:10px 16px; border:1px solid #e2e8f0; font-weight:600;">${d.date}</td>
-                <td style="padding:10px 16px; border:1px solid #e2e8f0; color:#06b6d4; font-weight:700;">${d.humAvg}</td>
-                <td style="padding:10px 16px; border:1px solid #e2e8f0; color:#10b981; font-weight:700;">${d.humMin}</td>
-                <td style="padding:10px 16px; border:1px solid #e2e8f0; color:#ef4444; font-weight:700;">${d.humMax}</td>
+                <td style="padding:10px 16px; border:1px solid #e2e8f0; text-align:center; color:#06b6d4; font-weight:700;">${d.humAvg}</td>
+                <td style="padding:10px 16px; border:1px solid #e2e8f0; text-align:center; color:#10b981; font-weight:700;">${d.humMin}</td>
+                <td style="padding:10px 16px; border:1px solid #e2e8f0; text-align:center; color:#ef4444; font-weight:700;">${d.humMax}</td>
               </tr>`).join('')}
           </tbody>
         </table>
