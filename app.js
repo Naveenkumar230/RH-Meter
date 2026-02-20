@@ -277,43 +277,39 @@ async function fetchCurrent() {
     });
 }
 
-// ── Fetch: historical data from Cloud ─────────────────────────
 function fetchAllData() {
-    if (!jwtToken) return;
+  if (!jwtToken) return;
 
-    // Fetch the last 24 hours of data
-    let endTs = Date.now();
-    let startTs = endTs - 86400000;
+  // Fetch last 30 days so date-range filter always has data
+  const endTs   = Date.now();
+  const startTs = endTs - (30 * 24 * 60 * 60 * 1000);
 
-    fetch(`${TB_HOST}/api/plugins/telemetry/DEVICE/${DEVICE_ID}/values/timeseries?keys=temperature,humidity&startTs=${startTs}&endTs=${endTs}&limit=3000`, {
-         headers: { 'X-Authorization': `Bearer ${jwtToken}` }
-    })
-    .then(r => r.json())
-    .then(tbData => {
-        // Convert ThingsBoard API format into your original array format
-        let historyMap = {};
+  fetch(`${TB_HOST}/api/plugins/telemetry/DEVICE/${DEVICE_ID}/values/timeseries?keys=temperature,humidity&startTs=${startTs}&endTs=${endTs}&limit=50000`, {
+    headers: { 'X-Authorization': `Bearer ${jwtToken}` }
+  })
+  .then(r => r.json())
+  .then(tbData => {
+    const historyMap = {};
+    if (tbData.temperature) {
+      tbData.temperature.forEach(item => {
+        historyMap[item.ts] = { timestamp: new Date(item.ts).toISOString(), temp: parseFloat(item.value), hum: null };
+      });
+    }
+    if (tbData.humidity) {
+      tbData.humidity.forEach(item => {
+        if (!historyMap[item.ts]) historyMap[item.ts] = { timestamp: new Date(item.ts).toISOString(), temp: null, hum: parseFloat(item.value) };
+        else historyMap[item.ts].hum = parseFloat(item.value);
+      });
+    }
 
-        if(tbData.temperature) {
-            tbData.temperature.forEach(item => {
-                historyMap[item.ts] = { timestamp: new Date(item.ts).toISOString(), temp: parseFloat(item.value), hum: null };
-            });
-        }
-        if(tbData.humidity) {
-            tbData.humidity.forEach(item => {
-                if(!historyMap[item.ts]) historyMap[item.ts] = { timestamp: new Date(item.ts).toISOString(), temp: null, hum: parseFloat(item.value) };
-                else historyMap[item.ts].hum = parseFloat(item.value);
-            });
-        }
+    allData = Object.values(historyMap).filter(r => r.temp !== null && r.hum !== null);
+    allData.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 
-        // Filter valid data and sort
-        allData = Object.values(historyMap).filter(r => r.temp !== null && r.hum !== null);
-        allData.sort((a,b) => new Date(a.timestamp) - new Date(b.timestamp));
-
-        document.getElementById('dataCount').textContent = allData.length;
-        renderTodayCharts();
-        updateStats();
-    })
-    .catch(() => {});
+    document.getElementById('dataCount').textContent = allData.length;
+    renderTodayCharts();
+    updateStats();
+  })
+  .catch(() => {});
 }
 
 // ── Dashboard stats ───────────────────────────────────────────
@@ -431,10 +427,10 @@ function setTodayTemp() {
 }
 
 function renderTempDetail() {
-  const from  = document.getElementById('tempDateFrom').value;
-  const to    = document.getElementById('tempDateTo').value;
-  const subset     = filterRange(from, to);
-  const isSameDay  = from === to;
+  const from     = document.getElementById('tempDateFrom').value;
+  const to       = document.getElementById('tempDateTo').value;
+  const subset   = filterRange(from, to);
+  const isSameDay = from === to;
 
   const tempStats = stats(subset, 'temp');
   document.getElementById('tempDetailMin').textContent = tempStats.min;
@@ -442,6 +438,10 @@ function renderTempDetail() {
   document.getElementById('tempDetailAvg').textContent = tempStats.avg;
 
   if (chartTempDetail) chartTempDetail.destroy();
+
+  // Remove old table if exists
+  const oldTable = document.getElementById('tempDayTable');
+  if (oldTable) oldTable.remove();
 
   if (isSameDay) {
     document.getElementById('tempChartTitle').textContent = '📈 Temperature - Single Day';
@@ -458,14 +458,37 @@ function renderTempDetail() {
           fill: true, tension: 0.4, pointRadius: 2, borderWidth: 2
         }]
       },
-      options: {
-        ...chartOptions,
-        plugins: { legend: { display: true, labels: { color: '#475569' } } }
-      }
+      options: { ...chartOptions, plugins: { legend: { display: true, labels: { color: '#475569' } } } }
     });
   } else {
-    document.getElementById('tempChartTitle').textContent = '📊 Temperature - Multiple Days';
+    document.getElementById('tempChartTitle').textContent = '📊 Temperature - Daily Summary';
     const days = groupByDay(subset);
+
+    // Build summary table
+    const tableHTML = `
+      <div id="tempDayTable" style="overflow-x:auto; margin-top:20px;">
+        <table style="width:100%; border-collapse:collapse; font-family:'Inter',sans-serif; font-size:0.875rem;">
+          <thead>
+            <tr style="background:#f1f5f9;">
+              <th style="padding:10px 16px; text-align:left; border:1px solid #e2e8f0; color:#475569;">Date</th>
+              <th style="padding:10px 16px; text-align:center; border:1px solid #e2e8f0; color:#3b82f6;">Avg (°C)</th>
+              <th style="padding:10px 16px; text-align:center; border:1px solid #e2e8f0; color:#10b981;">Min (°C)</th>
+              <th style="padding:10px 16px; text-align:center; border:1px solid #e2e8f0; color:#ef4444;">Max (°C)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${days.map(d => `
+              <tr>
+                <td style="padding:10px 16px; border:1px solid #e2e8f0; font-weight:600;">${d.date}</td>
+                <td style="padding:10px 16px; border:1px solid #e2e8f0; text-align:center; color:#3b82f6; font-weight:700;">${d.tempAvg}</td>
+                <td style="padding:10px 16px; border:1px solid #e2e8f0; text-align:center; color:#10b981; font-weight:700;">${d.tempMin}</td>
+                <td style="padding:10px 16px; border:1px solid #e2e8f0; text-align:center; color:#ef4444; font-weight:700;">${d.tempMax}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+    document.querySelector('#temperatureDetail .chart-section').insertAdjacentHTML('beforeend', tableHTML);
+
     chartTempDetail = new Chart(document.getElementById('chartTempDetail').getContext('2d'), {
       type: 'bar',
       data: {
@@ -476,26 +499,15 @@ function renderTempDetail() {
           { label: 'Max',     data: days.map(d => d.tempMax), backgroundColor: 'rgba(239,68,68,0.4)',   borderColor: '#ef4444', borderWidth: 1, borderRadius: 6 }
         ]
       },
-      options: {
-        ...chartOptions,
-        plugins: { legend: { display: true, labels: { color: '#475569' } } }
-      }
+      options: { ...chartOptions, plugins: { legend: { display: true, labels: { color: '#475569' } } } }
     });
   }
 }
 
-// ── Humidity Detail Page ──────────────────────────────────────
-function setTodayHum() {
-  const today = dateStr(new Date());
-  document.getElementById('humDateFrom').value = today;
-  document.getElementById('humDateTo').value   = today;
-  renderHumDetail();
-}
-
 function renderHumDetail() {
-  const from  = document.getElementById('humDateFrom').value;
-  const to    = document.getElementById('humDateTo').value;
-  const subset    = filterRange(from, to);
+  const from     = document.getElementById('humDateFrom').value;
+  const to       = document.getElementById('humDateTo').value;
+  const subset   = filterRange(from, to);
   const isSameDay = from === to;
 
   const humStats = stats(subset, 'hum');
@@ -504,6 +516,10 @@ function renderHumDetail() {
   document.getElementById('humDetailAvg').textContent = humStats.avg;
 
   if (chartHumDetail) chartHumDetail.destroy();
+
+  // Remove old table if exists
+  const oldTable = document.getElementById('humDayTable');
+  if (oldTable) oldTable.remove();
 
   if (isSameDay) {
     document.getElementById('humChartTitle').textContent = '💧 Humidity - Single Day';
@@ -520,14 +536,36 @@ function renderHumDetail() {
           fill: true, tension: 0.4, pointRadius: 2, borderWidth: 2
         }]
       },
-      options: {
-        ...chartOptions,
-        plugins: { legend: { display: true, labels: { color: '#475569' } } }
-      }
+      options: { ...chartOptions, plugins: { legend: { display: true, labels: { color: '#475569' } } } }
     });
   } else {
-    document.getElementById('humChartTitle').textContent = '📊 Humidity - Multiple Days';
+    document.getElementById('humChartTitle').textContent = '📊 Humidity - Daily Summary';
     const days = groupByDay(subset);
+
+    const tableHTML = `
+      <div id="humDayTable" style="overflow-x:auto; margin-top:20px;">
+        <table style="width:100%; border-collapse:collapse; font-family:'Inter',sans-serif; font-size:0.875rem;">
+          <thead>
+            <tr style="background:#f1f5f9;">
+              <th style="padding:10px 16px; text-align:left; border:1px solid #e2e8f0; color:#475569;">Date</th>
+              <th style="padding:10px 16px; text-align:center; border:1px solid #e2e8f0; color:#06b6d4;">Avg (%)</th>
+              <th style="padding:10px 16px; text-align:center; border:1px solid #e2e8f0; color:#10b981;">Min (%)</th>
+              <th style="padding:10px 16px; text-align:center; border:1px solid #e2e8f0; color:#ef4444;">Max (%)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${days.map(d => `
+              <tr>
+                <td style="padding:10px 16px; border:1px solid #e2e8f0; font-weight:600;">${d.date}</td>
+                <td style="padding:10px 16px; border:1px solid #e2e8f0; text-align:center; color:#06b6d4; font-weight:700;">${d.humAvg}</td>
+                <td style="padding:10px 16px; border:1px solid #e2e8f0; text-align:center; color:#10b981; font-weight:700;">${d.humMin}</td>
+                <td style="padding:10px 16px; border:1px solid #e2e8f0; text-align:center; color:#ef4444; font-weight:700;">${d.humMax}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+    document.querySelector('#humidityDetail .chart-section').insertAdjacentHTML('beforeend', tableHTML);
+
     chartHumDetail = new Chart(document.getElementById('chartHumDetail').getContext('2d'), {
       type: 'bar',
       data: {
@@ -538,15 +576,21 @@ function renderHumDetail() {
           { label: 'Max',     data: days.map(d => d.humMax), backgroundColor: 'rgba(239,68,68,0.4)',   borderColor: '#ef4444', borderWidth: 1, borderRadius: 6 }
         ]
       },
-      options: {
-        ...chartOptions,
-        plugins: { legend: { display: true, labels: { color: '#475569' } } }
-      }
+      options: { ...chartOptions, plugins: { legend: { display: true, labels: { color: '#475569' } } } }
     });
   }
 }
 
+// ── Humidity Detail Page ──────────────────────────────────────
+function setTodayHum() {
+  const today = dateStr(new Date());
+  document.getElementById('humDateFrom').value = today;
+  document.getElementById('humDateTo').value   = today;
+  renderHumDetail();
+}
+
 // ── Date-picker listeners ─────────────────────────────────────
+
 document.getElementById('tempDateFrom').addEventListener('change', renderTempDetail);
 document.getElementById('tempDateTo').addEventListener('change',   renderTempDetail);
 document.getElementById('humDateFrom').addEventListener('change',  renderHumDetail);
@@ -565,14 +609,48 @@ function exportCSV() {
 
 function exportExcel() {
   if (!allData.length) return alert('No data yet.');
-  const rows = [['Timestamp', 'Temperature (°C)', 'Humidity (%)']];
-  allData.forEach(r => rows.push([r.timestamp, r.temp, r.hum]));
-  const ws = XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols'] = [{ wch: 24 }, { wch: 22 }, { wch: 20 }];
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'SensorData');
-  XLSX.writeFile(wb, 'FactoryMonitor_' + dateStr(new Date()) + '.xlsx');
+  try {
+    const rows = [['Timestamp', 'Temperature (°C)', 'Humidity (%)']];
+    allData.forEach(r => rows.push([r.timestamp, r.temp, r.hum]));
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [{ wch: 24 }, { wch: 22 }, { wch: 20 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'SensorData');
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([wbout], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'FactoryMonitor_' + dateStr(new Date()) + '.xlsx';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch(e) {
+    alert('Excel export failed: ' + e.message);
+    console.error(e);
+  }
 }
+
+// ── Daily midnight reset ──────────────────────────────────────
+function scheduleMidnightReset() {
+  const now  = new Date();
+  const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 5); // 12:00:05 AM next day
+  const msUntilMidnight = next - now;
+
+  setTimeout(() => {
+    console.log('🔄 Midnight reset: clearing today cache and refreshing data...');
+    allData = allData.filter(r => {
+      // Keep all data but today's dashboard will naturally show new day's data
+      return true;
+    });
+    renderTodayCharts();
+    updateStats();
+    scheduleMidnightReset(); // reschedule for next midnight
+  }, msUntilMidnight);
+}
+
+scheduleMidnightReset();
 
 // fetch('/api/info')
 //   .then(r => r.json())
