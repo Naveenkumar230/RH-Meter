@@ -318,6 +318,66 @@ async function fetchCurrent() {
     });
 }
 
+
+// ── Set export date range to today ────────────────────────
+function setExportToday() {
+  const today = dateStr(new Date());
+  document.getElementById('exportDateFrom').value = today;
+  document.getElementById('exportDateTo').value   = today;
+}
+
+// ── Filtered Excel Export ─────────────────────────────────
+function exportExcelFiltered() {
+  const from = document.getElementById('exportDateFrom').value;
+  const to   = document.getElementById('exportDateTo').value;
+
+  if (!from || !to) return alert('Please select a From and To date.');
+
+  const filtered = filterRange(from, to);
+  if (!filtered.length) return alert(`No data found between ${from} and ${to}.`);
+
+  try {
+    const rows = [['Timestamp', 'Temperature (°C)', 'Humidity (%)']];
+    filtered.forEach(r => rows.push([r.timestamp, r.temp, r.hum]));
+
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [{ wch: 24 }, { wch: 22 }, { wch: 20 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'SensorData');
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([wbout], { type: 'application/octet-stream' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `FactoryMonitor_${from}_to_${to}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch(e) {
+    alert('Excel export failed: ' + e.message);
+  }
+}
+
+// ── Filtered CSV Export ───────────────────────────────────
+function exportCSVFiltered() {
+  const from = document.getElementById('exportDateFrom').value;
+  const to   = document.getElementById('exportDateTo').value;
+
+  if (!from || !to) return alert('Please select a From and To date.');
+
+  const filtered = filterRange(from, to);
+  if (!filtered.length) return alert(`No data found between ${from} and ${to}.`);
+
+  let csv = "Timestamp,Temperature (°C),Humidity (%)\n";
+  filtered.forEach(r => { csv += `${r.timestamp},${r.temp},${r.hum}\n`; });
+
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  a.download = `FactoryMonitor_${from}_to_${to}.csv`;
+  a.click();
+}
+
 function fetchAllData() {
   if (!jwtToken) return;
 
@@ -701,6 +761,7 @@ scheduleMidnightReset();
 initCharts();
 fetchCurrent();
 fetchAllData();
+setExportToday();
 
 setInterval(fetchCurrent,  2000);
 setInterval(fetchAllData, 10000);

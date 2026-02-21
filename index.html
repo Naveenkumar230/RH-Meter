@@ -8,8 +8,7 @@
 
   <!-- External Libraries -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <script src="https://cdn.sheetjs.com/xlsx-0.20.11/package/xlsx.full.min.js"></script>
-
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <!-- App Styles -->
   <link rel="stylesheet" href="style.css">
 </head>
@@ -138,6 +137,22 @@
         <canvas id="chartHumToday"></canvas>
       </div>
     </div>
+
+    <!-- Filtered Export Section -->
+<div class="chart-section" style="margin-top:0;">
+  <div class="chart-header">
+    <div class="chart-title">📥 Export Data by Date Range</div>
+  </div>
+  <div class="date-range-picker" style="margin-top:0;">
+    <label>From:</label>
+    <input type="date" id="exportDateFrom">
+    <label>To:</label>
+    <input type="date" id="exportDateTo">
+    <button class="btn-today" onclick="setExportToday()">Today</button>
+    <button class="btn" onclick="exportExcelFiltered()" style="background:#3b82f6; color:white; border-color:#3b82f6;">📥 Export Excel</button>
+    <button class="btn" onclick="exportCSVFiltered()" style="background:#06b6d4; color:white; border-color:#06b6d4;">📄 Export CSV</button>
+  </div>
+</div>
 
     <!-- Actions -->
     <div class="actions">
