@@ -72,6 +72,27 @@ function bucket30min(arr) {
   });
 }
 
+/** Average readings into 5-minute buckets for single-day graph display */
+function bucket5min(arr) {
+  const map = {};
+  arr.forEach(r => {
+    const d = new Date(r.timestamp);
+    const m = Math.floor(d.getMinutes() / 5) * 5;
+    const key = dateStr(d) + ' ' + pad(d.getHours()) + ':' + pad(m);
+    if (!map[key]) map[key] = { temps: [], hums: [], key };
+    map[key].temps.push(r.temp);
+    map[key].hums.push(r.hum);
+  });
+  return Object.keys(map).sort().map(k => {
+    const b = map[k];
+    return {
+      label: b.key.split(' ')[1],
+      temp:  +(b.temps.reduce((a, v) => a + v, 0) / b.temps.length).toFixed(1),
+      hum:   +(b.hums.reduce((a, v)  => a + v, 0) / b.hums.length).toFixed(1)
+    };
+  });
+}
+
 /** Aggregate data by calendar day */
 function groupByDay(arr) {
   const map = {};
