@@ -109,21 +109,21 @@ async function sendAlertEmail(subject, htmlBody) {
 
     console.log(`📧 Attempting to send to: ${recipients.join(', ')}`);
 
-    const transporter = nodemailer.createTransport({
-      host:   'smtp.gmail.com',
-      port:   465,
-      secure: true,           // SSL — more reliable on cloud servers than service:'gmail'
-      auth: {
-        user: senderEmail,
-        pass: senderPass,
-      },
-      tls: {
-        rejectUnauthorized: false   // needed on some cloud providers
-      },
-      connectionTimeout: 10000,    // 10s timeout so it doesn't hang forever
-      greetingTimeout:   10000,
-      socketTimeout:     10000,
-    });
+ const transporter = nodemailer.createTransport({
+  host:   'smtp.gmail.com',
+  port:   587,
+  secure: false,
+  auth: {
+    user: senderEmail,
+    pass: senderPass,
+  },
+  tls: {
+    rejectUnauthorized: false
+  },
+  connectionTimeout: 15000,
+  greetingTimeout:   15000,
+  socketTimeout:     15000,
+});
 
     // Verify connection before sending
     await transporter.verify();
