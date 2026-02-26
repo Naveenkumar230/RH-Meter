@@ -29,13 +29,18 @@
 // ============================================================
 namespace Config {
     // -- [NVS] Default credentials stored to NVS on first boot --
-    constexpr const char* WIFI_SSID       = "YOUR_WIFI_SSID";
-    constexpr const char* WIFI_PASS       = "YOUR_WIFI_PASSWORD";
+    constexpr const char* WIFI_SSID       = "AIPL-IOT";
+    constexpr const char* WIFI_PASS       = "@ipl2027";
+
+
+    constexpr const char* DEVICE_ID = "Meter_02";
+    // 1. Update with your NEW Access Token
+    constexpr const char* TB_TOKEN = "Cm7sJkjsC4FG5CbzYj5x"; 
 
     // ThingsBoard
     constexpr const char* TB_HOST         = "thingsboard.cloud";  
     constexpr int         TB_PORT         = 1883;
-    constexpr const char* TB_TOKEN        = "VFIUsDTve9r5cBm8ZpPH"; 
+    // constexpr const char* TB_TOKEN        = "VFIUsDTve9r5cBm8ZpPH";  - > RH mete 1 
 
     // OTA
     constexpr const char* OTA_HOSTNAME    = "FactoryMonitor";
@@ -57,7 +62,7 @@ namespace Config {
     constexpr float HUM_WET_LIMIT         = 70.0f;
 
     // [WDT] Hardware watchdog timeout
-    constexpr uint32_t WDT_TIMEOUT_SEC    = 30;
+    constexpr uint32_t WDT_TIMEOUT_SEC    = 120;
 
     // Timing intervals (ms) — [NOB] all millis()-based, no delay()
     constexpr uint32_t SENSOR_INTERVAL_MS = 2000;
@@ -71,9 +76,12 @@ namespace Config {
     constexpr int I2C_SDA = 21;
     constexpr int I2C_SCL = 22;
 
+    
+
     // I2C addresses
     constexpr uint8_t LCD_ADDR  = 0x27;
-    constexpr uint8_t SHT_ADDR  = 0x44;
+    // constexpr uint8_t SHT_ADDR  = 0x44;
+    constexpr uint8_t SHT_ADDR = 0x45;
 
     // History buffer (48 h @ 1 sample/30 s ≈ 5760; using 2880 to save RAM)
     constexpr int MAX_READINGS = 2880;
@@ -386,9 +394,10 @@ void wifiTask() {
 void mqttPublish() {
     if (!mqttClient.connected() || isnan(currentTemp) || isnan(currentHum)) return;
 
-    char payload[128];
+    char payload[160];
     snprintf(payload, sizeof(payload),
-        "{\"temperature\":%.1f,\"humidity\":%.1f,\"tempLevel\":\"%s\",\"humLevel\":\"%s\"}",
+        "{\"deviceId\":\"%s\",\"temperature\":%.1f,\"humidity\":%.1f,\"tempLevel\":\"%s\",\"humLevel\":\"%s\"}",
+        Config::DEVICE_ID,
         currentTemp, currentHum,
         alertLevel(currentTemp, Config::TEMP_NORMAL, Config::TEMP_WARNING).c_str(),
         humLevel(currentHum).c_str());

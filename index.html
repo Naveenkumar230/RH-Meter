@@ -5,11 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Factory Monitor Pro</title>
   <link rel="icon" href="data:,">
-
-  <!-- External Libraries -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <!-- App Styles -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -24,14 +21,148 @@
     <div class="header">
       <div class="header-left">
         <h1>Relative & Humidity Monitoring System</h1>
-        <div class="subtitle">UNIT-2<span id="ipAddr"></span></div>
+        <div class="subtitle">UNIT-2 <span id="ipAddr"></span></div>
       </div>
       <div class="header-right">
-  <button class="btn" onclick="fetchAllData()" style="padding:8px 16px; font-size:0.8rem;">🔄 Refresh</button>
-  <div class="records-badge">Records: <span id="dataCount">0</span></div>
-  <div class="status-badge" id="statusBadge">
+        <button class="btn" onclick="fetchAllData()" style="padding:8px 16px; font-size:0.8rem;">🔄 Refresh</button>
+        <div class="records-badge">Records: <span id="dataCount">0</span></div>
+        <div class="status-badge" id="statusBadge">
           <div class="status-dot"></div>
           <span id="statusText">Online</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Meter Selector Bar -->
+    <div style="
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 28px;
+      margin-bottom: 24px;
+      box-shadow: var(--shadow);
+    ">
+      <div style="display:flex; align-items:center; gap:12px;">
+        <span style="font-size:1.1rem;">🏭</span>
+        <span style="font-size:0.8rem; font-weight:700; text-transform:uppercase;
+                     letter-spacing:1.2px; color:var(--text-muted);">Monitoring Unit</span>
+      </div>
+      <div style="display:flex; align-items:center; gap:12px;">
+        <label style="font-size:0.875rem; font-weight:600; color:var(--text-dim);">Select Meter:</label>
+        <select id="meterSelect" onchange="switchMeter()" style="
+          padding: 10px 20px;
+          background: var(--bg);
+          border: 1px solid var(--accent-blue);
+          border-radius: 8px;
+          color: var(--text);
+          font-family: 'JetBrains Mono', monospace;
+          font-size: 0.875rem;
+          font-weight: 600;
+          cursor: pointer;
+          outline: none;
+          transition: border-color 0.3s ease, box-shadow 0.3s ease;
+        "
+        onmouseover="this.style.boxShadow='0 0 0 3px rgba(59,130,246,0.2)'"
+        onmouseout="this.style.boxShadow='none'">
+          <option value="Meter_01">⚙️ Unit 01 — Main Floor</option>
+          <option value="Meter_02">⚙️ Unit 02 — Secondary</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- ── Threshold Panel — Temperature ── -->
+    <div class="threshold-panel temp-panel">
+      <div class="threshold-panel-header">
+        <div class="threshold-panel-title">
+          ⚙️ Temperature Threshold Settings
+          <span class="threshold-badge" id="tempThresholdBadge">35 °C</span>
+        </div>
+        <button class="threshold-toggle" onclick="toggleThresholdPanel('tempThresholdBody')">▼ Configure</button>
+      </div>
+      <div class="threshold-panel-body" id="tempThresholdBody" style="display:none;">
+        <div class="threshold-grid">
+          <div class="threshold-field-group">
+            <label class="threshold-label">🌡️ Alert Threshold (°C)</label>
+            <p class="threshold-desc">Email fires when temperature exceeds this value.</p>
+            <div class="threshold-input-row">
+              <input type="number" id="thresholdTempInput" class="threshold-input" placeholder="35" step="0.5">
+              <span class="threshold-unit">°C</span>
+            </div>
+          </div>
+          <div class="threshold-field-group">
+  <label class="threshold-label">📧 Send Alerts To</label>
+  <p class="threshold-desc">Who should receive alerts? Add multiple emails separated by commas.</p>
+  <input type="text" id="thresholdRecipients" class="threshold-input-wide" placeholder="manager@company.com, engineer@company.com">
+  <small style="color:var(--text-muted);font-size:0.75rem;margin-top:4px;">e.g. person1@gmail.com, person2@gmail.com</small>
+</div>
+          <div class="threshold-field-group">
+            <label class="threshold-label">📤 Sender Gmail</label>
+            <p class="threshold-desc">Gmail used to send alerts</p>
+            <input type="email" id="thresholdSenderEmail" class="threshold-input-wide" placeholder="your-monitor@gmail.com">
+          </div>
+          <div class="threshold-field-group">
+            <label class="threshold-label">🔑 Gmail App Password</label>
+            <p class="threshold-desc">Google Account → Security → App Passwords. Leave blank to keep existing.</p>
+            <input type="password" id="thresholdAppPass" class="threshold-input-wide" placeholder="16-char App Password">
+          </div>
+        </div>
+        <div class="threshold-actions">
+          <button class="btn-save-threshold" onclick="saveThresholdSettings('temp')">💾 Save Settings</button>
+          <button class="btn-test-email" id="testEmailBtnTemp" onclick="sendTestEmail()">📨 Send Test Email</button>
+        </div>
+        <div class="threshold-info-bar">
+          <span>🔴 Dashed red line shown on all charts</span>
+          <span>⏰ 1 alert per hour max</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Threshold Panel — Humidity ── -->
+    <div class="threshold-panel hum-panel">
+      <div class="threshold-panel-header">
+        <div class="threshold-panel-title">
+          ⚙️ Humidity Threshold Settings
+          <span class="threshold-badge hum-badge" id="humThresholdBadge">70 %</span>
+        </div>
+        <button class="threshold-toggle" onclick="toggleThresholdPanel('humThresholdBody')">▼ Configure</button>
+      </div>
+      <div class="threshold-panel-body" id="humThresholdBody" style="display:none;">
+        <div class="threshold-grid">
+          <div class="threshold-field-group">
+            <label class="threshold-label">💧 Alert Threshold (%)</label>
+            <p class="threshold-desc">Email fires when humidity exceeds this value.</p>
+            <div class="threshold-input-row">
+              <input type="number" id="thresholdHumInput" class="threshold-input" placeholder="70" step="1">
+              <span class="threshold-unit">%</span>
+            </div>
+          </div>
+          <div class="threshold-field-group">
+  <label class="threshold-label">📧 Send Alerts To</label>
+  <p class="threshold-desc">Who should receive alerts? Add multiple emails separated by commas.</p>
+  <input type="text" id="thresholdRecipientsHum" class="threshold-input-wide" placeholder="manager@company.com, engineer@company.com">
+  <small style="color:var(--text-muted);font-size:0.75rem;margin-top:4px;">e.g. person1@gmail.com, person2@gmail.com</small>
+</div>
+          <div class="threshold-field-group">
+            <label class="threshold-label">📤 Sender Gmail</label>
+            <p class="threshold-desc">Gmail used to send alerts</p>
+            <input type="email" id="thresholdSenderEmailHum" class="threshold-input-wide" placeholder="your-monitor@gmail.com">
+          </div>
+          <div class="threshold-field-group">
+            <label class="threshold-label">🔑 Gmail App Password</label>
+            <p class="threshold-desc">Google Account → Security → App Passwords. Leave blank to keep existing.</p>
+            <input type="password" id="thresholdAppPassHum" class="threshold-input-wide" placeholder="16-char App Password">
+          </div>
+        </div>
+        <div class="threshold-actions">
+          <button class="btn-save-threshold hum-save" onclick="saveThresholdSettings('hum')">💾 Save Settings</button>
+          <button class="btn-test-email" id="testEmailBtnHum" onclick="sendTestEmail()">📨 Send Test Email</button>
+        </div>
+        <div class="threshold-info-bar">
+          <span>🟡 Dashed amber line shown on all charts</span>
+          <span>⏰ 1 alert per hour max</span>
         </div>
       </div>
     </div>
@@ -84,6 +215,8 @@
       </div>
 
     </div><!-- /.main-grid -->
+
+    <div id="d"></div>
 
     <!-- Statistics Grid -->
     <div class="stats-grid">
@@ -139,22 +272,21 @@
     </div>
 
     <!-- Filtered Export Section -->
-<div class="chart-section" style="margin-top:0;">
-  <div class="chart-header">
-    <div class="chart-title">📥 Export Data by Date Range</div>
-  </div>
-  <div class="date-range-picker" style="margin-top:0;">
-    <label>From:</label>
-    <input type="date" id="exportDateFrom">
-    <label>To:</label>
-    <input type="date" id="exportDateTo">
-    <button class="btn-today" onclick="setExportToday()">Today</button>
-    <button class="btn" onclick="exportExcelFiltered()" style="background:#3b82f6; color:white; border-color:#3b82f6;">📥 Export Excel</button>
-    <button class="btn" onclick="exportCSVFiltered()" style="background:#06b6d4; color:white; border-color:#06b6d4;">📄 Export CSV</button>
-  </div>
-</div>
+    <div class="chart-section" style="margin-top:0;">
+      <div class="chart-header">
+        <div class="chart-title">📥 Export Data by Date Range</div>
+      </div>
+      <div class="date-range-picker" style="margin-top:0;">
+        <label>From:</label>
+        <input type="date" id="exportDateFrom">
+        <label>To:</label>
+        <input type="date" id="exportDateTo">
+        <button class="btn-today" onclick="setExportToday()">Today</button>
+        <button class="btn" onclick="exportExcelFiltered()" style="background:#3b82f6; color:white; border-color:#3b82f6;">📥 Export Excel</button>
+        <button class="btn" onclick="exportCSVFiltered()" style="background:#06b6d4; color:white; border-color:#06b6d4;">📄 Export CSV</button>
+      </div>
+    </div>
 
-    
     <div class="actions">
       <button class="btn" onclick="exportExcel()">📥 Export Excel</button>
       <button class="btn" onclick="exportCSV()">📄 Export CSV</button>
@@ -256,7 +388,16 @@
 
 </div><!-- /.container -->
 
-<!-- App Logic -->
+<script>
+  function toggleThresholdPanel(id) {
+    const body = document.getElementById(id);
+    const open = body.style.display !== 'none';
+    body.style.display = open ? 'none' : 'block';
+    body.previousElementSibling.querySelector('.threshold-toggle').textContent = open ? '▼ Configure' : '▲ Close';
+  }
+  
+</script>
+
 <script src="app.js"></script>
 </body>
 </html>

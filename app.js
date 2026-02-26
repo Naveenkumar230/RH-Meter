@@ -12,6 +12,8 @@ let failCount  = 0;
 let lastTemp   = null;
 let lastHum    = null;
 
+let thresholds = { temp: 35, hum: 70, recipients: '', senderEmail: '', appPassSet: false };
+
 // ── Utility ──────────────────────────────────────────────────
 function pad(n)      { return n < 10 ? '0' + n : '' + n; }
 function dateStr(d)  { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
@@ -447,6 +449,170 @@ const chartOptions = {
   }
 };
 
+// function makeThresholdPlugin(getVal, color) {
+//   return {
+//     id: 'thresholdLine',
+//     afterDraw(chart) {
+//       const value = getVal();
+//       if (!value) return;
+//       const { ctx, chartArea, scales } = chart;
+//       if (!scales.y || !chartArea) return;
+//       const y = scales.y.getPixelForValue(value);
+//       if (y < chartArea.top || y > chartArea.bottom) return;
+//       ctx.save();
+//       ctx.beginPath();
+//       ctx.moveTo(chartArea.left, y);
+//       ctx.lineTo(chartArea.right, y);
+//       ctx.strokeStyle = color;
+//       ctx.lineWidth = 2;
+//       ctx.setLineDash([8, 5]);
+//       ctx.stroke();
+//       ctx.setLineDash([]);
+//       ctx.fillStyle = color;
+//       ctx.font = 'bold 11px Inter, sans-serif';
+//       ctx.textAlign = 'right';
+//       ctx.textBaseline = 'bottom';
+//       ctx.fillText(`Threshold: ${value}`, chartArea.right - 4, y - 3);
+//       ctx.restore();
+//     }
+//   };
+// }
+// const tempThresholdPlugin = makeThresholdPlugin(() => thresholds.temp, '#ef4444');
+// const humThresholdPlugin  = makeThresholdPlugin(() => thresholds.hum,  '#f59e0b');
+
+
+function makeThresholdPlugin(getVal, color) {
+  return {
+    id: 'thresholdLine',
+    afterDraw(chart) {
+      const value = getVal();
+      if (!value) return;
+      const { ctx, chartArea, scales } = chart;
+      if (!scales.y || !chartArea) return;
+      const y = scales.y.getPixelForValue(value);
+      if (y < chartArea.top || y > chartArea.bottom) return;
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(chartArea.left, y);
+      ctx.lineTo(chartArea.right, y);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([8, 5]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = color;
+      ctx.font = 'bold 11px Inter, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText(`Threshold: ${value}`, chartArea.right - 4, y - 3);
+      ctx.restore();
+    }
+  };
+}
+const tempThresholdPlugin = makeThresholdPlugin(() => thresholds.temp, '#ef4444');
+const humThresholdPlugin  = makeThresholdPlugin(() => thresholds.hum,  '#f59e0b');
+
+async function loadSettings() {
+  try {
+    const res  = await fetch('/api/settings');
+    const data = await res.json();
+    thresholds.temp       = data.tempThreshold ?? 35;
+    thresholds.hum        = data.humThreshold  ?? 70;
+    thresholds.recipients = data.recipients    ?? '';
+    thresholds.senderEmail= data.senderEmail   ?? '';
+    thresholds.appPassSet = data.appPassSet     ?? false;
+    syncThresholdUI();
+  } catch(e) { console.warn('Settings load failed, using defaults'); }
+}
+
+function syncThresholdUI() {
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+
+  set('thresholdTempInput',    thresholds.temp);
+  set('thresholdHumInput',     thresholds.hum);
+
+  // Fill recipients in BOTH panels
+  set('thresholdRecipients',    thresholds.recipients);
+  set('thresholdRecipientsHum', thresholds.recipients);
+
+  // Fill sender email in BOTH panels
+  set('thresholdSenderEmail',    thresholds.senderEmail);
+  set('thresholdSenderEmailHum', thresholds.senderEmail);
+
+  // App password placeholder in BOTH panels
+  const placeholder = thresholds.appPassSet ? '••••••••••••••••' : 'Enter Gmail App Password';
+  const pp1 = document.getElementById('thresholdAppPass');
+  const pp2 = document.getElementById('thresholdAppPassHum');
+  if (pp1) pp1.placeholder = placeholder;
+  if (pp2) pp2.placeholder = placeholder;
+
+  // Update badges
+  const tb = document.getElementById('tempThresholdBadge');
+  const hb = document.getElementById('humThresholdBadge');
+  if (tb) tb.textContent = thresholds.temp + ' °C';
+  if (hb) hb.textContent = thresholds.hum  + ' %';
+}
+
+async function saveThresholdSettings(type) {
+  const payload = {
+    recipients:  (document.getElementById('thresholdRecipients')  || {}).value?.trim() || '',
+    senderEmail: (document.getElementById('thresholdSenderEmail') || {}).value?.trim() || '',
+  };
+  if (type === 'temp') {
+    const v = parseFloat(document.getElementById('thresholdTempInput').value);
+    if (isNaN(v)) return showToast('Enter a valid temperature value', 'error');
+    payload.tempThreshold = v;
+  }
+  if (type === 'hum') {
+    const v = parseFloat(document.getElementById('thresholdHumInput').value);
+    if (isNaN(v)) return showToast('Enter a valid humidity value', 'error');
+    payload.humThreshold = v;
+  }
+  const pass = (document.getElementById('thresholdAppPass') || {}).value?.trim();
+  if (pass) payload.senderAppPass = pass;
+
+  try {
+    const res = await fetch('/api/settings', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) throw new Error();
+    if (payload.tempThreshold !== undefined) thresholds.temp = payload.tempThreshold;
+    if (payload.humThreshold  !== undefined) thresholds.hum  = payload.humThreshold;
+    thresholds.recipients  = payload.recipients;
+    thresholds.senderEmail = payload.senderEmail;
+    syncThresholdUI();
+    showToast('✅ Settings saved!', 'success');
+    renderTodayCharts();
+    if (chartTempDetail) renderTempDetail();
+    if (chartHumDetail)  renderHumDetail();
+  } catch(e) { showToast('❌ Failed to save', 'error'); }
+}
+
+async function sendTestEmail() {
+  const btn = document.getElementById('testEmailBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '📨 Sending...'; }
+  try {
+    const res = await fetch('/api/test-email', { method: 'POST' });
+    showToast(res.ok ? '✅ Test email sent!' : '❌ Failed — check server logs', res.ok ? 'success' : 'error');
+  } catch(e) { showToast('❌ Could not reach server', 'error'); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = '📨 Send Test Email'; } }
+}
+
+function showToast(msg, type = 'success') {
+  const old = document.getElementById('toastNotif');
+  if (old) old.remove();
+  const t = document.createElement('div');
+  t.id = 'toastNotif';
+  t.style.cssText = `position:fixed;bottom:28px;right:28px;z-index:9999;padding:14px 22px;
+    border-radius:10px;font-size:0.875rem;font-weight:600;box-shadow:0 8px 32px rgba(0,0,0,0.15);
+    background:${type==='success'?'#f0fdf4':'#fff5f5'};
+    color:${type==='success'?'#16a34a':'#dc2626'};
+    border:1px solid ${type==='success'?'#bbf7d0':'#fca5a5'};`;
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => { t.style.opacity='0'; setTimeout(()=>t.remove(),400); }, 3500);
+}
 // ── Chart Initialisation ──────────────────────────────────────
 function initCharts() {
   chartTempToday = new Chart(document.getElementById('chartTempToday').getContext('2d'), {
@@ -460,6 +626,7 @@ function initCharts() {
         fill: true, tension: 0.4, pointRadius: 0, borderWidth: 2
       }]
     },
+    plugins: [tempThresholdPlugin],
     options: chartOptions
   });
 
@@ -474,6 +641,7 @@ function initCharts() {
         fill: true, tension: 0.4, pointRadius: 0, borderWidth: 2
       }]
     },
+    plugins: [humThresholdPlugin],
     options: chartOptions
   });
 }
@@ -540,7 +708,6 @@ function renderTempDetail() {
 
   if (chartTempDetail) chartTempDetail.destroy();
 
-  // Remove old table if exists
   const oldTable = document.getElementById('tempDayTable');
   if (oldTable) oldTable.remove();
 
@@ -559,13 +726,13 @@ function renderTempDetail() {
           fill: true, tension: 0.4, pointRadius: 2, borderWidth: 2
         }]
       },
+      plugins: [tempThresholdPlugin],
       options: { ...chartOptions, plugins: { legend: { display: true, labels: { color: '#475569' } } } }
     });
   } else {
     document.getElementById('tempChartTitle').textContent = '📊 Temperature - Daily Summary';
     const days = groupByDay(subset);
 
-    // Build summary table
     const tableHTML = `
       <div id="tempDayTable" style="overflow-x:auto; margin-top:20px;">
         <table style="width:100%; border-collapse:collapse; font-family:'Inter',sans-serif; font-size:0.875rem;">
@@ -600,11 +767,11 @@ function renderTempDetail() {
           { label: 'Max',     data: days.map(d => d.tempMax), backgroundColor: 'rgba(239,68,68,0.4)',   borderColor: '#ef4444', borderWidth: 1, borderRadius: 6 }
         ]
       },
+      plugins: [tempThresholdPlugin],
       options: { ...chartOptions, plugins: { legend: { display: true, labels: { color: '#475569' } } } }
     });
   }
 }
-
 function renderHumDetail() {
   const from     = document.getElementById('humDateFrom').value;
   const to       = document.getElementById('humDateTo').value;
@@ -618,7 +785,6 @@ function renderHumDetail() {
 
   if (chartHumDetail) chartHumDetail.destroy();
 
-  // Remove old table if exists
   const oldTable = document.getElementById('humDayTable');
   if (oldTable) oldTable.remove();
 
@@ -637,6 +803,7 @@ function renderHumDetail() {
           fill: true, tension: 0.4, pointRadius: 2, borderWidth: 2
         }]
       },
+      plugins: [humThresholdPlugin],
       options: { ...chartOptions, plugins: { legend: { display: true, labels: { color: '#475569' } } } }
     });
   } else {
@@ -677,6 +844,7 @@ function renderHumDetail() {
           { label: 'Max',     data: days.map(d => d.humMax), backgroundColor: 'rgba(239,68,68,0.4)',   borderColor: '#ef4444', borderWidth: 1, borderRadius: 6 }
         ]
       },
+      plugins: [humThresholdPlugin],
       options: { ...chartOptions, plugins: { legend: { display: true, labels: { color: '#475569' } } } }
     });
   }
@@ -733,6 +901,29 @@ function exportExcel() {
   }
 }
 
+async function refresh() {
+  const deviceId = document.getElementById('meterSelect').value;
+  try {
+    const r = await fetch(`/api/data?deviceId=${deviceId}`);
+    const d = await r.json();
+    if (!d || !d.temperature) return;
+
+    document.getElementById('d').innerHTML = `
+      <div class="card"><p>Temperature</p>
+        <p class="val ${d.tempLevel}">${d.temperature.toFixed(1)} °C</p>
+        <p>Status: ${d.tempLevel.toUpperCase()}</p></div>
+      <div class="card"><p>Humidity</p>
+        <p class="val ${d.humLevel}">${d.humidity.toFixed(1)} %RH</p>
+        <p>Status: ${d.humLevel.toUpperCase()}</p></div>`;
+  } catch (e) {
+    console.error('Fetch error:', e);
+  }
+}
+
+function switchMeter() {
+  refresh();
+}
+
 // ── Daily midnight reset ──────────────────────────────────────
 function scheduleMidnightReset() {
   const now  = new Date();
@@ -759,9 +950,9 @@ scheduleMidnightReset();
 //   .catch(() => {});
 
 initCharts();
-fetchCurrent();
-fetchAllData();
+loadSettings().then(() => { fetchCurrent(); fetchAllData(); });
 setExportToday();
-
+refresh();
+setInterval(refresh, 5000);
 setInterval(fetchCurrent,  2000);
 setInterval(fetchAllData, 10000);
