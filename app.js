@@ -556,19 +556,41 @@ function syncThresholdUI() {
 }
 
 async function saveThresholdSettings(type) {
-  const tv = parseFloat(document.getElementById('thresholdTempInput').value);
-  const hv = parseFloat(document.getElementById('thresholdHumInput').value);
-  const recipients = document.getElementById('thresholdRecipients').value.trim();
+  const tempEl = document.getElementById('thresholdTempInput');
+  const humEl  = document.getElementById('thresholdHumInput');
+
+  if (!tempEl) return showToast('Temp input not found', 'error');
+  if (!humEl)  return showToast('Hum input not found', 'error');
+
+  const tv = parseFloat(tempEl.value);
+  const hv = parseFloat(humEl.value);
 
   if (isNaN(tv)) return showToast('Enter a valid temperature threshold', 'error');
   if (isNaN(hv)) return showToast('Enter a valid humidity threshold', 'error');
-  if (!recipients) return showToast('Enter at least one recipient email', 'error');
+
+  // Collect recipients from chips
+  const chips = document.querySelectorAll('.recipient-chip');
+  const recipientList = Array.from(chips).map(c => c.dataset.email).filter(Boolean).join(',');
+
+  if (!recipientList) return showToast('Add at least one recipient email', 'error');
 
   const payload = {
     tempThreshold: tv,
     humThreshold:  hv,
-    recipients:    recipients,
+    recipients:    recipientList,
   };
+
+  // Only send app pass if user typed something
+  const passEl = document.getElementById('thresholdAppPass');
+  if (passEl && passEl.value.trim()) {
+    payload.senderAppPass = passEl.value.trim();
+  }
+
+  // Only send sender email if field exists
+  const senderEl = document.getElementById('thresholdSenderEmail');
+  if (senderEl && senderEl.value.trim()) {
+    payload.senderEmail = senderEl.value.trim();
+  }
 
   try {
     const res = await fetch(`${SERVER_URL}/api/settings`, {
@@ -576,58 +598,71 @@ async function saveThresholdSettings(type) {
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(payload)
     });
-    if (!res.ok) throw new Error();
+
+    if (!res.ok) throw new Error('Server returned ' + res.status);
+
     thresholds.temp       = tv;
     thresholds.hum        = hv;
-    thresholds.recipients = recipients;
+    thresholds.recipients = recipientList;
+
     syncThresholdUI();
     showToast('✅ Settings saved!', 'success');
+
+    // Redraw charts so threshold line updates
     renderTodayCharts();
     if (chartTempDetail) renderTempDetail();
     if (chartHumDetail)  renderHumDetail();
+
   } catch(e) {
-    showToast('❌ Failed to save — check server', 'error');
+    console.error('Save failed:', e.message);
+    showToast('❌ Failed to save: ' + e.message, 'error');
   }
 }
 
 async function sendTestEmail() {
-  // Must have recipients saved first
+  // Collect current chips
   const chips = document.querySelectorAll('.recipient-chip');
-  if (!chips.length) return showToast('Add at least one recipient email first', 'error');
+  const recipientList = Array.from(chips).map(c => c.dataset.email).filter(Boolean).join(',');
 
-  // Collect current chips and save them first
-  const recipientList = Array.from(chips).map(c => c.dataset.email).join(',');
+  if (!recipientList) {
+    return showToast('Add at least one recipient email first', 'error');
+  }
 
+  // Disable all test buttons
   document.querySelectorAll('.btn-test-email').forEach(b => {
-    b.disabled = true;
+    b.disabled    = true;
     b.textContent = '📨 Sending...';
   });
 
   try {
-    // Save recipients first so server has them
+    // Save recipients to server first
     await fetch(`${SERVER_URL}/api/settings`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ recipients: recipientList })
     });
 
-    // Now send test email
+    // Now fire test email
     const res = await fetch(`${SERVER_URL}/api/test-email`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({})
     });
 
     if (res.ok) {
       showToast('✅ Test email sent! Check your inbox.', 'success');
     } else {
-      const err = await res.json();
-      showToast('❌ Failed: ' + (err.error || 'Check server logs'), 'error');
+      let errMsg = 'Unknown error';
+      try { const j = await res.json(); errMsg = j.error || errMsg; } catch(e) {}
+      showToast('❌ Email failed: ' + errMsg, 'error');
     }
+
   } catch(e) {
-    showToast('❌ Could not reach server', 'error');
+    console.error('Test email error:', e.message);
+    showToast('❌ Could not reach server: ' + e.message, 'error');
   } finally {
     document.querySelectorAll('.btn-test-email').forEach(b => {
-      b.disabled = false;
+      b.disabled    = false;
       b.textContent = '📨 Send Test Email';
     });
   }
