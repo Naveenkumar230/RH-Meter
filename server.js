@@ -334,5 +334,46 @@ app.post('/api/test-email', async (req, res) => {
   }
 });
 
+
+app.get('/api/debug-email', async (req, res) => {
+  try {
+    const settings = await Settings.findOne({ key: 'global' });
+    console.log('DEBUG — senderEmail:', settings.senderEmail);
+    console.log('DEBUG — appPass length:', settings.senderAppPass?.length);
+    console.log('DEBUG — recipients:', settings.recipients);
+
+    const transporter = nodemailer.createTransport({
+      host:   'smtp.gmail.com',
+      port:   587,
+      secure: false,
+      auth: {
+        user: settings.senderEmail,
+        pass: settings.senderAppPass,
+      },
+      tls: { rejectUnauthorized: false },
+      connectionTimeout: 15000,
+      greetingTimeout:   15000,
+      socketTimeout:     15000,
+    });
+
+    await transporter.verify();
+    console.log('✅ SMTP verify passed');
+
+    const info = await transporter.sendMail({
+      from:    `"Factory Monitor" <${settings.senderEmail}>`,
+      to:      settings.recipients,
+      subject: '✅ Debug Test Email',
+      html:    '<p>This is a debug test from Factory Monitor Pro</p>'
+    });
+
+    console.log('✅ Message sent:', info.messageId);
+    res.json({ ok: true, messageId: info.messageId, accepted: info.accepted });
+
+  } catch(err) {
+    console.error('❌ DEBUG ERROR:', err.message);
+    res.json({ ok: false, error: err.message });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`🚀 Bridge running on port ${PORT}`));
