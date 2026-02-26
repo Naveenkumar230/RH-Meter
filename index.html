@@ -106,10 +106,30 @@
       </div>
 
       <!-- To Email -->
-      <div class="threshold-field-group">
-        <label class="threshold-label">📧 Send Alerts To</label>
-        <input type="email" id="thresholdRecipients" class="threshold-input-wide" placeholder="manager@company.com, engineer@company.com">
-      </div>
+      <!-- ── Recipients with chip UI ── -->
+<div class="threshold-field-group" style="margin-top:8px;">
+  <label class="threshold-label">📧 Send Alerts To</label>
+  <p class="threshold-desc">Add each email one by one. Click ✕ to remove.</p>
+
+  <!-- Chips container — shows added emails -->
+  <div id="recipientChipsContainer" class="chips-container"></div>
+
+  <!-- Input row — clears after each add -->
+  <div class="chip-input-row">
+    <input
+      type="email"
+      id="recipientEmailInput"
+      class="threshold-input-wide"
+      placeholder="engineer@company.com"
+      onkeydown="handleRecipientKeydown(event)"
+      style="flex:1;"
+    >
+    <button class="btn-add-chip" onclick="addChip()">+ Add</button>
+  </div>
+  <small style="color:var(--text-muted);font-size:0.75rem;margin-top:6px;display:block;">
+    Press Enter or click + Add after each email.
+  </small>
+</div>
 
     </div>
 

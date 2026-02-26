@@ -591,15 +591,45 @@ async function saveThresholdSettings(type) {
 }
 
 async function sendTestEmail() {
-  const btn = document.getElementById('testEmailBtnTemp') || document.getElementById('testEmailBtnHum');
-  document.querySelectorAll('.btn-test-email').forEach(b => { b.disabled = true; b.textContent = '📨 Sending...'; });
+  // Must have recipients saved first
+  const chips = document.querySelectorAll('.recipient-chip');
+  if (!chips.length) return showToast('Add at least one recipient email first', 'error');
+
+  // Collect current chips and save them first
+  const recipientList = Array.from(chips).map(c => c.dataset.email).join(',');
+
+  document.querySelectorAll('.btn-test-email').forEach(b => {
+    b.disabled = true;
+    b.textContent = '📨 Sending...';
+  });
+
   try {
-    const res = await fetch(`${SERVER_URL}/api/test-email`, { method: 'POST' });
-    showToast(res.ok ? '✅ Test email sent! Check inbox.' : '❌ Failed — check server logs', res.ok ? 'success' : 'error');
+    // Save recipients first so server has them
+    await fetch(`${SERVER_URL}/api/settings`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ recipients: recipientList })
+    });
+
+    // Now send test email
+    const res = await fetch(`${SERVER_URL}/api/test-email`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    if (res.ok) {
+      showToast('✅ Test email sent! Check your inbox.', 'success');
+    } else {
+      const err = await res.json();
+      showToast('❌ Failed: ' + (err.error || 'Check server logs'), 'error');
+    }
   } catch(e) {
     showToast('❌ Could not reach server', 'error');
   } finally {
-    document.querySelectorAll('.btn-test-email').forEach(b => { b.disabled = false; b.textContent = '📨 Send Test Email'; });
+    document.querySelectorAll('.btn-test-email').forEach(b => {
+      b.disabled = false;
+      b.textContent = '📨 Send Test Email';
+    });
   }
 }
 
@@ -918,37 +948,53 @@ async function refresh() {
 }
 // ── Chip-style email input ────────────────────────────────
 function initRecipientChips() {
-  // Load existing recipients into chips on page load
+  const container = document.getElementById('recipientChipsContainer');
+  if (!container) return;
+  container.innerHTML = '';
   if (thresholds.recipients) {
     thresholds.recipients.split(',').map(e => e.trim()).filter(Boolean).forEach(email => {
-      addChip(email);
+      const chip = document.createElement('div');
+      chip.className     = 'recipient-chip';
+      chip.dataset.email = email;
+      chip.innerHTML     = `
+        <span class="chip-email">✉️ ${email}</span>
+        <button class="chip-remove" onclick="removeChip(this)" title="Remove">✕ Delete</button>
+      `;
+      container.appendChild(chip);
     });
   }
 }
 
-function addChip(email) {
-  email = email.trim().toLowerCase();
-  if (!email || !email.includes('@')) return showToast('Enter a valid email', 'error');
 
-  // Check if already added
-  const existing = Array.from(document.querySelectorAll('.recipient-chip[data-email]')).map(c => c.dataset.email);
-  if (existing.includes(email)) return showToast('Email already added', 'error');
+function addChip() {
+  const input = document.getElementById('recipientEmailInput');
+  if (!input) return;
+  const email = input.value.trim().toLowerCase();
 
+  // Validate
+  if (!email) return showToast('Please enter an email first', 'error');
+  if (!email.includes('@') || !email.includes('.')) return showToast('Enter a valid email address', 'error');
+
+  // Check duplicate
+  const existing = Array.from(document.querySelectorAll('.recipient-chip')).map(c => c.dataset.email);
+  if (existing.includes(email)) return showToast('This email is already added', 'error');
+
+  // Create chip
   const container = document.getElementById('recipientChipsContainer');
   if (!container) return;
 
   const chip = document.createElement('div');
-  chip.className      = 'recipient-chip';
-  chip.dataset.email  = email;
-  chip.innerHTML      = `
-    <span class="chip-email">${email}</span>
-    <button class="chip-remove" onclick="removeChip(this)" title="Remove">✕</button>
+  chip.className     = 'recipient-chip';
+  chip.dataset.email = email;
+  chip.innerHTML     = `
+    <span class="chip-email">✉️ ${email}</span>
+    <button class="chip-remove" onclick="removeChip(this)" title="Remove this email">✕ Delete</button>
   `;
   container.appendChild(chip);
 
-  // Clear input
-  const input = document.getElementById('recipientEmailInput');
-  if (input) input.value = '';
+  // Clear input so next email can be typed
+  input.value = '';
+  input.focus();
 }
 
 function removeChip(btn) {
@@ -956,10 +1002,9 @@ function removeChip(btn) {
 }
 
 function handleRecipientKeydown(e) {
-  if (e.key === 'Enter' || e.key === ',') {
+  if (e.key === 'Enter') {
     e.preventDefault();
-    const input = document.getElementById('recipientEmailInput');
-    if (input && input.value.trim()) addChip(input.value);
+    addChip();
   }
 }
 
@@ -968,11 +1013,12 @@ function syncThresholdUI() {
   const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
   set('thresholdTempInput',  thresholds.temp);
   set('thresholdHumInput',   thresholds.hum);
-  set('thresholdRecipients', thresholds.recipients);
   const tb = document.getElementById('tempThresholdBadge');
   const hb = document.getElementById('humThresholdBadge');
   if (tb) tb.textContent = thresholds.temp + ' °C';
   if (hb) hb.textContent = thresholds.hum  + ' %';
+  // Rebuild chips
+  initRecipientChips();
 }
 
 function switchMeter() {

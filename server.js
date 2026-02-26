@@ -93,28 +93,41 @@ mongoose.connection.once('open', () => {
 const lastAlertSent = {};
 const COOLDOWN_MS   = 60 * 60 * 1000; // 1 hour
 
-// ── Send Alert Email ────────────────────────────────────────
 async function sendAlertEmail(subject, htmlBody) {
   try {
     const settings = await Settings.findOne({ key: 'global' });
 
-    const senderEmail  = (settings && settings.senderEmail)  || 'threedprinterdataaquarelle@gmail.com';
-    const senderPass   = (settings && settings.senderAppPass) || 'gpfw evgv celc nawl';
-    const recipientStr = (settings && settings.recipients)    || '';
+    const senderEmail = (settings && settings.senderEmail)   || 'threedprinterdataaquarelle@gmail.com';
+    const senderPass  = (settings && settings.senderAppPass) || 'gpfw evgv celc nawl';
+    const recipientStr= (settings && settings.recipients)    || '';
 
     const recipients = recipientStr.split(',').map(e => e.trim()).filter(Boolean);
-if (!recipients.length) {
-  console.warn('⚠️  No recipients set — go to dashboard and add emails in the Threshold panel');
-  return;
-}
+    if (!recipients.length) {
+      console.warn('⚠️  No recipients — add emails in dashboard');
+      return { ok: false, error: 'No recipients configured' };
+    }
+
+    console.log(`📧 Attempting to send to: ${recipients.join(', ')}`);
 
     const transporter = nodemailer.createTransport({
-      service: 'gmail',
+      host:   'smtp.gmail.com',
+      port:   465,
+      secure: true,           // SSL — more reliable on cloud servers than service:'gmail'
       auth: {
         user: senderEmail,
         pass: senderPass,
-      }
+      },
+      tls: {
+        rejectUnauthorized: false   // needed on some cloud providers
+      },
+      connectionTimeout: 10000,    // 10s timeout so it doesn't hang forever
+      greetingTimeout:   10000,
+      socketTimeout:     10000,
     });
+
+    // Verify connection before sending
+    await transporter.verify();
+    console.log('✅ SMTP connection verified');
 
     await transporter.sendMail({
       from:    `"Factory Monitor Pro" <${senderEmail}>`,
@@ -122,9 +135,13 @@ if (!recipients.length) {
       subject,
       html:    htmlBody,
     });
-    console.log(`📧 Alert sent → ${recipients.join(', ')}`);
+
+    console.log(`✅ Email sent → ${recipients.join(', ')}`);
+    return { ok: true };
+
   } catch (err) {
-    console.error('❌ Email send failed:', err.message);
+    console.error('❌ Email failed:', err.message);
+    return { ok: false, error: err.message };
   }
 }
 
@@ -297,7 +314,7 @@ app.post('/api/settings', async (req, res) => {
 // ── POST /api/test-email ────────────────────────────────────
 app.post('/api/test-email', async (req, res) => {
   try {
-    await sendAlertEmail(
+    const result = await sendAlertEmail(
       '✅ Factory Monitor — Test Email',
       `<div style="font-family:sans-serif;padding:24px;border:1px solid #bbf7d0;border-radius:12px;background:#f0fdf4;">
         <h2 style="color:#16a34a;">✅ Email Configuration Working!</h2>
@@ -305,9 +322,15 @@ app.post('/api/test-email', async (req, res) => {
         <p style="color:#6b7280;font-size:0.85rem;margin-top:16px;">Sent at: ${new Date().toLocaleString('en-IN', {timeZone:'Asia/Kolkata'})}</p>
       </div>`
     );
-    res.json({ ok: true });
+
+    if (result.ok) {
+      res.json({ ok: true });
+    } else {
+      res.status(500).json({ ok: false, error: result.error });
+    }
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('❌ Test email route error:', err.message);
+    res.status(500).json({ ok: false, error: err.message });
   }
 });
 
