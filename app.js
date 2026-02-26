@@ -2,7 +2,7 @@
 //  Factory Monitor Pro — main.js
 //  Depends on: Chart.js 4.4.0, SheetJS (xlsx.full.min.js)
 // ============================================================
-
+const SERVER_URL = 'https://rh-meter-bridge.onrender.com';
 let allData    = [];
 let chartTempToday  = null;
 let chartHumToday   = null;
@@ -514,7 +514,8 @@ const humThresholdPlugin  = makeThresholdPlugin(() => thresholds.hum,  '#f59e0b'
 
 async function loadSettings() {
   try {
-    const res  = await fetch('/api/settings');
+    const res  = await fetch(`${SERVER_URL}/api/settings`);
+    if (!res.ok) throw new Error('Not OK');
     const data = await res.json();
     thresholds.temp       = data.tempThreshold ?? 35;
     thresholds.hum        = data.humThreshold  ?? 70;
@@ -522,9 +523,10 @@ async function loadSettings() {
     thresholds.senderEmail= data.senderEmail   ?? '';
     thresholds.appPassSet = data.appPassSet     ?? false;
     syncThresholdUI();
-  } catch(e) { console.warn('Settings load failed, using defaults'); }
+  } catch(e) {
+    console.warn('Settings load failed, using defaults', e.message);
+  }
 }
-
 function syncThresholdUI() {
   const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
 
@@ -554,49 +556,51 @@ function syncThresholdUI() {
 }
 
 async function saveThresholdSettings(type) {
+  const tv = parseFloat(document.getElementById('thresholdTempInput').value);
+  const hv = parseFloat(document.getElementById('thresholdHumInput').value);
+  const recipients = document.getElementById('thresholdRecipients').value.trim();
+
+  if (isNaN(tv)) return showToast('Enter a valid temperature threshold', 'error');
+  if (isNaN(hv)) return showToast('Enter a valid humidity threshold', 'error');
+  if (!recipients) return showToast('Enter at least one recipient email', 'error');
+
   const payload = {
-    recipients:  (document.getElementById('thresholdRecipients')  || {}).value?.trim() || '',
-    senderEmail: (document.getElementById('thresholdSenderEmail') || {}).value?.trim() || '',
+    tempThreshold: tv,
+    humThreshold:  hv,
+    recipients:    recipients,
   };
-  if (type === 'temp') {
-    const v = parseFloat(document.getElementById('thresholdTempInput').value);
-    if (isNaN(v)) return showToast('Enter a valid temperature value', 'error');
-    payload.tempThreshold = v;
-  }
-  if (type === 'hum') {
-    const v = parseFloat(document.getElementById('thresholdHumInput').value);
-    if (isNaN(v)) return showToast('Enter a valid humidity value', 'error');
-    payload.humThreshold = v;
-  }
-  const pass = (document.getElementById('thresholdAppPass') || {}).value?.trim();
-  if (pass) payload.senderAppPass = pass;
 
   try {
-    const res = await fetch('/api/settings', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+    const res = await fetch(`${SERVER_URL}/api/settings`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(payload)
     });
     if (!res.ok) throw new Error();
-    if (payload.tempThreshold !== undefined) thresholds.temp = payload.tempThreshold;
-    if (payload.humThreshold  !== undefined) thresholds.hum  = payload.humThreshold;
-    thresholds.recipients  = payload.recipients;
-    thresholds.senderEmail = payload.senderEmail;
+    thresholds.temp       = tv;
+    thresholds.hum        = hv;
+    thresholds.recipients = recipients;
     syncThresholdUI();
     showToast('✅ Settings saved!', 'success');
     renderTodayCharts();
     if (chartTempDetail) renderTempDetail();
     if (chartHumDetail)  renderHumDetail();
-  } catch(e) { showToast('❌ Failed to save', 'error'); }
+  } catch(e) {
+    showToast('❌ Failed to save — check server', 'error');
+  }
 }
 
 async function sendTestEmail() {
-  const btn = document.getElementById('testEmailBtn');
-  if (btn) { btn.disabled = true; btn.textContent = '📨 Sending...'; }
+  const btn = document.getElementById('testEmailBtnTemp') || document.getElementById('testEmailBtnHum');
+  document.querySelectorAll('.btn-test-email').forEach(b => { b.disabled = true; b.textContent = '📨 Sending...'; });
   try {
-    const res = await fetch('/api/test-email', { method: 'POST' });
-    showToast(res.ok ? '✅ Test email sent!' : '❌ Failed — check server logs', res.ok ? 'success' : 'error');
-  } catch(e) { showToast('❌ Could not reach server', 'error'); }
-  finally { if (btn) { btn.disabled = false; btn.textContent = '📨 Send Test Email'; } }
+    const res = await fetch(`${SERVER_URL}/api/test-email`, { method: 'POST' });
+    showToast(res.ok ? '✅ Test email sent! Check inbox.' : '❌ Failed — check server logs', res.ok ? 'success' : 'error');
+  } catch(e) {
+    showToast('❌ Could not reach server', 'error');
+  } finally {
+    document.querySelectorAll('.btn-test-email').forEach(b => { b.disabled = false; b.textContent = '📨 Send Test Email'; });
+  }
 }
 
 function showToast(msg, type = 'success') {
@@ -904,20 +908,72 @@ function exportExcel() {
 async function refresh() {
   const deviceId = document.getElementById('meterSelect').value;
   try {
-    const r = await fetch(`/api/data?deviceId=${deviceId}`);
+    const r = await fetch(`${SERVER_URL}/api/data?deviceId=${deviceId}`);
+    if (!r.ok) return;
     const d = await r.json();
     if (!d || !d.temperature) return;
-
-    document.getElementById('d').innerHTML = `
-      <div class="card"><p>Temperature</p>
-        <p class="val ${d.tempLevel}">${d.temperature.toFixed(1)} °C</p>
-        <p>Status: ${d.tempLevel.toUpperCase()}</p></div>
-      <div class="card"><p>Humidity</p>
-        <p class="val ${d.humLevel}">${d.humidity.toFixed(1)} %RH</p>
-        <p>Status: ${d.humLevel.toUpperCase()}</p></div>`;
   } catch (e) {
     console.error('Fetch error:', e);
   }
+}
+
+// ── Chip-style email input ────────────────────────────────
+function initRecipientChips() {
+  // Load existing recipients into chips on page load
+  if (thresholds.recipients) {
+    thresholds.recipients.split(',').map(e => e.trim()).filter(Boolean).forEach(email => {
+      addChip(email);
+    });
+  }
+}
+
+function addChip(email) {
+  email = email.trim().toLowerCase();
+  if (!email || !email.includes('@')) return showToast('Enter a valid email', 'error');
+
+  // Check if already added
+  const existing = Array.from(document.querySelectorAll('.recipient-chip[data-email]')).map(c => c.dataset.email);
+  if (existing.includes(email)) return showToast('Email already added', 'error');
+
+  const container = document.getElementById('recipientChipsContainer');
+  if (!container) return;
+
+  const chip = document.createElement('div');
+  chip.className      = 'recipient-chip';
+  chip.dataset.email  = email;
+  chip.innerHTML      = `
+    <span class="chip-email">${email}</span>
+    <button class="chip-remove" onclick="removeChip(this)" title="Remove">✕</button>
+  `;
+  container.appendChild(chip);
+
+  // Clear input
+  const input = document.getElementById('recipientEmailInput');
+  if (input) input.value = '';
+}
+
+function removeChip(btn) {
+  btn.closest('.recipient-chip').remove();
+}
+
+function handleRecipientKeydown(e) {
+  if (e.key === 'Enter' || e.key === ',') {
+    e.preventDefault();
+    const input = document.getElementById('recipientEmailInput');
+    if (input && input.value.trim()) addChip(input.value);
+  }
+}
+
+// Sync chips back when settings load
+function syncThresholdUI() {
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+  set('thresholdTempInput',  thresholds.temp);
+  set('thresholdHumInput',   thresholds.hum);
+  set('thresholdRecipients', thresholds.recipients);
+  const tb = document.getElementById('tempThresholdBadge');
+  const hb = document.getElementById('humThresholdBadge');
+  if (tb) tb.textContent = thresholds.temp + ' °C';
+  if (hb) hb.textContent = thresholds.hum  + ' %';
 }
 
 function switchMeter() {
@@ -950,9 +1006,13 @@ scheduleMidnightReset();
 //   .catch(() => {});
 
 initCharts();
-loadSettings().then(() => { fetchCurrent(); fetchAllData(); });
+loadSettings().then(() => {
+  fetchCurrent();
+  fetchAllData();
+  initRecipientChips();
+});
 setExportToday();
 refresh();
-setInterval(refresh, 5000);
+setInterval(refresh,       5000);
 setInterval(fetchCurrent,  2000);
 setInterval(fetchAllData, 10000);

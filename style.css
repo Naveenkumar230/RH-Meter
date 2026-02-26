@@ -534,3 +534,82 @@ body {
 .btn-test-email { padding:11px 24px; background:#fff; border:1.5px solid var(--border); border-radius:10px; color:var(--text-dim); font-size:0.875rem; font-weight:700; cursor:pointer; }
 .btn-test-email:disabled { opacity:0.5; cursor:not-allowed; }
 .threshold-info-bar { display:flex; flex-wrap:wrap; gap:20px; padding:10px 16px; background:#f8fafc; border:1px solid var(--border); border-radius:8px; font-size:0.76rem; color:var(--text-muted); font-weight:500; }
+/* ── Recipient Chips ── */
+.chips-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 40px;
+  padding: 8px 12px;
+  background: #f8fafc;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 10px;
+}
+
+.chips-container:empty::before {
+  content: 'No recipients added yet';
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  align-self: center;
+}
+
+.recipient-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--accent-blue);
+  max-width: 260px;
+}
+
+.chip-email {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chip-remove {
+  background: none;
+  border: none;
+  color: var(--accent-blue);
+  cursor: pointer;
+  font-size: 0.75rem;
+  padding: 0;
+  line-height: 1;
+  opacity: 0.6;
+  transition: opacity 0.2s ease;
+  flex-shrink: 0;
+}
+
+.chip-remove:hover { opacity: 1; }
+
+.chip-input-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.btn-add-chip {
+  padding: 10px 18px;
+  background: var(--accent-blue);
+  border: none;
+  border-radius: 8px;
+  color: white;
+  font-size: 0.875rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.btn-add-chip:hover {
+  background: var(--accent-cyan);
+  transform: translateY(-1px);
+}

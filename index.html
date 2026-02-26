@@ -74,99 +74,52 @@
     </div>
 
     <!-- ── Threshold Panel — Temperature ── -->
-    <div class="threshold-panel temp-panel">
-      <div class="threshold-panel-header">
-        <div class="threshold-panel-title">
-          ⚙️ Temperature Threshold Settings
-          <span class="threshold-badge" id="tempThresholdBadge">35 °C</span>
-        </div>
-        <button class="threshold-toggle" onclick="toggleThresholdPanel('tempThresholdBody')">▼ Configure</button>
-      </div>
-      <div class="threshold-panel-body" id="tempThresholdBody" style="display:none;">
-        <div class="threshold-grid">
-          <div class="threshold-field-group">
-            <label class="threshold-label">🌡️ Alert Threshold (°C)</label>
-            <p class="threshold-desc">Email fires when temperature exceeds this value.</p>
-            <div class="threshold-input-row">
-              <input type="number" id="thresholdTempInput" class="threshold-input" placeholder="35" step="0.5">
-              <span class="threshold-unit">°C</span>
-            </div>
-          </div>
-          <div class="threshold-field-group">
-  <label class="threshold-label">📧 Send Alerts To</label>
-  <p class="threshold-desc">Who should receive alerts? Add multiple emails separated by commas.</p>
-  <input type="text" id="thresholdRecipients" class="threshold-input-wide" placeholder="manager@company.com, engineer@company.com">
-  <small style="color:var(--text-muted);font-size:0.75rem;margin-top:4px;">e.g. person1@gmail.com, person2@gmail.com</small>
-</div>
-          <div class="threshold-field-group">
-            <label class="threshold-label">📤 Sender Gmail</label>
-            <p class="threshold-desc">Gmail used to send alerts</p>
-            <input type="email" id="thresholdSenderEmail" class="threshold-input-wide" placeholder="your-monitor@gmail.com">
-          </div>
-          <div class="threshold-field-group">
-            <label class="threshold-label">🔑 Gmail App Password</label>
-            <p class="threshold-desc">Google Account → Security → App Passwords. Leave blank to keep existing.</p>
-            <input type="password" id="thresholdAppPass" class="threshold-input-wide" placeholder="16-char App Password">
-          </div>
-        </div>
-        <div class="threshold-actions">
-          <button class="btn-save-threshold" onclick="saveThresholdSettings('temp')">💾 Save Settings</button>
-          <button class="btn-test-email" id="testEmailBtnTemp" onclick="sendTestEmail()">📨 Send Test Email</button>
-        </div>
-        <div class="threshold-info-bar">
-          <span>🔴 Dashed red line shown on all charts</span>
-          <span>⏰ 1 alert per hour max</span>
+   <!-- ── Alert Threshold Settings Panel ── -->
+<div class="threshold-panel temp-panel" style="margin-bottom:24px;">
+  <div class="threshold-panel-header">
+    <div class="threshold-panel-title">
+      ⚙️ Alert Threshold Settings
+      <span class="threshold-badge" id="tempThresholdBadge">35 °C</span>
+      <span class="threshold-badge hum-badge" id="humThresholdBadge" style="margin-left:6px;">70 %</span>
+    </div>
+    <button class="threshold-toggle" onclick="toggleThresholdPanel('thresholdBody')">▼ Configure</button>
+  </div>
+  <div class="threshold-panel-body" id="thresholdBody" style="display:none;">
+    <div class="threshold-grid">
+
+      <!-- Temp threshold -->
+      <div class="threshold-field-group">
+        <label class="threshold-label">🌡️ Temperature Alert (°C)</label>
+        <div class="threshold-input-row">
+          <input type="number" id="thresholdTempInput" class="threshold-input" placeholder="35" step="0.5">
+          <span class="threshold-unit">°C</span>
         </div>
       </div>
+
+      <!-- Hum threshold -->
+      <div class="threshold-field-group">
+        <label class="threshold-label">💧 Humidity Alert (%)</label>
+        <div class="threshold-input-row">
+          <input type="number" id="thresholdHumInput" class="threshold-input" placeholder="70" step="1">
+          <span class="threshold-unit">%</span>
+        </div>
+      </div>
+
+      <!-- To Email -->
+      <div class="threshold-field-group">
+        <label class="threshold-label">📧 Send Alerts To</label>
+        <input type="email" id="thresholdRecipients" class="threshold-input-wide" placeholder="manager@company.com, engineer@company.com">
+      </div>
+
     </div>
 
-    <!-- ── Threshold Panel — Humidity ── -->
-    <div class="threshold-panel hum-panel">
-      <div class="threshold-panel-header">
-        <div class="threshold-panel-title">
-          ⚙️ Humidity Threshold Settings
-          <span class="threshold-badge hum-badge" id="humThresholdBadge">70 %</span>
-        </div>
-        <button class="threshold-toggle" onclick="toggleThresholdPanel('humThresholdBody')">▼ Configure</button>
-      </div>
-      <div class="threshold-panel-body" id="humThresholdBody" style="display:none;">
-        <div class="threshold-grid">
-          <div class="threshold-field-group">
-            <label class="threshold-label">💧 Alert Threshold (%)</label>
-            <p class="threshold-desc">Email fires when humidity exceeds this value.</p>
-            <div class="threshold-input-row">
-              <input type="number" id="thresholdHumInput" class="threshold-input" placeholder="70" step="1">
-              <span class="threshold-unit">%</span>
-            </div>
-          </div>
-          <div class="threshold-field-group">
-  <label class="threshold-label">📧 Send Alerts To</label>
-  <p class="threshold-desc">Who should receive alerts? Add multiple emails separated by commas.</p>
-  <input type="text" id="thresholdRecipientsHum" class="threshold-input-wide" placeholder="manager@company.com, engineer@company.com">
-  <small style="color:var(--text-muted);font-size:0.75rem;margin-top:4px;">e.g. person1@gmail.com, person2@gmail.com</small>
-</div>
-          <div class="threshold-field-group">
-            <label class="threshold-label">📤 Sender Gmail</label>
-            <p class="threshold-desc">Gmail used to send alerts</p>
-            <input type="email" id="thresholdSenderEmailHum" class="threshold-input-wide" placeholder="your-monitor@gmail.com">
-          </div>
-          <div class="threshold-field-group">
-            <label class="threshold-label">🔑 Gmail App Password</label>
-            <p class="threshold-desc">Google Account → Security → App Passwords. Leave blank to keep existing.</p>
-            <input type="password" id="thresholdAppPassHum" class="threshold-input-wide" placeholder="16-char App Password">
-          </div>
-        </div>
-        <div class="threshold-actions">
-          <button class="btn-save-threshold hum-save" onclick="saveThresholdSettings('hum')">💾 Save Settings</button>
-          <button class="btn-test-email" id="testEmailBtnHum" onclick="sendTestEmail()">📨 Send Test Email</button>
-        </div>
-        <div class="threshold-info-bar">
-          <span>🟡 Dashed amber line shown on all charts</span>
-          <span>⏰ 1 alert per hour max</span>
-        </div>
-      </div>
+    <div class="threshold-actions" style="margin-top:20px;">
+      <button class="btn-save-threshold" onclick="saveThresholdSettings('both')">💾 Save Settings</button>
+      <button class="btn-test-email" id="testEmailBtnTemp" onclick="sendTestEmail()">📨 Send Test Email</button>
     </div>
 
+  </div>
+</div>
     <!-- Main Data Cards -->
     <div class="main-grid">
 
