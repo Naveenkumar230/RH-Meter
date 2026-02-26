@@ -913,10 +913,9 @@ async function refresh() {
     const d = await r.json();
     if (!d || !d.temperature) return;
   } catch (e) {
-    console.error('Fetch error:', e);
+    // silently ignore — data comes from ThingsBoard directly
   }
 }
-
 // ── Chip-style email input ────────────────────────────────
 function initRecipientChips() {
   // Load existing recipients into chips on page load

@@ -4,8 +4,10 @@ const bodyParser = require('body-parser');
 const cron       = require('node-cron');
 const axios      = require('axios');
 const nodemailer = require('nodemailer');
+const cors = require('cors');
 
 const app = express();
+app.use(cors());
 app.use(bodyParser.json());
 app.use(express.static('.'));
 
