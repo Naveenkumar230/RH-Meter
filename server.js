@@ -46,7 +46,7 @@ const SettingsSchema = new mongoose.Schema({
   humThreshold:  { type: Number, default: 70 },
   recipients:    { type: String, default: '' },
   senderEmail:   { type: String, default: 'threedprinterdataaquarelle@gmail.com' },
-  senderAppPass: { type: String, default: 'gpfw evgv celc nawl' },
+  senderAppPass: { type: String, default: 'akqk cuwt tdmp myre' },
 }, { timestamps: true });
 
 const Settings = mongoose.model('Settings', SettingsSchema);
