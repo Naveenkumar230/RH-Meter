@@ -360,24 +360,62 @@ app.post('/api/settings', async (req, res) => {
 
 app.post('/api/test-email', async (req, res) => {
   try {
-    const settings   = await Settings.findOne({ key: 'global' });
-    const recipients = (settings && settings.recipients) || 'No recipients set';
-    const time       = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
-
-    const result = await sendAlertEmail(
-      '✅ Factory Monitor Pro — Test Email',
-      testEmailHTML(recipients, time)
-    );
-
-    if (result.ok) {
-      res.json({ ok: true });
-    } else {
-      res.status(500).json({ ok: false, error: result.error });
+    const settings = await Settings.findOne({ key: 'global' });
+    
+    // Use recipients from request body first, fallback to DB
+    const recipients = req.body.recipients || (settings && settings.recipients) || '';
+    
+    if (!recipients || recipients.trim() === '') {
+      return res.status(400).json({ ok: false, error: 'No recipients configured' });
     }
+
+    const senderEmail = (settings && settings.senderEmail) || 'threedprinterdataaquarelle@gmail.com';
+    const senderPass  = (settings && settings.senderAppPass) || 'akqk cuwt tdmp myre';
+
+    const time = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+
+    console.log('📧 Test email → recipients:', recipients);
+    console.log('📧 Sender:', senderEmail);
+    console.log('📧 Pass length:', senderPass?.length);
+
+    const transporter = nodemailer.createTransport({
+      host:   'smtp.gmail.com',
+      port:   587,
+      secure: false,
+      auth:   { user: senderEmail, pass: senderPass },
+      tls:    { rejectUnauthorized: false },
+      connectionTimeout: 15000,
+      greetingTimeout:   15000,
+      socketTimeout:     15000,
+    });
+
+    await transporter.verify();
+    console.log('✅ SMTP verified for test email');
+
+    await transporter.sendMail({
+      from:    `"Factory Monitor Pro" <${senderEmail}>`,
+      to:      recipients,
+      subject: '✅ Factory Monitor Pro — Test Email',
+      html:    testEmailHTML(recipients, time)
+    });
+
+    console.log('✅ Test email sent to:', recipients);
+    res.json({ ok: true });
+
   } catch (err) {
     console.error('❌ Test email error:', err.message);
     res.status(500).json({ ok: false, error: err.message });
   }
+});
+
+app.get('/api/debug-settings', async (req, res) => {
+  const s = await Settings.findOne({ key: 'global' });
+  res.json({
+    senderEmail: s?.senderEmail,
+    passLength:  s?.senderAppPass?.length,
+    passStored:  s?.senderAppPass,
+    recipients:  s?.recipients
+  });
 });
 
 // ── Debug route ─────────────────────────────────────────────
