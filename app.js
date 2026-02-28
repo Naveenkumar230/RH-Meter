@@ -268,7 +268,6 @@ async function fetchCurrent() {
 
         if(!tbData.temperature || !tbData.humidity) return;
 
-        // Reconstruct your original 'd' object format
         let t = parseFloat(tbData.temperature[0].value);
         let h = parseFloat(tbData.humidity[0].value);
         let d = { temp: t, hum: h, tempLevel: getTempLevel(t), humLevel: getHumLevel(h) };
@@ -310,12 +309,16 @@ async function fetchCurrent() {
         const humStatus = document.getElementById('humStatus');
         humStatus.className = 'status-badge-inline status-' + d.humLevel;
         humStatus.textContent = d.humLevel.charAt(0).toUpperCase() + d.humLevel.slice(1);
+
+        // --- Check thresholds and trigger alert email if exceeded ---
+        checkThresholdsAndAlert(t, h);
+
     })
     .catch(() => {
         failCount++;
         if (failCount >= 3) {
             updateStatusBadge(false);
-            jwtToken = null; // force re-login
+            jwtToken = null;
         }
     });
 }
@@ -556,6 +559,14 @@ function syncThresholdUI() {
 }
 
 async function saveThresholdSettings(type) {
+  // ── Password gate ──────────────────────────────────────
+  const entered = prompt('🔒 Enter admin password to save settings:');
+  if (entered === null) return; // cancelled
+  if (entered !== 'Rhmeter12345') {
+    showToast('❌ Incorrect password', 'error');
+    return;
+  }
+
   const tempEl = document.getElementById('thresholdTempInput');
   const humEl  = document.getElementById('thresholdHumInput');
 
@@ -568,10 +579,8 @@ async function saveThresholdSettings(type) {
   if (isNaN(tv)) return showToast('Enter a valid temperature threshold', 'error');
   if (isNaN(hv)) return showToast('Enter a valid humidity threshold', 'error');
 
-  // Collect recipients from chips
   const chips = document.querySelectorAll('.recipient-chip');
   const recipientList = Array.from(chips).map(c => c.dataset.email).filter(Boolean).join(',');
-
   if (!recipientList) return showToast('Add at least one recipient email', 'error');
 
   const payload = {
@@ -579,18 +588,6 @@ async function saveThresholdSettings(type) {
     humThreshold:  hv,
     recipients:    recipientList,
   };
-
-  // Only send app pass if user typed something
-  const passEl = document.getElementById('thresholdAppPass');
-  if (passEl && passEl.value.trim()) {
-    payload.senderAppPass = passEl.value.trim();
-  }
-
-  // Only send sender email if field exists
-  const senderEl = document.getElementById('thresholdSenderEmail');
-  if (senderEl && senderEl.value.trim()) {
-    payload.senderEmail = senderEl.value.trim();
-  }
 
   try {
     const res = await fetch(`${SERVER_URL}/api/settings`, {
@@ -607,8 +604,6 @@ async function saveThresholdSettings(type) {
 
     syncThresholdUI();
     showToast('✅ Settings saved!', 'success');
-
-    // Redraw charts so threshold line updates
     renderTodayCharts();
     if (chartTempDetail) renderTempDetail();
     if (chartHumDetail)  renderHumDetail();
@@ -620,7 +615,6 @@ async function saveThresholdSettings(type) {
 }
 
 async function sendTestEmail() {
-  // Collect current chips
   const chips = document.querySelectorAll('.recipient-chip');
   const recipientList = Array.from(chips).map(c => c.dataset.email).filter(Boolean).join(',');
 
@@ -628,14 +622,13 @@ async function sendTestEmail() {
     return showToast('Add at least one recipient email first', 'error');
   }
 
-  // Disable all test buttons
   document.querySelectorAll('.btn-test-email').forEach(b => {
     b.disabled    = true;
     b.textContent = '📨 Sending...';
   });
 
   try {
-    // Save recipients to server first
+    // Save recipients to server FIRST so the backend uses latest list
     await fetch(`${SERVER_URL}/api/settings`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -646,7 +639,7 @@ async function sendTestEmail() {
     const res = await fetch(`${SERVER_URL}/api/test-email`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({})
+      body:    JSON.stringify({ recipients: recipientList }) // also pass directly
     });
 
     if (res.ok) {
@@ -656,15 +649,67 @@ async function sendTestEmail() {
       try { const j = await res.json(); errMsg = j.error || errMsg; } catch(e) {}
       showToast('❌ Email failed: ' + errMsg, 'error');
     }
-
   } catch(e) {
-    console.error('Test email error:', e.message);
     showToast('❌ Could not reach server: ' + e.message, 'error');
   } finally {
     document.querySelectorAll('.btn-test-email').forEach(b => {
       b.disabled    = false;
       b.textContent = '📨 Send Test Email';
     });
+  }
+}
+
+async function checkThresholdsAndAlert(temp, hum) {
+  if (!thresholds.recipients) return;
+
+  const now = Date.now();
+
+  // Temperature alert
+  if (temp > thresholds.temp) {
+    const lastT = window._lastTempAlertTs || 0;
+    if ((now - lastT) > 60 * 60 * 1000) { // 1 hour cooldown
+      window._lastTempAlertTs = now;
+      try {
+        await fetch(`${SERVER_URL}/api/settings`, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ recipients: thresholds.recipients })
+        });
+        // Trigger alert via save-data so server sends the email
+        await fetch(`${SERVER_URL}/save-data`, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({
+            deviceId:    'Meter_01',
+            temperature: temp,
+            humidity:    hum,
+            tempLevel:   getTempLevel(temp),
+            humLevel:    getHumLevel(hum)
+          })
+        });
+      } catch(e) { console.warn('Alert trigger failed:', e.message); }
+    }
+  }
+
+  // Humidity alert
+  if (hum > thresholds.hum) {
+    const lastH = window._lastHumAlertTs || 0;
+    if ((now - lastH) > 60 * 60 * 1000) {
+      window._lastHumAlertTs = now;
+      try {
+        await fetch(`${SERVER_URL}/save-data`, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({
+            deviceId:    'Meter_01',
+            temperature: temp,
+            humidity:    hum,
+            tempLevel:   getTempLevel(temp),
+            humLevel:    getHumLevel(hum)
+          })
+        });
+      } catch(e) { console.warn('Alert trigger failed:', e.message); }
+    }
   }
 }
 
