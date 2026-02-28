@@ -4,15 +4,11 @@ const bodyParser = require('body-parser');
 const cron       = require('node-cron');
 const axios      = require('axios');
 const nodemailer = require('nodemailer');
-const cors = require('cors');
+const cors       = require('cors');
 
-
-app.use(cors());
-// app.use(bodyParser.json());
-// app.use(express.static('.'));
 const app = express();
 
-// ── CORS — allow all origins ────────────────────────────────
+// ── CORS ────────────────────────────────────────────────────
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -20,12 +16,11 @@ app.use((req, res, next) => {
   if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
 });
-
 app.use(cors());
 app.use(bodyParser.json());
 app.use(express.static('.'));
 
-// ── MongoDB Connection ──────────────────────────────────────
+// ── MongoDB ─────────────────────────────────────────────────
 mongoose.connect("mongodb+srv://factory_admin:factory_admin1234@cluster0.zk0gm.mongodb.net/FactoryData?retryWrites=true&w=majority")
   .then(() => console.log("✅ MongoDB Connected"))
   .catch(err => console.error("❌ MongoDB Error:", err));
@@ -51,33 +46,30 @@ const SettingsSchema = new mongoose.Schema({
 
 const Settings = mongoose.model('Settings', SettingsSchema);
 
-// ── Seed default settings on first boot ─────────────────────
+// ── Seed default settings ───────────────────────────────────
 async function seedSettings() {
   try {
     const existing = await Settings.findOne({ key: 'global' });
     if (!existing) {
       await Settings.create({
-  key:           'global',
-  tempThreshold: 35,
-  humThreshold:  70,
-  recipients:    '',          // user fills this from the dashboard
-  senderEmail:   'threedprinterdataaquarelle@gmail.com',
-  senderAppPass: 'gpfw evgv celc nawl',
-});
-      console.log('✅ Default settings seeded to MongoDB');
+        key:           'global',
+        tempThreshold: 35,
+        humThreshold:  70,
+        recipients:    '',
+        senderEmail:   'threedprinterdataaquarelle@gmail.com',
+        senderAppPass: 'akqk cuwt tdmp myre',
+      });
+      console.log('✅ Default settings seeded');
     } else {
-      // If existing but no sender creds, fill them in
       if (!existing.senderEmail || !existing.senderAppPass) {
         await Settings.findOneAndUpdate(
           { key: 'global' },
-          {
-            $set: {
-              senderEmail:   'threedprinterdataaquarelle@gmail.com',
-              senderAppPass: 'gpfw evgv celc nawl',
-            }
-          }
+          { $set: {
+            senderEmail:   'threedprinterdataaquarelle@gmail.com',
+            senderAppPass: 'akqk cuwt tdmp myre',
+          }}
         );
-        console.log('✅ Sender credentials updated in MongoDB');
+        console.log('✅ Sender credentials updated');
       }
     }
   } catch (err) {
@@ -85,49 +77,157 @@ async function seedSettings() {
   }
 }
 
-mongoose.connection.once('open', () => {
-  seedSettings();
-});
+mongoose.connection.once('open', () => { seedSettings(); });
 
 // ── Cooldown tracker ────────────────────────────────────────
 const lastAlertSent = {};
 const COOLDOWN_MS   = 60 * 60 * 1000; // 1 hour
 
+// ── Email Templates ─────────────────────────────────────────
+function tempEmailHTML(device, currentTemp, threshold) {
+  const exceededBy = (currentTemp - threshold).toFixed(1);
+  const time = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+  return `
+  <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:520px;margin:0 auto;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.12);">
+    <div style="background:linear-gradient(135deg,#ef4444,#f97316);padding:32px 28px 24px;text-align:center;">
+      <div style="font-size:2.5rem;">🌡️</div>
+      <h1 style="color:white;margin:8px 0 4px;font-size:1.4rem;font-weight:700;">Temperature Alert</h1>
+      <p style="color:rgba(255,255,255,0.85);margin:0;font-size:0.875rem;">Factory Monitor Pro — ${device}</p>
+    </div>
+    <div style="background:#ffffff;padding:28px 28px 0;">
+      <div style="background:#fff5f5;border:1px solid #fecaca;border-radius:12px;padding:24px;text-align:center;">
+        <p style="color:#9ca3af;font-size:0.75rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:0 0 6px;">Current Temperature</p>
+        <p style="color:#ef4444;font-size:3.2rem;font-weight:800;margin:0;line-height:1;">${currentTemp.toFixed(1)}°C</p>
+        <div style="display:inline-block;background:#ef4444;color:white;border-radius:20px;padding:4px 14px;font-size:0.78rem;font-weight:700;margin-top:10px;">
+          ▲ ${exceededBy}°C above threshold
+        </div>
+      </div>
+    </div>
+    <div style="background:#ffffff;padding:20px 28px;">
+      <table style="width:100%;border-collapse:collapse;font-size:0.875rem;">
+        <tr style="border-bottom:1px solid #f1f5f9;">
+          <td style="padding:12px 4px;color:#64748b;font-weight:600;">⚠️ Threshold Set</td>
+          <td style="padding:12px 4px;color:#1e293b;font-weight:700;text-align:right;">${threshold} °C</td>
+        </tr>
+        <tr style="border-bottom:1px solid #f1f5f9;">
+          <td style="padding:12px 4px;color:#64748b;font-weight:600;">🏭 Device</td>
+          <td style="padding:12px 4px;color:#1e293b;font-weight:700;text-align:right;">${device}</td>
+        </tr>
+        <tr>
+          <td style="padding:12px 4px;color:#64748b;font-weight:600;">🕐 Time</td>
+          <td style="padding:12px 4px;color:#1e293b;font-weight:700;text-align:right;">${time}</td>
+        </tr>
+      </table>
+    </div>
+    <div style="background:#fef2f2;border-top:1px solid #fecaca;padding:16px 28px;text-align:center;">
+      <p style="color:#ef4444;font-size:0.78rem;font-weight:600;margin:0;">⏰ Next alert after 1 hour if condition persists</p>
+      <p style="color:#9ca3af;font-size:0.72rem;margin:6px 0 0;">Factory Monitor Pro · Aquarelle Clothing Ltd</p>
+    </div>
+  </div>`;
+}
+
+function humEmailHTML(device, currentHum, threshold) {
+  const exceededBy = (currentHum - threshold).toFixed(1);
+  const time = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+  return `
+  <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:520px;margin:0 auto;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.12);">
+    <div style="background:linear-gradient(135deg,#06b6d4,#3b82f6);padding:32px 28px 24px;text-align:center;">
+      <div style="font-size:2.5rem;">💧</div>
+      <h1 style="color:white;margin:8px 0 4px;font-size:1.4rem;font-weight:700;">Humidity Alert</h1>
+      <p style="color:rgba(255,255,255,0.85);margin:0;font-size:0.875rem;">Factory Monitor Pro — ${device}</p>
+    </div>
+    <div style="background:#ffffff;padding:28px 28px 0;">
+      <div style="background:#f0fdff;border:1px solid #a5f3fc;border-radius:12px;padding:24px;text-align:center;">
+        <p style="color:#9ca3af;font-size:0.75rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:0 0 6px;">Current Humidity</p>
+        <p style="color:#0891b2;font-size:3.2rem;font-weight:800;margin:0;line-height:1;">${currentHum.toFixed(1)}%</p>
+        <div style="display:inline-block;background:#0891b2;color:white;border-radius:20px;padding:4px 14px;font-size:0.78rem;font-weight:700;margin-top:10px;">
+          ▲ ${exceededBy}% above threshold
+        </div>
+      </div>
+    </div>
+    <div style="background:#ffffff;padding:20px 28px;">
+      <table style="width:100%;border-collapse:collapse;font-size:0.875rem;">
+        <tr style="border-bottom:1px solid #f1f5f9;">
+          <td style="padding:12px 4px;color:#64748b;font-weight:600;">⚠️ Threshold Set</td>
+          <td style="padding:12px 4px;color:#1e293b;font-weight:700;text-align:right;">${threshold} %</td>
+        </tr>
+        <tr style="border-bottom:1px solid #f1f5f9;">
+          <td style="padding:12px 4px;color:#64748b;font-weight:600;">🏭 Device</td>
+          <td style="padding:12px 4px;color:#1e293b;font-weight:700;text-align:right;">${device}</td>
+        </tr>
+        <tr>
+          <td style="padding:12px 4px;color:#64748b;font-weight:600;">🕐 Time</td>
+          <td style="padding:12px 4px;color:#1e293b;font-weight:700;text-align:right;">${time}</td>
+        </tr>
+      </table>
+    </div>
+    <div style="background:#ecfeff;border-top:1px solid #a5f3fc;padding:16px 28px;text-align:center;">
+      <p style="color:#0891b2;font-size:0.78rem;font-weight:600;margin:0;">⏰ Next alert after 1 hour if condition persists</p>
+      <p style="color:#9ca3af;font-size:0.72rem;margin:6px 0 0;">Factory Monitor Pro · Aquarelle Clothing Ltd</p>
+    </div>
+  </div>`;
+}
+
+function testEmailHTML(recipients, time) {
+  return `
+  <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:520px;margin:0 auto;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.12);">
+    <div style="background:linear-gradient(135deg,#10b981,#3b82f6);padding:32px 28px 24px;text-align:center;">
+      <div style="font-size:2.5rem;">✅</div>
+      <h1 style="color:white;margin:8px 0 4px;font-size:1.4rem;font-weight:700;">Email Config Working!</h1>
+      <p style="color:rgba(255,255,255,0.85);margin:0;font-size:0.875rem;">Factory Monitor Pro — Test Email</p>
+    </div>
+    <div style="background:#ffffff;padding:28px;">
+      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:24px;text-align:center;">
+        <p style="color:#16a34a;font-size:1rem;font-weight:700;margin:0 0 8px;">Your alert system is ready!</p>
+        <p style="color:#64748b;font-size:0.875rem;margin:0;">You will receive Temperature and Humidity alerts whenever thresholds are exceeded.</p>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:0.875rem;margin-top:16px;">
+        <tr style="border-bottom:1px solid #f1f5f9;">
+          <td style="padding:12px 4px;color:#64748b;font-weight:600;">📧 Sent To</td>
+          <td style="padding:12px 4px;color:#1e293b;font-weight:700;text-align:right;">${recipients}</td>
+        </tr>
+        <tr>
+          <td style="padding:12px 4px;color:#64748b;font-weight:600;">🕐 Sent At</td>
+          <td style="padding:12px 4px;color:#1e293b;font-weight:700;text-align:right;">${time}</td>
+        </tr>
+      </table>
+    </div>
+    <div style="background:#f0fdf4;border-top:1px solid #bbf7d0;padding:16px 28px;text-align:center;">
+      <p style="color:#16a34a;font-size:0.78rem;font-weight:600;margin:0;">Factory Monitor Pro · Aquarelle Clothing Ltd</p>
+    </div>
+  </div>`;
+}
+
+// ── Send Email core ─────────────────────────────────────────
 async function sendAlertEmail(subject, htmlBody) {
   try {
     const settings = await Settings.findOne({ key: 'global' });
 
-    const senderEmail = (settings && settings.senderEmail)   || 'threedprinterdataaquarelle@gmail.com';
-    const senderPass  = (settings && settings.senderAppPass) || 'gpfw evgv celc nawl';
-    const recipientStr= (settings && settings.recipients)    || '';
+    const senderEmail  = (settings && settings.senderEmail)   || 'threedprinterdataaquarelle@gmail.com';
+    const senderPass   = (settings && settings.senderAppPass) || 'akqk cuwt tdmp myre';
+    const recipientStr = (settings && settings.recipients)    || '';
 
     const recipients = recipientStr.split(',').map(e => e.trim()).filter(Boolean);
     if (!recipients.length) {
-      console.warn('⚠️  No recipients — add emails in dashboard');
+      console.warn('⚠️  No recipients configured');
       return { ok: false, error: 'No recipients configured' };
     }
 
-    console.log(`📧 Attempting to send to: ${recipients.join(', ')}`);
+    console.log(`📧 Sending "${subject}" to: ${recipients.join(', ')}`);
 
- const transporter = nodemailer.createTransport({
-  host:   'smtp.gmail.com',
-  port:   587,
-  secure: false,
-  auth: {
-    user: senderEmail,
-    pass: senderPass,
-  },
-  tls: {
-    rejectUnauthorized: false
-  },
-  connectionTimeout: 15000,
-  greetingTimeout:   15000,
-  socketTimeout:     15000,
-});
+    const transporter = nodemailer.createTransport({
+      host:   'smtp.gmail.com',
+      port:   587,
+      secure: false,
+      auth:   { user: senderEmail, pass: senderPass },
+      tls:    { rejectUnauthorized: false },
+      connectionTimeout: 15000,
+      greetingTimeout:   15000,
+      socketTimeout:     15000,
+    });
 
-    // Verify connection before sending
     await transporter.verify();
-    console.log('✅ SMTP connection verified');
+    console.log('✅ SMTP verified');
 
     await transporter.sendMail({
       from:    `"Factory Monitor Pro" <${senderEmail}>`,
@@ -145,7 +245,7 @@ async function sendAlertEmail(subject, htmlBody) {
   }
 }
 
-// ── Alert Checker ───────────────────────────────────────────
+// ── Alert checker — fires on every /save-data ───────────────
 async function checkAndAlert(record) {
   try {
     const settings = await Settings.findOne({ key: 'global' });
@@ -154,85 +254,34 @@ async function checkAndAlert(record) {
     const now    = Date.now();
     const device = record.deviceId || 'Meter_01';
 
-    // Temperature check
-    if (record.temperature !== undefined && record.temperature !== null) {
-      const tempKey  = `${device}_temp`;
-      const lastSent = lastAlertSent[tempKey] || 0;
-
+    // Temperature
+    if (record.temperature != null) {
+      const key      = `${device}_temp`;
+      const lastSent = lastAlertSent[key] || 0;
       if (record.temperature > settings.tempThreshold && (now - lastSent) > COOLDOWN_MS) {
-        lastAlertSent[tempKey] = now;
+        lastAlertSent[key] = now;
+        console.log(`🌡️ ALERT: ${record.temperature}°C > ${settings.tempThreshold}°C threshold`);
         await sendAlertEmail(
-          `🌡️ TEMPERATURE ALERT — ${device}`,
-          `<div style="font-family:sans-serif;max-width:500px;margin:0 auto;padding:24px;border:1px solid #fca5a5;border-radius:12px;background:#fff5f5;">
-            <h2 style="color:#dc2626;margin-bottom:8px;">⚠️ Temperature Threshold Exceeded</h2>
-            <p style="color:#7f1d1d;margin-bottom:20px;">An alert has been triggered on your Factory Monitor system.</p>
-            <table style="width:100%;border-collapse:collapse;font-size:0.95rem;">
-              <tr style="background:#fee2e2;">
-                <td style="padding:10px 16px;font-weight:600;color:#991b1b;">Device</td>
-                <td style="padding:10px 16px;color:#374151;">${device}</td>
-              </tr>
-              <tr>
-                <td style="padding:10px 16px;font-weight:600;color:#991b1b;">Current Temp</td>
-                <td style="padding:10px 16px;color:#dc2626;font-weight:700;">${record.temperature.toFixed(1)} °C</td>
-              </tr>
-              <tr style="background:#fee2e2;">
-                <td style="padding:10px 16px;font-weight:600;color:#991b1b;">Threshold</td>
-                <td style="padding:10px 16px;color:#374151;">${settings.tempThreshold} °C</td>
-              </tr>
-              <tr>
-                <td style="padding:10px 16px;font-weight:600;color:#991b1b;">Exceeded By</td>
-                <td style="padding:10px 16px;color:#dc2626;font-weight:700;">+${(record.temperature - settings.tempThreshold).toFixed(1)} °C</td>
-              </tr>
-              <tr style="background:#fee2e2;">
-                <td style="padding:10px 16px;font-weight:600;color:#991b1b;">Time</td>
-                <td style="padding:10px 16px;color:#374151;">${new Date().toLocaleString('en-IN', {timeZone:'Asia/Kolkata'})}</td>
-              </tr>
-            </table>
-            <p style="margin-top:20px;font-size:0.8rem;color:#9ca3af;">Next alert after 1 hour if condition persists.</p>
-          </div>`
+          `🌡️ Temperature Alert — ${device} (${record.temperature.toFixed(1)}°C)`,
+          tempEmailHTML(device, record.temperature, settings.tempThreshold)
         );
       }
     }
 
-    // Humidity check
-    if (record.humidity !== undefined && record.humidity !== null) {
-      const humKey   = `${device}_hum`;
-      const lastSent = lastAlertSent[humKey] || 0;
-
+    // Humidity
+    if (record.humidity != null) {
+      const key      = `${device}_hum`;
+      const lastSent = lastAlertSent[key] || 0;
       if (record.humidity > settings.humThreshold && (now - lastSent) > COOLDOWN_MS) {
-        lastAlertSent[humKey] = now;
+        lastAlertSent[key] = now;
+        console.log(`💧 ALERT: ${record.humidity}% > ${settings.humThreshold}% threshold`);
         await sendAlertEmail(
-          `💧 HUMIDITY ALERT — ${device}`,
-          `<div style="font-family:sans-serif;max-width:500px;margin:0 auto;padding:24px;border:1px solid #67e8f9;border-radius:12px;background:#f0fdff;">
-            <h2 style="color:#0891b2;margin-bottom:8px;">⚠️ Humidity Threshold Exceeded</h2>
-            <p style="color:#164e63;margin-bottom:20px;">An alert has been triggered on your Factory Monitor system.</p>
-            <table style="width:100%;border-collapse:collapse;font-size:0.95rem;">
-              <tr style="background:#cffafe;">
-                <td style="padding:10px 16px;font-weight:600;color:#155e75;">Device</td>
-                <td style="padding:10px 16px;color:#374151;">${device}</td>
-              </tr>
-              <tr>
-                <td style="padding:10px 16px;font-weight:600;color:#155e75;">Current Humidity</td>
-                <td style="padding:10px 16px;color:#0891b2;font-weight:700;">${record.humidity.toFixed(1)} %</td>
-              </tr>
-              <tr style="background:#cffafe;">
-                <td style="padding:10px 16px;font-weight:600;color:#155e75;">Threshold</td>
-                <td style="padding:10px 16px;color:#374151;">${settings.humThreshold} %</td>
-              </tr>
-              <tr>
-                <td style="padding:10px 16px;font-weight:600;color:#155e75;">Exceeded By</td>
-                <td style="padding:10px 16px;color:#0891b2;font-weight:700;">+${(record.humidity - settings.humThreshold).toFixed(1)} %</td>
-              </tr>
-              <tr style="background:#cffafe;">
-                <td style="padding:10px 16px;font-weight:600;color:#155e75;">Time</td>
-                <td style="padding:10px 16px;color:#374151;">${new Date().toLocaleString('en-IN', {timeZone:'Asia/Kolkata'})}</td>
-              </tr>
-            </table>
-            <p style="margin-top:20px;font-size:0.8rem;color:#9ca3af;">Next alert after 1 hour if condition persists.</p>
-          </div>`
+          `💧 Humidity Alert — ${device} (${record.humidity.toFixed(1)}%)`,
+          humEmailHTML(device, record.humidity, settings.humThreshold)
         );
       }
     }
+
   } catch (err) {
     console.error('❌ Alert check error:', err.message);
   }
@@ -248,10 +297,10 @@ cron.schedule('*/10 * * * *', async () => {
   }
 });
 
-// ── Health Check ────────────────────────────────────────────
+// ── Routes ──────────────────────────────────────────────────
+
 app.get('/', (req, res) => res.send('Bridge is running ✅'));
 
-// ── Save data ───────────────────────────────────────────────
 app.post('/save-data', async (req, res) => {
   try {
     const data = { ...req.body, deviceId: req.body.deviceId || 'Meter_01' };
@@ -265,7 +314,6 @@ app.post('/save-data', async (req, res) => {
   }
 });
 
-// ── Get latest data ─────────────────────────────────────────
 app.get('/api/data', async (req, res) => {
   try {
     const deviceId = req.query.deviceId || 'Meter_01';
@@ -276,24 +324,22 @@ app.get('/api/data', async (req, res) => {
   }
 });
 
-// ── GET /api/settings ───────────────────────────────────────
 app.get('/api/settings', async (req, res) => {
   try {
-    let settings = await Settings.findOne({ key: 'global' });
-    if (!settings) settings = await Settings.create({ key: 'global' });
+    let s = await Settings.findOne({ key: 'global' });
+    if (!s) s = await Settings.create({ key: 'global' });
     res.json({
-      tempThreshold: settings.tempThreshold,
-      humThreshold:  settings.humThreshold,
-      recipients:    settings.recipients,
-      senderEmail:   settings.senderEmail,
-      appPassSet:    !!settings.senderAppPass,
+      tempThreshold: s.tempThreshold,
+      humThreshold:  s.humThreshold,
+      recipients:    s.recipients,
+      senderEmail:   s.senderEmail,
+      appPassSet:    !!s.senderAppPass,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// ── POST /api/settings ──────────────────────────────────────
 app.post('/api/settings', async (req, res) => {
   try {
     const allowed = ['tempThreshold', 'humThreshold', 'recipients', 'senderEmail', 'senderAppPass'];
@@ -305,22 +351,22 @@ app.post('/api/settings', async (req, res) => {
       { $set: update },
       { upsert: true, new: true }
     );
+    console.log('✅ Settings updated:', update);
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// ── POST /api/test-email ────────────────────────────────────
 app.post('/api/test-email', async (req, res) => {
   try {
+    const settings   = await Settings.findOne({ key: 'global' });
+    const recipients = (settings && settings.recipients) || 'No recipients set';
+    const time       = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+
     const result = await sendAlertEmail(
-      '✅ Factory Monitor — Test Email',
-      `<div style="font-family:sans-serif;padding:24px;border:1px solid #bbf7d0;border-radius:12px;background:#f0fdf4;">
-        <h2 style="color:#16a34a;">✅ Email Configuration Working!</h2>
-        <p style="color:#374151;margin-top:12px;">Your Factory Monitor Pro email alerts are configured correctly.</p>
-        <p style="color:#6b7280;font-size:0.85rem;margin-top:16px;">Sent at: ${new Date().toLocaleString('en-IN', {timeZone:'Asia/Kolkata'})}</p>
-      </div>`
+      '✅ Factory Monitor Pro — Test Email',
+      testEmailHTML(recipients, time)
     );
 
     if (result.ok) {
@@ -329,44 +375,41 @@ app.post('/api/test-email', async (req, res) => {
       res.status(500).json({ ok: false, error: result.error });
     }
   } catch (err) {
-    console.error('❌ Test email route error:', err.message);
+    console.error('❌ Test email error:', err.message);
     res.status(500).json({ ok: false, error: err.message });
   }
 });
 
-
+// ── Debug route ─────────────────────────────────────────────
 app.get('/api/debug-email', async (req, res) => {
   try {
     const settings = await Settings.findOne({ key: 'global' });
     console.log('DEBUG — senderEmail:', settings.senderEmail);
     console.log('DEBUG — appPass length:', settings.senderAppPass?.length);
     console.log('DEBUG — recipients:', settings.recipients);
+    console.log('DEBUG — tempThreshold:', settings.tempThreshold);
+    console.log('DEBUG — humThreshold:', settings.humThreshold);
 
     const transporter = nodemailer.createTransport({
       host:   'smtp.gmail.com',
       port:   587,
       secure: false,
-      auth: {
-        user: settings.senderEmail,
-        pass: settings.senderAppPass,
-      },
-      tls: { rejectUnauthorized: false },
+      auth:   { user: settings.senderEmail, pass: settings.senderAppPass },
+      tls:    { rejectUnauthorized: false },
       connectionTimeout: 15000,
       greetingTimeout:   15000,
       socketTimeout:     15000,
     });
 
     await transporter.verify();
-    console.log('✅ SMTP verify passed');
-
     const info = await transporter.sendMail({
       from:    `"Factory Monitor" <${settings.senderEmail}>`,
       to:      settings.recipients,
       subject: '✅ Debug Test Email',
-      html:    '<p>This is a debug test from Factory Monitor Pro</p>'
+      html:    '<p>Debug test from Factory Monitor Pro</p>'
     });
 
-    console.log('✅ Message sent:', info.messageId);
+    console.log('✅ Debug email sent:', info.messageId);
     res.json({ ok: true, messageId: info.messageId, accepted: info.accepted });
 
   } catch(err) {

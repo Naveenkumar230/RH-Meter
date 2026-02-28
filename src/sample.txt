@@ -1,0 +1,40 @@
+#include <Arduino.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include "soc/soc.h"
+#include "soc/rtc_cntl_reg.h"
+
+// Set the LCD address to 0x27 (based on your previous successful scan)
+LiquidCrystal_I2C lcd(0x27, 20, 4);
+
+void setup() {
+    // 1. DISABLE BROWNOUT: Stops the "Brownout detector triggered" loop immediately
+    WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); 
+
+    Serial.begin(115200);
+    
+    // 2. POWER STABILIZATION: Crucial for large 20x4 displays
+    delay(2000); 
+
+    // 3. SLOW I2C: 50kHz ensures the SPLC780D controller understands the data bits
+    Wire.begin(21, 22, 50000); 
+
+    // 4. THE WAKE-UP COMMANDS
+    lcd.init();          
+    delay(500);          // Extra time for the controller to process init
+    lcd.backlight();     
+    delay(200);
+    lcd.clear();         // This command turns the "Blocks" into a clear screen
+    
+    // Print a test message
+    lcd.setCursor(0, 0);
+    lcd.print("Meter_02 Status:");
+    lcd.setCursor(0, 1);
+    lcd.print("LCD Wake-up OK!");
+    
+    Serial.println("[LCD] Wake-up command sent at 50kHz");
+}
+
+void loop() {
+    // Keep the display on
+}

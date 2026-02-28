@@ -1,7 +1,9 @@
 // ── Core / RTOS ─────────────────────────────────────────────
 #include <Arduino.h>
 #include <Wire.h>
-
+#include "soc/soc.h"
+#include "soc/rtc_cntl_reg.h"
+#include <esp_task_wdt.h>
 // [WDT] Hardware watchdog
 #include <esp_task_wdt.h>
 
@@ -36,11 +38,14 @@ namespace Config {
     constexpr const char* DEVICE_ID = "Meter_02";
     // 1. Update with your NEW Access Token
     constexpr const char* TB_TOKEN = "Cm7sJkjsC4FG5CbzYj5x"; 
+        constexpr int         TB_PORT         = 1883;
+            constexpr const char* TB_HOST         = "thingsboard.cloud";  
+
 
     // ThingsBoard
-    constexpr const char* TB_HOST         = "thingsboard.cloud";  
-    constexpr int         TB_PORT         = 1883;
-    // constexpr const char* TB_TOKEN        = "VFIUsDTve9r5cBm8ZpPH";  - > RH mete 1 
+    // constexpr const char* TB_HOST         = "thingsboard.cloud";  
+    // constexpr int         TB_PORT         = 1883;
+    // constexpr const char* TB_TOKEN        = "VFIUsDTve9r5cBm8ZpPH"; // - > RH mete 1 
 
     // OTA
     constexpr const char* OTA_HOSTNAME    = "FactoryMonitor";
@@ -73,15 +78,15 @@ namespace Config {
     constexpr uint32_t LCD_PAGE_MS        = 6000;   // rotate pages every 6 s
 
     // Hardware pins
-    constexpr int I2C_SDA = 21;
+    constexpr int I2C_SDA = 4;
     constexpr int I2C_SCL = 22;
 
     
 
     // I2C addresses
-    constexpr uint8_t LCD_ADDR  = 0x27;
+    constexpr uint8_t LCD_ADDR = 0x27;
     // constexpr uint8_t SHT_ADDR  = 0x44;
-    constexpr uint8_t SHT_ADDR = 0x45;
+    constexpr uint8_t SHT_ADDR = 0x44;
 
     // History buffer (48 h @ 1 sample/30 s ≈ 5760; using 2880 to save RAM)
     constexpr int MAX_READINGS = 2880;
@@ -557,27 +562,39 @@ void httpHistory() {
 //  SETUP
 // ============================================================
 void setup() {
+    // 1. HARDWARE SAFETY: Disable Brownout IMMEDIATELY
+    WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); 
+
     Serial.begin(115200);
+    
+    // 2. BOOT DELAY: Allow power to stabilize before starting high-current WiFi
+    delay(2000); 
     Serial.println("\n=== Factory Monitor Pro v3.0 ===");
 
-    // [WDT] Enable hardware watchdog — 30 s timeout
+    // 3. WATCHDOG: Initialized AFTER power stabilization
     esp_task_wdt_init(Config::WDT_TIMEOUT_SEC, true);
-    esp_task_wdt_add(nullptr);   // subscribe main task
+    esp_task_wdt_add(nullptr); 
     Serial.printf("[WDT] Enabled — timeout %d s\n", Config::WDT_TIMEOUT_SEC);
 
-    // [NVS] Init persistent storage
     nvsInit();
 
-    // I2C + LCD
-    Wire.begin(Config::I2C_SDA, Config::I2C_SCL);
+    // 4. I2C: Fixed at 50kHz for GoldenMorning LCD stability
+    Wire.begin(Config::I2C_SDA, Config::I2C_SCL, 50000);
+
+    // 5. LCD INIT: Slower handshake sequence
     lcd.init();
+    delay(500); 
     lcd.backlight();
+    lcd.clear();
     lcdCreateChars();
     lcdSplash();
-    Serial.println("[LCD] Initialised");
+    Serial.println("[LCD] Initialised at 50kHz");
 
-    // WiFiManager — blocking only during first-time captive portal
+    // 6. WIFI: WiFiManager with Auto-Healing
     WiFiManager wm;
+    // Set a timeout for the portal so it doesn't stay in AP mode forever
+    wm.setConfigPortalTimeout(180); 
+
     wm.setAPCallback([](WiFiManager* m){
         Serial.println("[WiFi] Config portal open: FactoryMonitor_Setup");
         lcd.clear();
@@ -586,39 +603,30 @@ void setup() {
         lcdRow(3, "Pass: password123   ");
     });
 
-    // [HEAL] autoConnect will return even if WiFi fails after portal timeout
     if (!wm.autoConnect("FactoryMonitor_Setup", "password123")) {
-        Serial.println("[WiFi] Initial connect failed — will retry in loop");
+        Serial.println("[WiFi] Portal Timeout — starting offline mode");
         wifiOnline = false;
     } else {
         wifiOnline = true;
-        Serial.println("[WiFi] Connected: " + WiFi.localIP().toString());
-
-        // NTP sync (only after WiFi up)
         configTime(Config::GMT_OFFSET_SEC, Config::DST_OFFSET_SEC, Config::NTP_SERVER);
-        Serial.println("[NTP] Sync started");
-
-        // [OTA] Register OTA handlers
         setupOTA();
     }
 
-    // MQTT broker config
+    // 7. MQTT & WEB SERVER
     mqttClient.setServer(Config::TB_HOST, Config::TB_PORT);
     mqttClient.setKeepAlive(60);
 
-    // Web server routes
     webServer.on("/",            httpRoot);
     webServer.on("/api/current", httpCurrent);
     webServer.on("/api/all-data",httpHistory);
     webServer.begin();
-    Serial.println("[HTTP] Server listening on port 80");
 
-    // Init timers so tasks fire immediately on first loop pass
-    tLastSensor  = millis() - Config::SENSOR_INTERVAL_MS;
-    tLastCloud   = millis() - Config::CLOUD_INTERVAL_MS;
-    tLastLCD     = millis() - Config::LCD_INTERVAL_MS;
-    tLastWiFiChk = millis() - Config::WIFI_CHECK_MS;
-    tLastMqttChk = millis() - Config::MQTT_CHECK_MS;
+    // Init Task Timers
+    tLastSensor  = millis();
+    tLastCloud   = millis();
+    tLastLCD     = millis();
+    tLastWiFiChk = millis();
+    tLastMqttChk = millis();
     tLCDPage     = millis();
 
     Serial.println("[System] Ready — entering main loop\n");
