@@ -1,6 +1,5 @@
 const express    = require('express');
 const mongoose   = require('mongoose');
-const bodyParser = require('body-parser');
 const cron       = require('node-cron');
 const axios      = require('axios');
 const nodemailer = require('nodemailer');
@@ -17,7 +16,7 @@ app.use((req, res, next) => {
   next();
 });
 app.use(cors());
-app.use(bodyParser.json());
+app.use(express.json());         // ✅ FIX: replaced body-parser with built-in express.json()
 app.use(express.static('.'));
 
 // ── MongoDB ─────────────────────────────────────────────────
@@ -80,8 +79,30 @@ async function seedSettings() {
 mongoose.connection.once('open', () => { seedSettings(); });
 
 // ── Cooldown tracker ────────────────────────────────────────
-const lastAlertSent = {};
-const COOLDOWN_MS   = 60 * 60 * 1000; // 1 hour
+// ✅ FIX: Cooldown is now persisted in MongoDB so Render restarts don't reset it
+// We use a simple in-memory cache backed by DB timestamps on the Settings doc
+
+const SettingsCooldownSchema = new mongoose.Schema({
+  key:       { type: String, unique: true },
+  lastSentAt: { type: Date, default: null },
+});
+const AlertCooldown = mongoose.model('AlertCooldown', SettingsCooldownSchema);
+
+const COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
+
+async function canSendAlert(key) {
+  let record = await AlertCooldown.findOne({ key });
+  if (!record) return true;
+  return (Date.now() - new Date(record.lastSentAt).getTime()) > COOLDOWN_MS;
+}
+
+async function markAlertSent(key) {
+  await AlertCooldown.findOneAndUpdate(
+    { key },
+    { $set: { lastSentAt: new Date() } },
+    { upsert: true, new: true }
+  );
+}
 
 // ── Email Templates ─────────────────────────────────────────
 function tempEmailHTML(device, currentTemp, threshold) {
@@ -209,7 +230,7 @@ async function sendAlertEmail(subject, htmlBody) {
 
     const recipients = recipientStr.split(',').map(e => e.trim()).filter(Boolean);
     if (!recipients.length) {
-      console.warn('⚠️  No recipients configured');
+      console.warn('⚠️  No recipients configured — skipping email');
       return { ok: false, error: 'No recipients configured' };
     }
 
@@ -245,40 +266,58 @@ async function sendAlertEmail(subject, htmlBody) {
   }
 }
 
-// ── Alert checker — fires on every /save-data ───────────────
+// ── Alert checker ───────────────────────────────────────────
+// ✅ FIX 1: now uses DB-persisted cooldown (survives Render restarts)
+// ✅ FIX 2: called with await in /save-data so errors surface properly
 async function checkAndAlert(record) {
   try {
     const settings = await Settings.findOne({ key: 'global' });
-    if (!settings) return;
+    if (!settings) {
+      console.warn('⚠️ No settings found in DB — cannot check alerts');
+      return;
+    }
 
-    const now    = Date.now();
     const device = record.deviceId || 'Meter_01';
 
-    // Temperature
+    // ── Temperature alert ──
     if (record.temperature != null) {
-      const key      = `${device}_temp`;
-      const lastSent = lastAlertSent[key] || 0;
-      if (record.temperature > settings.tempThreshold && (now - lastSent) > COOLDOWN_MS) {
-        lastAlertSent[key] = now;
-        console.log(`🌡️ ALERT: ${record.temperature}°C > ${settings.tempThreshold}°C threshold`);
-        await sendAlertEmail(
-          `🌡️ Temperature Alert — ${device} (${record.temperature.toFixed(1)}°C)`,
-          tempEmailHTML(device, record.temperature, settings.tempThreshold)
-        );
+      const key = `${device}_temp`;
+      console.log(`🔍 Checking temp: ${record.temperature}°C vs threshold ${settings.tempThreshold}°C`);
+      if (record.temperature > settings.tempThreshold) {
+        const ok = await canSendAlert(key);
+        if (ok) {
+          await markAlertSent(key);
+          console.log(`🌡️ ALERT TRIGGERED: ${record.temperature}°C > ${settings.tempThreshold}°C`);
+          await sendAlertEmail(
+            `🌡️ Temperature Alert — ${device} (${record.temperature.toFixed(1)}°C)`,
+            tempEmailHTML(device, record.temperature, settings.tempThreshold)
+          );
+        } else {
+          console.log(`⏳ Temp alert suppressed — still in cooldown for ${device}`);
+        }
+      } else {
+        console.log(`✅ Temp OK: ${record.temperature}°C is within threshold`);
       }
     }
 
-    // Humidity
+    // ── Humidity alert ──
     if (record.humidity != null) {
-      const key      = `${device}_hum`;
-      const lastSent = lastAlertSent[key] || 0;
-      if (record.humidity > settings.humThreshold && (now - lastSent) > COOLDOWN_MS) {
-        lastAlertSent[key] = now;
-        console.log(`💧 ALERT: ${record.humidity}% > ${settings.humThreshold}% threshold`);
-        await sendAlertEmail(
-          `💧 Humidity Alert — ${device} (${record.humidity.toFixed(1)}%)`,
-          humEmailHTML(device, record.humidity, settings.humThreshold)
-        );
+      const key = `${device}_hum`;
+      console.log(`🔍 Checking hum: ${record.humidity}% vs threshold ${settings.humThreshold}%`);
+      if (record.humidity > settings.humThreshold) {
+        const ok = await canSendAlert(key);
+        if (ok) {
+          await markAlertSent(key);
+          console.log(`💧 ALERT TRIGGERED: ${record.humidity}% > ${settings.humThreshold}%`);
+          await sendAlertEmail(
+            `💧 Humidity Alert — ${device} (${record.humidity.toFixed(1)}%)`,
+            humEmailHTML(device, record.humidity, settings.humThreshold)
+          );
+        } else {
+          console.log(`⏳ Hum alert suppressed — still in cooldown for ${device}`);
+        }
+      } else {
+        console.log(`✅ Hum OK: ${record.humidity}% is within threshold`);
       }
     }
 
@@ -301,12 +340,13 @@ cron.schedule('*/10 * * * *', async () => {
 
 app.get('/', (req, res) => res.send('Bridge is running ✅'));
 
+// ✅ FIX 3: await checkAndAlert so errors don't get silently dropped
 app.post('/save-data', async (req, res) => {
   try {
     const data = { ...req.body, deviceId: req.body.deviceId || 'Meter_01' };
     await new SensorData(data).save();
     console.log("💾 Saved:", data);
-    checkAndAlert(data);
+    await checkAndAlert(data);   // ✅ was missing await — alerts were silently failing
     res.status(200).send("Saved");
   } catch (err) {
     console.error("❌ Save Error:", err);
@@ -346,6 +386,12 @@ app.post('/api/settings', async (req, res) => {
     const update  = {};
     allowed.forEach(k => { if (req.body[k] !== undefined) update[k] = req.body[k]; });
     if (update.senderAppPass === '') delete update.senderAppPass;
+
+    // ✅ FIX 4: Parse thresholds as numbers — if frontend sends a string "30", 
+    //    the DB stores a string and "35.5 > '35'" comparison fails unpredictably
+    if (update.tempThreshold !== undefined) update.tempThreshold = parseFloat(update.tempThreshold);
+    if (update.humThreshold  !== undefined) update.humThreshold  = parseFloat(update.humThreshold);
+
     await Settings.findOneAndUpdate(
       { key: 'global' },
       { $set: update },
@@ -358,15 +404,21 @@ app.post('/api/settings', async (req, res) => {
   }
 });
 
+// ✅ FIX 5: Test email — now reads recipients from DB if not in body,
+//    and logs clearly what's happening
 app.post('/api/test-email', async (req, res) => {
   try {
     const settings = await Settings.findOne({ key: 'global' });
-    
-    // Use recipients from request body first, fallback to DB
-    const recipients = req.body.recipients || (settings && settings.recipients) || '';
-    
+
+    // Accept recipients from body OR fall back to what's saved in DB
+    let recipients = req.body.recipients;
     if (!recipients || recipients.trim() === '') {
-      return res.status(400).json({ ok: false, error: 'No recipients configured' });
+      recipients = (settings && settings.recipients) || '';
+    }
+
+    if (!recipients || recipients.trim() === '') {
+      console.warn('⚠️ Test email blocked — no recipients');
+      return res.status(400).json({ ok: false, error: 'No recipients configured. Please add at least one email and save settings first.' });
     }
 
     const senderEmail = (settings && settings.senderEmail) || 'threedprinterdataaquarelle@gmail.com';
@@ -376,7 +428,7 @@ app.post('/api/test-email', async (req, res) => {
 
     console.log('📧 Test email → recipients:', recipients);
     console.log('📧 Sender:', senderEmail);
-    console.log('📧 Pass length:', senderPass?.length);
+    console.log('📧 App password length:', senderPass?.length);
 
     const transporter = nodemailer.createTransport({
       host:   'smtp.gmail.com',
@@ -408,25 +460,25 @@ app.post('/api/test-email', async (req, res) => {
   }
 });
 
+// ── Debug routes ─────────────────────────────────────────────
 app.get('/api/debug-settings', async (req, res) => {
   const s = await Settings.findOne({ key: 'global' });
   res.json({
-    senderEmail: s?.senderEmail,
-    passLength:  s?.senderAppPass?.length,
-    passStored:  s?.senderAppPass,
-    recipients:  s?.recipients
+    senderEmail:    s?.senderEmail,
+    passLength:     s?.senderAppPass?.length,
+    recipients:     s?.recipients,
+    tempThreshold:  s?.tempThreshold,
+    humThreshold:   s?.humThreshold,
+    thresholdTypes: {
+      temp: typeof s?.tempThreshold,
+      hum:  typeof s?.humThreshold,
+    }
   });
 });
 
-// ── Debug route ─────────────────────────────────────────────
 app.get('/api/debug-email', async (req, res) => {
   try {
     const settings = await Settings.findOne({ key: 'global' });
-    console.log('DEBUG — senderEmail:', settings.senderEmail);
-    console.log('DEBUG — appPass length:', settings.senderAppPass?.length);
-    console.log('DEBUG — recipients:', settings.recipients);
-    console.log('DEBUG — tempThreshold:', settings.tempThreshold);
-    console.log('DEBUG — humThreshold:', settings.humThreshold);
 
     const transporter = nodemailer.createTransport({
       host:   'smtp.gmail.com',
@@ -447,12 +499,21 @@ app.get('/api/debug-email', async (req, res) => {
       html:    '<p>Debug test from Factory Monitor Pro</p>'
     });
 
-    console.log('✅ Debug email sent:', info.messageId);
     res.json({ ok: true, messageId: info.messageId, accepted: info.accepted });
-
   } catch(err) {
     console.error('❌ DEBUG ERROR:', err.message);
     res.json({ ok: false, error: err.message });
+  }
+});
+
+// ✅ NEW: Force-clear cooldown for testing (so you can re-trigger alerts immediately)
+app.post('/api/reset-cooldown', async (req, res) => {
+  try {
+    await AlertCooldown.deleteMany({});
+    console.log('✅ All alert cooldowns reset');
+    res.json({ ok: true, message: 'Cooldowns cleared — next threshold breach will send email immediately' });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
   }
 });
 
