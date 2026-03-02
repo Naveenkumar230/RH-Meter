@@ -33,45 +33,60 @@
       </div>
     </div>
 
-    <!-- Meter Selector Bar -->
-    <div style="
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      background: #ffffff;
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 16px 28px;
-      margin-bottom: 24px;
-      box-shadow: var(--shadow);
-    ">
-      <div style="display:flex; align-items:center; gap:12px;">
-        <span style="font-size:1.1rem;">🏭</span>
-        <span style="font-size:0.8rem; font-weight:700; text-transform:uppercase;
-                     letter-spacing:1.2px; color:var(--text-muted);">Monitoring Unit</span>
-      </div>
-      <div style="display:flex; align-items:center; gap:12px;">
-        <label style="font-size:0.875rem; font-weight:600; color:var(--text-dim);">Select Meter:</label>
-        <select id="meterSelect" onchange="switchMeter()" style="
-          padding: 10px 20px;
-          background: var(--bg);
-          border: 1px solid var(--accent-blue);
-          border-radius: 8px;
-          color: var(--text);
-          font-family: 'JetBrains Mono', monospace;
-          font-size: 0.875rem;
-          font-weight: 600;
-          cursor: pointer;
-          outline: none;
-          transition: border-color 0.3s ease, box-shadow 0.3s ease;
-        "
-        onmouseover="this.style.boxShadow='0 0 0 3px rgba(59,130,246,0.2)'"
-        onmouseout="this.style.boxShadow='none'">
-          <option value="Meter_01">⚙️ Unit 01 — Main Floor</option>
-          <option value="Meter_02">⚙️ Unit 02 — Secondary</option>
-        </select>
-      </div>
-    </div>
+   <!-- Meter Selector Bar -->
+<div style="
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 28px;
+  margin-bottom: 24px;
+  box-shadow: var(--shadow);
+  flex-wrap: wrap;
+  gap: 12px;
+">
+  <div style="display:flex; align-items:center; gap:12px;">
+    <span style="font-size:1.1rem;">🏭</span>
+    <span style="font-size:0.8rem; font-weight:700; text-transform:uppercase;
+                 letter-spacing:1.2px; color:var(--text-muted);">Monitoring Unit</span>
+  </div>
+  <div style="display:flex; align-items:center; gap:12px; flex:1; justify-content:flex-end;">
+    <label style="font-size:0.875rem; font-weight:600; color:var(--text-dim); white-space:nowrap;">Select Meter:</label>
+    <select id="meterSelect" onchange="switchMeter()" style="
+      padding: 10px 20px;
+      background: var(--bg);
+      border: 1px solid var(--accent-blue);
+      border-radius: 8px;
+      color: var(--text);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.875rem;
+      font-weight: 600;
+      cursor: pointer;
+      outline: none;
+      transition: border-color 0.3s ease, box-shadow 0.3s ease;
+      width: 100%;
+      max-width: 260px;
+    "
+    onmouseover="this.style.boxShadow='0 0 0 3px rgba(59,130,246,0.2)'"
+    onmouseout="this.style.boxShadow='none'">
+      <option value="Meter_01">⚙️ Unit 01 — Main Floor</option>
+      <option value="Meter_02">⚙️ Unit 02 — Secondary</option>
+    </select>
+  </div>
+</div>
+
+<!-- Mobile fix — paste this inside your <style> tag or style.css -->
+<style>
+@media (max-width: 600px) {
+  /* Meter selector stacks vertically on mobile */
+  #meterSelect {
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+}
+</style>
 
     <!-- ── Threshold Panel — Temperature ── -->
    <!-- ── Alert Threshold Settings Panel ── -->
