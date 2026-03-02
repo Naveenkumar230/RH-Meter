@@ -1,13 +1,13 @@
-const express    = require('express');
-const mongoose   = require('mongoose');
-const cron       = require('node-cron');
-const axios      = require('axios');
-const nodemailer = require('nodemailer');
-const cors       = require('cors');
+const express  = require('express');
+const mongoose = require('mongoose');
+const cron     = require('node-cron');
+const axios    = require('axios');
+const cors     = require('cors');
+const { Resend } = require('resend');
 
 const app = express();
 
-// ── CORS ────────────────────────────────────────────────────
+// ── CORS ─────────────────────────────────────────────────────
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -16,15 +16,15 @@ app.use((req, res, next) => {
   next();
 });
 app.use(cors());
-app.use(express.json());         // ✅ FIX: replaced body-parser with built-in express.json()
+app.use(express.json());
 app.use(express.static('.'));
 
-// ── MongoDB ─────────────────────────────────────────────────
+// ── MongoDB ──────────────────────────────────────────────────
 mongoose.connect("mongodb+srv://factory_admin:factory_admin1234@cluster0.zk0gm.mongodb.net/FactoryData?retryWrites=true&w=majority")
   .then(() => console.log("✅ MongoDB Connected"))
   .catch(err => console.error("❌ MongoDB Error:", err));
 
-// ── Schemas ─────────────────────────────────────────────────
+// ── Schemas ──────────────────────────────────────────────────
 const SensorData = mongoose.model('SensorData', new mongoose.Schema({
   deviceId:    { type: String, default: 'Meter_01' },
   temperature: Number,
@@ -34,77 +34,47 @@ const SensorData = mongoose.model('SensorData', new mongoose.Schema({
   timestamp:   { type: Date, default: Date.now }
 }));
 
-const SettingsSchema = new mongoose.Schema({
+const Settings = mongoose.model('Settings', new mongoose.Schema({
   key:           { type: String, default: 'global', unique: true },
   tempThreshold: { type: Number, default: 35 },
   humThreshold:  { type: Number, default: 70 },
   recipients:    { type: String, default: '' },
-  senderEmail:   { type: String, default: 'threedprinterdataaquarelle@gmail.com' },
-  senderAppPass: { type: String, default: 'akqk cuwt tdmp myre' },
-}, { timestamps: true });
+}, { timestamps: true }));
 
-const Settings = mongoose.model('Settings', SettingsSchema);
-
-// ── Seed default settings ───────────────────────────────────
-async function seedSettings() {
-  try {
-    const existing = await Settings.findOne({ key: 'global' });
-    if (!existing) {
-      await Settings.create({
-        key:           'global',
-        tempThreshold: 35,
-        humThreshold:  70,
-        recipients:    '',
-        senderEmail:   'threedprinterdataaquarelle@gmail.com',
-        senderAppPass: 'akqk cuwt tdmp myre',
-      });
-      console.log('✅ Default settings seeded');
-    } else {
-      if (!existing.senderEmail || !existing.senderAppPass) {
-        await Settings.findOneAndUpdate(
-          { key: 'global' },
-          { $set: {
-            senderEmail:   'threedprinterdataaquarelle@gmail.com',
-            senderAppPass: 'akqk cuwt tdmp myre',
-          }}
-        );
-        console.log('✅ Sender credentials updated');
-      }
-    }
-  } catch (err) {
-    console.error('❌ Seed error:', err.message);
-  }
-}
-
-mongoose.connection.once('open', () => { seedSettings(); });
-
-// ── Cooldown tracker ────────────────────────────────────────
-// ✅ FIX: Cooldown is now persisted in MongoDB so Render restarts don't reset it
-// We use a simple in-memory cache backed by DB timestamps on the Settings doc
-
-const SettingsCooldownSchema = new mongoose.Schema({
-  key:       { type: String, unique: true },
+const AlertCooldown = mongoose.model('AlertCooldown', new mongoose.Schema({
+  key:        { type: String, unique: true },
   lastSentAt: { type: Date, default: null },
-});
-const AlertCooldown = mongoose.model('AlertCooldown', SettingsCooldownSchema);
+}));
 
 const COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
 
+// ── Seed defaults ────────────────────────────────────────────
+mongoose.connection.once('open', async () => {
+  try {
+    const existing = await Settings.findOne({ key: 'global' });
+    if (!existing) {
+      await Settings.create({ key: 'global', tempThreshold: 35, humThreshold: 70, recipients: '' });
+      console.log('✅ Default settings seeded');
+    }
+  } catch (err) { console.error('❌ Seed error:', err.message); }
+});
+
+// ── Cooldown helpers ─────────────────────────────────────────
 async function canSendAlert(key) {
-  let record = await AlertCooldown.findOne({ key });
-  if (!record) return true;
-  return (Date.now() - new Date(record.lastSentAt).getTime()) > COOLDOWN_MS;
+  try {
+    const r = await AlertCooldown.findOne({ key });
+    if (!r || !r.lastSentAt) return true;
+    return (Date.now() - new Date(r.lastSentAt).getTime()) > COOLDOWN_MS;
+  } catch { return true; }
 }
 
 async function markAlertSent(key) {
   await AlertCooldown.findOneAndUpdate(
-    { key },
-    { $set: { lastSentAt: new Date() } },
-    { upsert: true, new: true }
+    { key }, { $set: { lastSentAt: new Date() } }, { upsert: true, new: true }
   );
 }
 
-// ── Email Templates ─────────────────────────────────────────
+// ── Email Templates ──────────────────────────────────────────
 function tempEmailHTML(device, currentTemp, threshold) {
   const exceededBy = (currentTemp - threshold).toFixed(1);
   const time = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
@@ -115,7 +85,7 @@ function tempEmailHTML(device, currentTemp, threshold) {
       <h1 style="color:white;margin:8px 0 4px;font-size:1.4rem;font-weight:700;">Temperature Alert</h1>
       <p style="color:rgba(255,255,255,0.85);margin:0;font-size:0.875rem;">Factory Monitor Pro — ${device}</p>
     </div>
-    <div style="background:#ffffff;padding:28px 28px 0;">
+    <div style="background:#fff;padding:28px 28px 0;">
       <div style="background:#fff5f5;border:1px solid #fecaca;border-radius:12px;padding:24px;text-align:center;">
         <p style="color:#9ca3af;font-size:0.75rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:0 0 6px;">Current Temperature</p>
         <p style="color:#ef4444;font-size:3.2rem;font-weight:800;margin:0;line-height:1;">${currentTemp.toFixed(1)}°C</p>
@@ -124,10 +94,10 @@ function tempEmailHTML(device, currentTemp, threshold) {
         </div>
       </div>
     </div>
-    <div style="background:#ffffff;padding:20px 28px;">
+    <div style="background:#fff;padding:20px 28px;">
       <table style="width:100%;border-collapse:collapse;font-size:0.875rem;">
         <tr style="border-bottom:1px solid #f1f5f9;">
-          <td style="padding:12px 4px;color:#64748b;font-weight:600;">⚠️ Threshold Set</td>
+          <td style="padding:12px 4px;color:#64748b;font-weight:600;">⚠️ Threshold</td>
           <td style="padding:12px 4px;color:#1e293b;font-weight:700;text-align:right;">${threshold} °C</td>
         </tr>
         <tr style="border-bottom:1px solid #f1f5f9;">
@@ -157,7 +127,7 @@ function humEmailHTML(device, currentHum, threshold) {
       <h1 style="color:white;margin:8px 0 4px;font-size:1.4rem;font-weight:700;">Humidity Alert</h1>
       <p style="color:rgba(255,255,255,0.85);margin:0;font-size:0.875rem;">Factory Monitor Pro — ${device}</p>
     </div>
-    <div style="background:#ffffff;padding:28px 28px 0;">
+    <div style="background:#fff;padding:28px 28px 0;">
       <div style="background:#f0fdff;border:1px solid #a5f3fc;border-radius:12px;padding:24px;text-align:center;">
         <p style="color:#9ca3af;font-size:0.75rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:0 0 6px;">Current Humidity</p>
         <p style="color:#0891b2;font-size:3.2rem;font-weight:800;margin:0;line-height:1;">${currentHum.toFixed(1)}%</p>
@@ -166,10 +136,10 @@ function humEmailHTML(device, currentHum, threshold) {
         </div>
       </div>
     </div>
-    <div style="background:#ffffff;padding:20px 28px;">
+    <div style="background:#fff;padding:20px 28px;">
       <table style="width:100%;border-collapse:collapse;font-size:0.875rem;">
         <tr style="border-bottom:1px solid #f1f5f9;">
-          <td style="padding:12px 4px;color:#64748b;font-weight:600;">⚠️ Threshold Set</td>
+          <td style="padding:12px 4px;color:#64748b;font-weight:600;">⚠️ Threshold</td>
           <td style="padding:12px 4px;color:#1e293b;font-weight:700;text-align:right;">${threshold} %</td>
         </tr>
         <tr style="border-bottom:1px solid #f1f5f9;">
@@ -197,10 +167,10 @@ function testEmailHTML(recipients, time) {
       <h1 style="color:white;margin:8px 0 4px;font-size:1.4rem;font-weight:700;">Email Config Working!</h1>
       <p style="color:rgba(255,255,255,0.85);margin:0;font-size:0.875rem;">Factory Monitor Pro — Test Email</p>
     </div>
-    <div style="background:#ffffff;padding:28px;">
+    <div style="background:#fff;padding:28px;">
       <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:24px;text-align:center;">
-        <p style="color:#16a34a;font-size:1rem;font-weight:700;margin:0 0 8px;">Your alert system is ready!</p>
-        <p style="color:#64748b;font-size:0.875rem;margin:0;">You will receive Temperature and Humidity alerts whenever thresholds are exceeded.</p>
+        <p style="color:#16a34a;font-size:1rem;font-weight:700;margin:0 0 8px;">Your alert system is ready! 🎉</p>
+        <p style="color:#64748b;font-size:0.875rem;margin:0;">Temperature & Humidity alerts will fire when thresholds are exceeded.</p>
       </div>
       <table style="width:100%;border-collapse:collapse;font-size:0.875rem;margin-top:16px;">
         <tr style="border-bottom:1px solid #f1f5f9;">
@@ -219,151 +189,116 @@ function testEmailHTML(recipients, time) {
   </div>`;
 }
 
-// ── Send Email core ─────────────────────────────────────────
+// ── Core email sender (Resend HTTPS — works on Render free) ──
 async function sendAlertEmail(subject, htmlBody) {
   try {
-    const settings = await Settings.findOne({ key: 'global' });
+    const settings     = await Settings.findOne({ key: 'global' });
+    const recipientStr = (settings && settings.recipients) || '';
+    const recipients   = recipientStr.split(',').map(e => e.trim()).filter(Boolean);
 
-    const senderEmail  = (settings && settings.senderEmail)   || 'threedprinterdataaquarelle@gmail.com';
-    const senderPass   = (settings && settings.senderAppPass) || 'akqk cuwt tdmp myre';
-    const recipientStr = (settings && settings.recipients)    || '';
-
-    const recipients = recipientStr.split(',').map(e => e.trim()).filter(Boolean);
     if (!recipients.length) {
-      console.warn('⚠️  No recipients configured — skipping email');
+      console.warn('⚠️  No recipients configured');
       return { ok: false, error: 'No recipients configured' };
     }
 
-    console.log(`📧 Sending "${subject}" to: ${recipients.join(', ')}`);
+    const apiKey = process.env.RESEND_API_KEY || 're_RbrVuset_9xsKwycFfn4yRpFNYvx7F8sL';
+    const resend  = new Resend(apiKey);
 
-    const transporter = nodemailer.createTransport({
-      host:   'smtp.gmail.com',
-      port:   587,
-      secure: false,
-      auth:   { user: senderEmail, pass: senderPass },
-      tls:    { rejectUnauthorized: false },
-      connectionTimeout: 15000,
-      greetingTimeout:   15000,
-      socketTimeout:     15000,
-    });
+    console.log(`📧 Sending "${subject}" → ${recipients.join(', ')}`);
 
-    await transporter.verify();
-    console.log('✅ SMTP verified');
-
-    await transporter.sendMail({
-      from:    `"Factory Monitor Pro" <${senderEmail}>`,
-      to:      recipients.join(', '),
-      subject,
+    const { data, error } = await resend.emails.send({
+      from:    'Factory Monitor Pro <onboarding@resend.dev>',
+      to:      recipients,
+      subject: subject,
       html:    htmlBody,
     });
 
-    console.log(`✅ Email sent → ${recipients.join(', ')}`);
-    return { ok: true };
+    if (error) { console.error('❌ Resend error:', error); return { ok: false, error: error.message }; }
+    console.log(`✅ Email sent → Resend ID: ${data.id}`);
+    return { ok: true, id: data.id };
 
   } catch (err) {
-    console.error('❌ Email failed:', err.message);
+    console.error('❌ Email exception:', err.message);
     return { ok: false, error: err.message };
   }
 }
 
-// ── Alert checker ───────────────────────────────────────────
-// ✅ FIX 1: now uses DB-persisted cooldown (survives Render restarts)
-// ✅ FIX 2: called with await in /save-data so errors surface properly
+// ── Alert checker ────────────────────────────────────────────
 async function checkAndAlert(record) {
   try {
     const settings = await Settings.findOne({ key: 'global' });
-    if (!settings) {
-      console.warn('⚠️ No settings found in DB — cannot check alerts');
-      return;
-    }
+    if (!settings) { console.warn('⚠️ No settings in DB'); return; }
 
     const device = record.deviceId || 'Meter_01';
 
-    // ── Temperature alert ──
+    // Temperature check
     if (record.temperature != null) {
-      const key = `${device}_temp`;
-      console.log(`🔍 Checking temp: ${record.temperature}°C vs threshold ${settings.tempThreshold}°C`);
+      console.log(`🔍 Temp: ${record.temperature}°C  vs  threshold: ${settings.tempThreshold}°C`);
       if (record.temperature > settings.tempThreshold) {
-        const ok = await canSendAlert(key);
-        if (ok) {
+        const key = `${device}_temp`;
+        if (await canSendAlert(key)) {
           await markAlertSent(key);
-          console.log(`🌡️ ALERT TRIGGERED: ${record.temperature}°C > ${settings.tempThreshold}°C`);
+          console.log(`🌡️  ALERT TRIGGERED — temp exceeded for ${device}`);
           await sendAlertEmail(
             `🌡️ Temperature Alert — ${device} (${record.temperature.toFixed(1)}°C)`,
             tempEmailHTML(device, record.temperature, settings.tempThreshold)
           );
-        } else {
-          console.log(`⏳ Temp alert suppressed — still in cooldown for ${device}`);
-        }
-      } else {
-        console.log(`✅ Temp OK: ${record.temperature}°C is within threshold`);
-      }
+        } else { console.log(`⏳ Temp cooldown active for ${device}`); }
+      } else { console.log(`✅ Temp within limit`); }
     }
 
-    // ── Humidity alert ──
+    // Humidity check
     if (record.humidity != null) {
-      const key = `${device}_hum`;
-      console.log(`🔍 Checking hum: ${record.humidity}% vs threshold ${settings.humThreshold}%`);
+      console.log(`🔍 Hum: ${record.humidity}%  vs  threshold: ${settings.humThreshold}%`);
       if (record.humidity > settings.humThreshold) {
-        const ok = await canSendAlert(key);
-        if (ok) {
+        const key = `${device}_hum`;
+        if (await canSendAlert(key)) {
           await markAlertSent(key);
-          console.log(`💧 ALERT TRIGGERED: ${record.humidity}% > ${settings.humThreshold}%`);
+          console.log(`💧  ALERT TRIGGERED — hum exceeded for ${device}`);
           await sendAlertEmail(
             `💧 Humidity Alert — ${device} (${record.humidity.toFixed(1)}%)`,
             humEmailHTML(device, record.humidity, settings.humThreshold)
           );
-        } else {
-          console.log(`⏳ Hum alert suppressed — still in cooldown for ${device}`);
-        }
-      } else {
-        console.log(`✅ Hum OK: ${record.humidity}% is within threshold`);
-      }
+        } else { console.log(`⏳ Hum cooldown active for ${device}`); }
+      } else { console.log(`✅ Hum within limit`); }
     }
 
-  } catch (err) {
-    console.error('❌ Alert check error:', err.message);
-  }
+  } catch (err) { console.error('❌ Alert check error:', err.message); }
 }
 
-// ── Keep-Alive Ping ─────────────────────────────────────────
+// ── Keep-alive ping (prevents Render free tier sleep) ────────
 cron.schedule('*/10 * * * *', async () => {
-  try {
-    await axios.get('https://rh-meter-bridge.onrender.com/');
-    console.log('⚡ Self-ping OK');
-  } catch (e) {
-    console.error('Self-ping failed:', e.message);
-  }
+  try { await axios.get('https://rh-meter-bridge.onrender.com/'); console.log('⚡ Self-ping OK'); }
+  catch (e) { console.error('Self-ping failed:', e.message); }
 });
 
-// ── Routes ──────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════
+//  ROUTES
+// ════════════════════════════════════════════════════════════
 
-app.get('/', (req, res) => res.send('Bridge is running ✅'));
+app.get('/', (req, res) => res.send('🚀 Factory Monitor Bridge is running ✅'));
 
-// ✅ FIX 3: await checkAndAlert so errors don't get silently dropped
+// ── Save sensor data + trigger alert check ───────────────────
 app.post('/save-data', async (req, res) => {
   try {
     const data = { ...req.body, deviceId: req.body.deviceId || 'Meter_01' };
     await new SensorData(data).save();
-    console.log("💾 Saved:", data);
-    await checkAndAlert(data);   // ✅ was missing await — alerts were silently failing
-    res.status(200).send("Saved");
-  } catch (err) {
-    console.error("❌ Save Error:", err);
-    res.status(500).send("Error");
-  }
+    console.log('💾 Saved:', data);
+    await checkAndAlert(data);
+    res.status(200).send('Saved');
+  } catch (err) { console.error('❌ Save Error:', err); res.status(500).send('Error'); }
 });
 
+// ── Latest sensor reading ────────────────────────────────────
 app.get('/api/data', async (req, res) => {
   try {
     const deviceId = req.query.deviceId || 'Meter_01';
     const records  = await SensorData.find({ deviceId }).sort({ timestamp: -1 }).limit(1);
     res.json(records[0] || {});
-  } catch (err) {
-    res.status(500).send("Error");
-  }
+  } catch (err) { res.status(500).send('Error'); }
 });
 
+// ── Get settings ─────────────────────────────────────────────
 app.get('/api/settings', async (req, res) => {
   try {
     let s = await Settings.findOne({ key: 'global' });
@@ -372,149 +307,83 @@ app.get('/api/settings', async (req, res) => {
       tempThreshold: s.tempThreshold,
       humThreshold:  s.humThreshold,
       recipients:    s.recipients,
-      senderEmail:   s.senderEmail,
-      appPassSet:    !!s.senderAppPass,
     });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── Save settings ────────────────────────────────────────────
 app.post('/api/settings', async (req, res) => {
   try {
-    const allowed = ['tempThreshold', 'humThreshold', 'recipients', 'senderEmail', 'senderAppPass'];
+    const allowed = ['tempThreshold', 'humThreshold', 'recipients'];
     const update  = {};
     allowed.forEach(k => { if (req.body[k] !== undefined) update[k] = req.body[k]; });
-    if (update.senderAppPass === '') delete update.senderAppPass;
-
-    // ✅ FIX 4: Parse thresholds as numbers — if frontend sends a string "30", 
-    //    the DB stores a string and "35.5 > '35'" comparison fails unpredictably
     if (update.tempThreshold !== undefined) update.tempThreshold = parseFloat(update.tempThreshold);
     if (update.humThreshold  !== undefined) update.humThreshold  = parseFloat(update.humThreshold);
 
-    await Settings.findOneAndUpdate(
-      { key: 'global' },
-      { $set: update },
-      { upsert: true, new: true }
+    const result = await Settings.findOneAndUpdate(
+      { key: 'global' }, { $set: update }, { upsert: true, new: true }
     );
     console.log('✅ Settings updated:', update);
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+    res.json({ ok: true, settings: { tempThreshold: result.tempThreshold, humThreshold: result.humThreshold, recipients: result.recipients } });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ✅ FIX 5: Test email — now reads recipients from DB if not in body,
-//    and logs clearly what's happening
+// ── Send test email ──────────────────────────────────────────
 app.post('/api/test-email', async (req, res) => {
   try {
-    const settings = await Settings.findOne({ key: 'global' });
+    const settings   = await Settings.findOne({ key: 'global' });
+    let recipientStr = (req.body.recipients || (settings && settings.recipients) || '').trim();
 
-    // Accept recipients from body OR fall back to what's saved in DB
-    let recipients = req.body.recipients;
-    if (!recipients || recipients.trim() === '') {
-      recipients = (settings && settings.recipients) || '';
+    if (!recipientStr) {
+      return res.status(400).json({ ok: false, error: 'No recipients. Add at least one email and save settings first.' });
     }
 
-    if (!recipients || recipients.trim() === '') {
-      console.warn('⚠️ Test email blocked — no recipients');
-      return res.status(400).json({ ok: false, error: 'No recipients configured. Please add at least one email and save settings first.' });
-    }
+    const apiKey = process.env.RESEND_API_KEY || 're_RbrVuset_9xsKwycFfn4yRpFNYvx7F8sL';
+    const resend  = new Resend(apiKey);
 
-    const senderEmail = (settings && settings.senderEmail) || 'threedprinterdataaquarelle@gmail.com';
-    const senderPass  = (settings && settings.senderAppPass) || 'akqk cuwt tdmp myre';
-
-    const time = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+    const recipients = recipientStr.split(',').map(e => e.trim()).filter(Boolean);
+    const time       = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
 
     console.log('📧 Test email → recipients:', recipients);
-    console.log('📧 Sender:', senderEmail);
-    console.log('📧 App password length:', senderPass?.length);
 
-    const transporter = nodemailer.createTransport({
-      host:   'smtp.gmail.com',
-      port:   587,
-      secure: false,
-      auth:   { user: senderEmail, pass: senderPass },
-      tls:    { rejectUnauthorized: false },
-      connectionTimeout: 15000,
-      greetingTimeout:   15000,
-      socketTimeout:     15000,
-    });
-
-    await transporter.verify();
-    console.log('✅ SMTP verified for test email');
-
-    await transporter.sendMail({
-      from:    `"Factory Monitor Pro" <${senderEmail}>`,
+    const { data, error } = await resend.emails.send({
+      from:    'Factory Monitor Pro <onboarding@resend.dev>',
       to:      recipients,
       subject: '✅ Factory Monitor Pro — Test Email',
-      html:    testEmailHTML(recipients, time)
+      html:    testEmailHTML(recipientStr, time),
     });
 
-    console.log('✅ Test email sent to:', recipients);
-    res.json({ ok: true });
+    if (error) { console.error('❌ Resend error:', error); return res.status(500).json({ ok: false, error: error.message }); }
+
+    console.log('✅ Test email sent → ID:', data.id);
+    res.json({ ok: true, id: data.id });
 
   } catch (err) {
-    console.error('❌ Test email error:', err.message);
+    console.error('❌ Test email exception:', err.message);
     res.status(500).json({ ok: false, error: err.message });
   }
 });
 
-// ── Debug routes ─────────────────────────────────────────────
-app.get('/api/debug-settings', async (req, res) => {
-  const s = await Settings.findOne({ key: 'global' });
-  res.json({
-    senderEmail:    s?.senderEmail,
-    passLength:     s?.senderAppPass?.length,
-    recipients:     s?.recipients,
-    tempThreshold:  s?.tempThreshold,
-    humThreshold:   s?.humThreshold,
-    thresholdTypes: {
-      temp: typeof s?.tempThreshold,
-      hum:  typeof s?.humThreshold,
-    }
-  });
-});
-
-app.get('/api/debug-email', async (req, res) => {
-  try {
-    const settings = await Settings.findOne({ key: 'global' });
-
-    const transporter = nodemailer.createTransport({
-      host:   'smtp.gmail.com',
-      port:   587,
-      secure: false,
-      auth:   { user: settings.senderEmail, pass: settings.senderAppPass },
-      tls:    { rejectUnauthorized: false },
-      connectionTimeout: 15000,
-      greetingTimeout:   15000,
-      socketTimeout:     15000,
-    });
-
-    await transporter.verify();
-    const info = await transporter.sendMail({
-      from:    `"Factory Monitor" <${settings.senderEmail}>`,
-      to:      settings.recipients,
-      subject: '✅ Debug Test Email',
-      html:    '<p>Debug test from Factory Monitor Pro</p>'
-    });
-
-    res.json({ ok: true, messageId: info.messageId, accepted: info.accepted });
-  } catch(err) {
-    console.error('❌ DEBUG ERROR:', err.message);
-    res.json({ ok: false, error: err.message });
-  }
-});
-
-// ✅ NEW: Force-clear cooldown for testing (so you can re-trigger alerts immediately)
+// ── Reset cooldowns (for testing) ────────────────────────────
 app.post('/api/reset-cooldown', async (req, res) => {
   try {
     await AlertCooldown.deleteMany({});
-    console.log('✅ All alert cooldowns reset');
-    res.json({ ok: true, message: 'Cooldowns cleared — next threshold breach will send email immediately' });
-  } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
-  }
+    console.log('✅ Cooldowns reset');
+    res.json({ ok: true, message: 'All cooldowns cleared. Next threshold breach will fire immediately.' });
+  } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
+});
+
+// ── Debug ─────────────────────────────────────────────────────
+app.get('/api/debug', async (req, res) => {
+  const s = await Settings.findOne({ key: 'global' });
+  const cooldowns = await AlertCooldown.find({});
+  res.json({
+    recipients:    s?.recipients,
+    tempThreshold: s?.tempThreshold,
+    humThreshold:  s?.humThreshold,
+    resendKeySet:  !!(process.env.RESEND_API_KEY || 're_RbrVuset_9xsKwycFfn4yRpFNYvx7F8sL'),
+    cooldowns:     cooldowns,
+  });
 });
 
 const PORT = process.env.PORT || 3000;
