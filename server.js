@@ -74,8 +74,6 @@ async function markAlertSent(key) {
   );
 }
 
-const DASHBOARD_URL = 'https://rh-meter-bridge.onrender.com';
-
 
 // ── Email Templates ──────────────────────────────────────────
 function tempEmailHTML(device, currentTemp, threshold, currentHum) {
@@ -392,6 +390,189 @@ async function checkAndAlert(record) {
 cron.schedule('*/10 * * * *', async () => {
   try { await axios.get('https://rh-meter-bridge.onrender.com/'); console.log('⚡ Self-ping OK'); }
   catch (e) { console.error('Self-ping failed:', e.message); }
+});
+
+
+// ============================================================
+//  ADD THIS ROUTE + TEMPLATE TO server.js
+// ============================================================
+
+const DASHBOARD_URL = 'https://rh-meter-bridge.onrender.com';
+const LOCATION_NAME = 'CT-PAT Area';
+
+function testAlertEmailHTML(device, temp, hum, tempThreshold, humThreshold, time) {
+  const tempExceeded = temp > tempThreshold;
+  const humExceeded  = hum  > humThreshold;
+
+  // ── Dynamic header ────────────────────────────────────────
+  const headerGradient = (tempExceeded && humExceeded)
+    ? 'linear-gradient(135deg,#ef4444,#f97316)'
+    : tempExceeded
+      ? 'linear-gradient(135deg,#ef4444,#f97316)'
+      : humExceeded
+        ? 'linear-gradient(135deg,#06b6d4,#3b82f6)'
+        : 'linear-gradient(135deg,#10b981,#3b82f6)';
+
+  const headerIcon  = (tempExceeded && humExceeded) ? '⚠️' : tempExceeded ? '🌡️' : humExceeded ? '💧' : '✅';
+  const headerTitle = (tempExceeded && humExceeded)
+    ? 'Temp & Humidity Alert'
+    : tempExceeded ? 'Temperature Alert'
+    : humExceeded  ? 'Humidity Alert'
+    : 'All Values Normal — Test Email';
+
+  // ── Card styles ───────────────────────────────────────────
+  const tempCard = tempExceeded ? {
+    bg: '#fff5f5', border: '#ef4444', valueColor: '#ef4444',
+    badgeBg: '#ef4444',
+    badge: `▲ +${(temp - tempThreshold).toFixed(1)}°C over limit`,
+    note: `Threshold: ${tempThreshold}°C`, noteColor: '#ef4444'
+  } : {
+    bg: '#f0fdf4', border: '#22c55e', valueColor: '#16a34a',
+    badgeBg: '#22c55e', badge: '✓ Within Normal Range',
+    note: 'Status: Normal', noteColor: '#16a34a'
+  };
+
+  const humCard = humExceeded ? {
+    bg: '#f0fdff', border: '#06b6d4', valueColor: '#0891b2',
+    badgeBg: '#0891b2',
+    badge: `▲ +${(hum - humThreshold).toFixed(1)}% over limit`,
+    note: `Threshold: ${humThreshold}%`, noteColor: '#0891b2'
+  } : {
+    bg: '#f0fdf4', border: '#22c55e', valueColor: '#16a34a',
+    badgeBg: '#22c55e', badge: '✓ Within Normal Range',
+    note: 'Status: Normal', noteColor: '#16a34a'
+  };
+
+  return `
+  <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:540px;margin:0 auto;border-radius:18px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.14);">
+
+    <!-- HEADER -->
+    <div style="background:${headerGradient};padding:32px 28px 24px;text-align:center;">
+      <div style="font-size:2.8rem;margin-bottom:6px;">${headerIcon}</div>
+      <h1 style="color:white;margin:0 0 4px;font-size:1.4rem;font-weight:700;">${headerTitle}</h1>
+      <p style="color:rgba(255,255,255,0.85);margin:0;font-size:0.85rem;">Factory Monitor Pro — ${device}</p>
+      <div style="display:inline-block;background:rgba(255,255,255,0.2);color:white;border-radius:20px;padding:4px 14px;font-size:0.75rem;font-weight:700;margin-top:8px;letter-spacing:0.5px;">
+        📍 ${LOCATION_NAME}
+      </div>
+    </div>
+
+    <!-- READING CARDS -->
+    <div style="background:#f8fafc;padding:24px 20px 8px;">
+      <table width="100%" cellpadding="0" cellspacing="0"><tr>
+
+        <!-- TEMP CARD -->
+        <td width="50%" style="padding:0 8px 16px 0;">
+          <div style="background:${tempCard.bg};border:2px solid ${tempCard.border};border-radius:14px;padding:20px 14px;text-align:center;">
+            <div style="font-size:1.6rem;margin-bottom:4px;">🌡️</div>
+            <p style="color:#9ca3af;font-size:0.68rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:0 0 6px;">Temperature</p>
+            <p style="color:${tempCard.valueColor};font-size:2.2rem;font-weight:800;margin:0;line-height:1;">${temp.toFixed(1)}°C</p>
+            <div style="display:inline-block;background:${tempCard.badgeBg};color:white;border-radius:20px;padding:3px 10px;font-size:0.70rem;font-weight:700;margin-top:8px;">
+              ${tempCard.badge}
+            </div>
+            <p style="color:${tempCard.noteColor};font-size:0.70rem;font-weight:600;margin:6px 0 0;">${tempCard.note}</p>
+          </div>
+        </td>
+
+        <!-- HUM CARD -->
+        <td width="50%" style="padding:0 0 16px 8px;">
+          <div style="background:${humCard.bg};border:2px solid ${humCard.border};border-radius:14px;padding:20px 14px;text-align:center;">
+            <div style="font-size:1.6rem;margin-bottom:4px;">💧</div>
+            <p style="color:#9ca3af;font-size:0.68rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:0 0 6px;">Humidity</p>
+            <p style="color:${humCard.valueColor};font-size:2.2rem;font-weight:800;margin:0;line-height:1;">${hum.toFixed(1)}%</p>
+            <div style="display:inline-block;background:${humCard.badgeBg};color:white;border-radius:20px;padding:3px 10px;font-size:0.70rem;font-weight:700;margin-top:8px;">
+              ${humCard.badge}
+            </div>
+            <p style="color:${humCard.noteColor};font-size:0.70rem;font-weight:600;margin:6px 0 0;">${humCard.note}</p>
+          </div>
+        </td>
+
+      </tr></table>
+    </div>
+
+    <!-- DETAILS TABLE -->
+    <div style="background:#ffffff;padding:4px 28px 20px;">
+      <table style="width:100%;border-collapse:collapse;font-size:0.875rem;">
+        <tr style="border-bottom:1px solid #f1f5f9;">
+          <td style="padding:11px 4px;color:#64748b;font-weight:600;">📍 Location</td>
+          <td style="padding:11px 4px;color:#1e293b;font-weight:700;text-align:right;">${LOCATION_NAME}</td>
+        </tr>
+        <tr style="border-bottom:1px solid #f1f5f9;">
+          <td style="padding:11px 4px;color:#64748b;font-weight:600;">🏭 Device</td>
+          <td style="padding:11px 4px;color:#1e293b;font-weight:700;text-align:right;">${device}</td>
+        </tr>
+        <tr style="border-bottom:1px solid #f1f5f9;">
+          <td style="padding:11px 4px;color:#64748b;font-weight:600;">🕐 Alert Time</td>
+          <td style="padding:11px 4px;color:#1e293b;font-weight:700;text-align:right;">${time}</td>
+        </tr>
+        <tr>
+          <td style="padding:11px 4px;color:#64748b;font-weight:600;">⏰ Next Alert</td>
+          <td style="padding:11px 4px;color:#1e293b;font-weight:700;text-align:right;">After 1 hour cooldown</td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- DASHBOARD BUTTON -->
+    <div style="background:#ffffff;padding:0 28px 28px;text-align:center;">
+      <a href="${DASHBOARD_URL}" target="_blank"
+         style="display:inline-block;background:${headerGradient};color:white;text-decoration:none;padding:13px 32px;border-radius:10px;font-size:0.9rem;font-weight:700;letter-spacing:0.3px;box-shadow:0 4px 14px rgba(0,0,0,0.15);">
+        📊 Open Live Dashboard →
+      </a>
+      <p style="color:#94a3b8;font-size:0.72rem;margin:10px 0 0;">${DASHBOARD_URL}</p>
+    </div>
+
+    <!-- FOOTER -->
+    <div style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:14px 28px;text-align:center;">
+      <p style="color:#64748b;font-size:0.75rem;font-weight:600;margin:0;">
+        Factory Monitor Pro · Aquarelle Clothing Ltd · ${LOCATION_NAME}
+      </p>
+    </div>
+
+  </div>`;
+}
+
+// ── Route ─────────────────────────────────────────────────────
+app.post('/api/test-alert-email', async (req, res) => {
+  try {
+    const settings = await Settings.findOne({ key: 'global' });
+    if (!settings) return res.status(500).json({ ok: false, error: 'No settings in DB' });
+
+    const recipientStr = (req.body.recipients || settings.recipients || '').trim();
+    if (!recipientStr) return res.status(400).json({ ok: false, error: 'No recipients configured' });
+
+    // ── Fetch latest REAL sensor reading ─────────────────────
+    const deviceId = req.body.deviceId || 'Meter_01';
+    const latest   = await SensorData.findOne({ deviceId }).sort({ timestamp: -1 });
+
+    const temp = latest?.temperature ?? 36.5;
+    const hum  = latest?.humidity    ?? 72.0;
+    const time = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+
+    const apiKey     = process.env.RESEND_API_KEY || 're_RbrVuset_9xsKwycFfn4yRpFNYvx7F8sL';
+    const resend     = new Resend(apiKey);
+    const recipients = recipientStr.split(',').map(e => e.trim()).filter(Boolean);
+
+    console.log(`📧 Test alert email → ${recipients.join(', ')}`);
+    console.log(`📡 Live data used  → Temp: ${temp}°C  |  Hum: ${hum}%`);
+
+    const { data, error } = await resend.emails.send({
+      from:    'Factory Monitor Pro <onboarding@resend.dev>',
+      to:      recipients,
+      subject: `🔔 Test Alert — ${LOCATION_NAME} | ${deviceId} | T:${temp.toFixed(1)}°C  H:${hum.toFixed(1)}%`,
+      html:    testAlertEmailHTML(deviceId, temp, hum, settings.tempThreshold, settings.humThreshold, time),
+    });
+
+    if (error) {
+      console.error('❌ Resend error:', error);
+      return res.status(500).json({ ok: false, error: error.message });
+    }
+
+    console.log('✅ Test alert email sent → Resend ID:', data.id);
+    res.json({ ok: true, id: data.id, usedData: { temp, hum, deviceId } });
+
+  } catch (err) {
+    console.error('❌ Test alert email error:', err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
 });
 
 // ════════════════════════════════════════════════════════════
