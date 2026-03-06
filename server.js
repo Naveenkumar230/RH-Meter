@@ -593,4 +593,4 @@ app.get('/api/debug', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`🚀 Bridge running on port ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Bridge running on port ${PORT}`)); 
