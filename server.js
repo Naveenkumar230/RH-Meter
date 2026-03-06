@@ -473,10 +473,10 @@ app.post('/save-data', async (req, res) => {
 // ── Latest sensor reading ─────────────────────────────────────
 app.get('/api/data', async (req, res) => {
   try {
-    const deviceId = req.query.deviceId || 'Meter_01';
-    const records  = await SensorData.find({ deviceId }).sort({ timestamp: -1 }).limit(1);
+    // Queries MongoDB, NOT ThingsBoard
+    const records = await SensorData.find({ deviceId }).sort({ timestamp: -1 }).limit(1);
     res.json(records[0] || {});
-  } catch (err) { res.status(500).send('Error'); }
+  } catch (err) { console.error('❌ Data fetch error:', err); res.status(500).send('Error'); }
 });
 
 // ── Get settings ──────────────────────────────────────────────
@@ -590,6 +590,17 @@ app.get('/api/debug', async (req, res) => {
     brevoKeySet:   !!(process.env.BREVO_API_KEY || BREVO_API_KEY),
     cooldowns:     cooldowns,
   });
+});
+
+app.get('/api/history', async (req, res) => {
+  try {
+    const records = await SensorData.find({}).sort({ timestamp: 1 }).limit(1000);
+    res.json(records.map(r => ({
+      timestamp: r.timestamp,
+      temp: r.temperature,
+      hum: r.humidity
+    })));
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 const PORT = process.env.PORT || 3000;
