@@ -148,261 +148,458 @@ function tempEmailHTML(device, currentTemp, threshold, currentHum) {
   const time       = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
   const humOk      = currentHum != null;
 
-  return `
-  <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:540px;margin:0 auto;border-radius:18px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.14);">
-    <div style="background:linear-gradient(135deg,#ef4444,#f97316);padding:32px 28px 24px;text-align:center;">
-      <div style="font-size:2.8rem;margin-bottom:6px;">🌡️</div>
-      <h1 style="color:white;margin:0 0 4px;font-size:1.4rem;font-weight:700;">Temperature Alert</h1>
-      <p style="color:rgba(255,255,255,0.85);margin:0;font-size:0.85rem;">Factory Monitor Pro — ${device}</p>
-      <div style="display:inline-block;background:rgba(255,255,255,0.2);color:white;border-radius:20px;padding:4px 14px;font-size:0.75rem;font-weight:700;margin-top:8px;">📍 ${LOCATION_NAME}</div>
-    </div>
-    <div style="background:#f8fafc;padding:24px 24px 8px;">
-      <table width="100%" cellpadding="0" cellspacing="0"><tr>
-        <td width="50%" style="padding:0 8px 16px 0;">
-          <div style="background:#fff5f5;border:2px solid #ef4444;border-radius:14px;padding:20px 16px;text-align:center;">
-            <div style="font-size:1.4rem;margin-bottom:4px;">🌡️</div>
-            <p style="color:#9ca3af;font-size:0.7rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:0 0 6px;">Temperature</p>
-            <p style="color:#ef4444;font-size:2.4rem;font-weight:800;margin:0;line-height:1;">${currentTemp.toFixed(1)}°C</p>
-            <div style="display:inline-block;background:#ef4444;color:white;border-radius:20px;padding:3px 12px;font-size:0.72rem;font-weight:700;margin-top:8px;">▲ +${exceededBy}°C over limit</div>
-            <p style="color:#ef4444;font-size:0.72rem;font-weight:600;margin:6px 0 0;">Threshold: ${threshold}°C</p>
-          </div>
+  const header = `
+    <table width="100%" cellpadding="0" cellspacing="0"><tr>
+      <td>
+        <p style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:2px;
+                  text-transform:uppercase;color:rgba(255,255,255,0.6);">THRESHOLD BREACH</p>
+        <h1 style="margin:0 0 6px;font-size:22px;font-weight:800;color:#ffffff;line-height:1.2;">
+          Temperature Alert
+        </h1>
+        <p style="margin:0;font-size:13px;color:rgba(255,255,255,0.75);">
+          Device <strong style="color:#fff;">${device}</strong>
+          &nbsp;·&nbsp; Recorded at ${time}
+        </p>
+      </td>
+      <td align="right" style="vertical-align:top;">
+        <div style="background:rgba(255,255,255,0.15);border-radius:6px;
+                    padding:10px 16px;text-align:center;min-width:80px;">
+          <p style="margin:0;font-size:28px;font-weight:900;color:#ffffff;line-height:1;">
+            ${currentTemp.toFixed(1)}<span style="font-size:16px;">°C</span>
+          </p>
+          <p style="margin:4px 0 0;font-size:10px;font-weight:700;letter-spacing:1px;
+                    text-transform:uppercase;color:rgba(255,255,255,0.7);">Current</p>
+        </div>
+      </td>
+    </tr></table>`;
+
+  const body = `
+    <!-- Alert banner -->
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+      <tr>
+        <td style="background:#fff5f5;border-left:4px solid #ef4444;border-radius:0 6px 6px 0;
+                   padding:14px 18px;">
+          <p style="margin:0;font-size:13px;color:#7f1d1d;font-weight:600;">
+            &#9650;&nbsp; Temperature exceeded the configured threshold of
+            <strong>${threshold}°C</strong> by <strong>+${exceededBy}°C</strong>.
+            Immediate attention may be required.
+          </p>
         </td>
-        <td width="50%" style="padding:0 0 16px 8px;">
-          <div style="background:#f0fdf4;border:2px solid #22c55e;border-radius:14px;padding:20px 16px;text-align:center;">
-            <div style="font-size:1.4rem;margin-bottom:4px;">💧</div>
-            <p style="color:#9ca3af;font-size:0.7rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:0 0 6px;">Humidity</p>
-            <p style="color:#16a34a;font-size:2.4rem;font-weight:800;margin:0;line-height:1;">${humOk ? currentHum.toFixed(1)+'%' : '--'}</p>
-            <div style="display:inline-block;background:#22c55e;color:white;border-radius:20px;padding:3px 12px;font-size:0.72rem;font-weight:700;margin-top:8px;">✓ Within Normal Range</div>
-            <p style="color:#16a34a;font-size:0.72rem;font-weight:600;margin:6px 0 0;">Status: Normal</p>
-          </div>
-        </td>
-      </tr></table>
-    </div>
-    <div style="background:#ffffff;padding:4px 28px 20px;">
-      <table style="width:100%;border-collapse:collapse;font-size:0.875rem;">
-        <tr style="border-bottom:1px solid #f1f5f9;">
-          <td style="padding:11px 4px;color:#64748b;font-weight:600;">📍 Location</td>
-          <td style="padding:11px 4px;color:#1e293b;font-weight:700;text-align:right;">${LOCATION_NAME}</td>
-        </tr>
-        <tr style="border-bottom:1px solid #f1f5f9;">
-          <td style="padding:11px 4px;color:#64748b;font-weight:600;">🏭 Device</td>
-          <td style="padding:11px 4px;color:#1e293b;font-weight:700;text-align:right;">${device}</td>
-        </tr>
-        <tr style="border-bottom:1px solid #f1f5f9;">
-          <td style="padding:11px 4px;color:#64748b;font-weight:600;">🕐 Alert Time</td>
-          <td style="padding:11px 4px;color:#1e293b;font-weight:700;text-align:right;">${time}</td>
-        </tr>
-        <tr>
-          <td style="padding:11px 4px;color:#64748b;font-weight:600;">⏰ Next Alert</td>
-          <td style="padding:11px 4px;color:#1e293b;font-weight:700;text-align:right;">After 1 hour cooldown</td>
-        </tr>
-      </table>
-    </div>
-    <div style="background:#ffffff;padding:0 28px 28px;text-align:center;">
-      <a href="${DASHBOARD_URL}" target="_blank" style="display:inline-block;background:linear-gradient(135deg,#ef4444,#f97316);color:white;text-decoration:none;padding:13px 32px;border-radius:10px;font-size:0.9rem;font-weight:700;box-shadow:0 4px 14px rgba(239,68,68,0.4);">📊 Open Live Dashboard →</a>
-      <p style="color:#94a3b8;font-size:0.75rem;margin:10px 0 0;">${DASHBOARD_URL}</p>
-    </div>
-    <div style="background:#fef2f2;border-top:1px solid #fecaca;padding:14px 28px;text-align:center;">
-      <p style="color:#ef4444;font-size:0.75rem;font-weight:600;margin:0;">Factory Monitor Pro · Aquarelle Clothing Ltd · ${LOCATION_NAME}</p>
-    </div>
-  </div>`;
+      </tr>
+    </table>
+
+    <!-- Metric cards -->
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+      <tr>
+        ${metricCard({
+          icon: '&#127777;', label: 'Temperature', value: currentTemp.toFixed(1), unit: '°C',
+          badgeText: `+${exceededBy}°C ABOVE LIMIT`, badgeColor: '#ef4444',
+          borderColor: '#fca5a5', bgColor: '#fff5f5',
+          noteText: `Limit: ${threshold}°C`, noteColor: '#ef4444'
+        })}
+        ${metricCard({
+          icon: '&#128167;', label: 'Humidity', value: humOk ? currentHum.toFixed(1) : '--', unit: humOk ? '%' : '',
+          badgeText: 'WITHIN RANGE', badgeColor: '#10b981',
+          borderColor: '#6ee7b7', bgColor: '#f0fdf4',
+          noteText: 'Status: Normal', noteColor: '#059669'
+        })}
+      </tr>
+    </table>
+
+    <!-- Details table -->
+    <table width="100%" cellpadding="0" cellspacing="0"
+      style="border-top:1px solid #f1f5f9;">
+      ${detailRow('Location', LOCATION_NAME)}
+      ${detailRow('Device ID', device)}
+      ${detailRow('Alert Triggered', time)}
+      ${detailRow('Next Alert Window', 'After 1-hour cooldown', true)}
+    </table>`;
+
+  return emailWrapper({
+    accentColor: '#b91c1c',
+    headerContent: header,
+    bodyContent: body,
+    footerNote: `Factory Monitor Pro &nbsp;·&nbsp; Aquarelle Clothing Ltd &nbsp;·&nbsp; ${LOCATION_NAME}`
+  });
 }
 
+function detailRow(label, value, last = false) {
+  return `
+  <tr style="${last ? '' : 'border-bottom:1px solid #f1f5f9;'}">
+    <td style="padding:12px 0;font-size:13px;color:#64748b;font-weight:500;">${label}</td>
+    <td style="padding:12px 0;font-size:13px;color:#0f172a;font-weight:700;text-align:right;">${value}</td>
+  </tr>`;
+}
+
+// ════════════════════════════════════════════════════════════
+//  2.  HUMIDITY ALERT
+// ════════════════════════════════════════════════════════════
 function humEmailHTML(device, currentHum, threshold, currentTemp) {
   const exceededBy = (currentHum - threshold).toFixed(1);
   const time       = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
   const tempOk     = currentTemp != null;
 
-  return `
-  <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:540px;margin:0 auto;border-radius:18px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.14);">
-    <div style="background:linear-gradient(135deg,#06b6d4,#3b82f6);padding:32px 28px 24px;text-align:center;">
-      <div style="font-size:2.8rem;margin-bottom:6px;">💧</div>
-      <h1 style="color:white;margin:0 0 4px;font-size:1.4rem;font-weight:700;">Humidity Alert</h1>
-      <p style="color:rgba(255,255,255,0.85);margin:0;font-size:0.85rem;">Factory Monitor Pro — ${device}</p>
-      <div style="display:inline-block;background:rgba(255,255,255,0.2);color:white;border-radius:20px;padding:4px 14px;font-size:0.75rem;font-weight:700;margin-top:8px;">📍 ${LOCATION_NAME}</div>
-    </div>
-    <div style="background:#f8fafc;padding:24px 24px 8px;">
-      <table width="100%" cellpadding="0" cellspacing="0"><tr>
-        <td width="50%" style="padding:0 8px 16px 0;">
-          <div style="background:#f0fdf4;border:2px solid #22c55e;border-radius:14px;padding:20px 16px;text-align:center;">
-            <div style="font-size:1.4rem;margin-bottom:4px;">🌡️</div>
-            <p style="color:#9ca3af;font-size:0.7rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:0 0 6px;">Temperature</p>
-            <p style="color:#16a34a;font-size:2.4rem;font-weight:800;margin:0;line-height:1;">${tempOk ? currentTemp.toFixed(1)+'°C' : '--'}</p>
-            <div style="display:inline-block;background:#22c55e;color:white;border-radius:20px;padding:3px 12px;font-size:0.72rem;font-weight:700;margin-top:8px;">✓ Within Normal Range</div>
-            <p style="color:#16a34a;font-size:0.72rem;font-weight:600;margin:6px 0 0;">Status: Normal</p>
-          </div>
+  const header = `
+    <table width="100%" cellpadding="0" cellspacing="0"><tr>
+      <td>
+        <p style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:2px;
+                  text-transform:uppercase;color:rgba(255,255,255,0.6);">THRESHOLD BREACH</p>
+        <h1 style="margin:0 0 6px;font-size:22px;font-weight:800;color:#ffffff;line-height:1.2;">
+          Humidity Alert
+        </h1>
+        <p style="margin:0;font-size:13px;color:rgba(255,255,255,0.75);">
+          Device <strong style="color:#fff;">${device}</strong>
+          &nbsp;·&nbsp; Recorded at ${time}
+        </p>
+      </td>
+      <td align="right" style="vertical-align:top;">
+        <div style="background:rgba(255,255,255,0.15);border-radius:6px;
+                    padding:10px 16px;text-align:center;min-width:80px;">
+          <p style="margin:0;font-size:28px;font-weight:900;color:#ffffff;line-height:1;">
+            ${currentHum.toFixed(1)}<span style="font-size:16px;">%</span>
+          </p>
+          <p style="margin:4px 0 0;font-size:10px;font-weight:700;letter-spacing:1px;
+                    text-transform:uppercase;color:rgba(255,255,255,0.7);">Current</p>
+        </div>
+      </td>
+    </tr></table>`;
+
+  const body = `
+    <!-- Alert banner -->
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+      <tr>
+        <td style="background:#ecfeff;border-left:4px solid #0891b2;border-radius:0 6px 6px 0;
+                   padding:14px 18px;">
+          <p style="margin:0;font-size:13px;color:#164e63;font-weight:600;">
+            &#9650;&nbsp; Humidity exceeded the configured threshold of
+            <strong>${threshold}%</strong> by <strong>+${exceededBy}%</strong>.
+            Ventilation or corrective action may be required.
+          </p>
         </td>
-        <td width="50%" style="padding:0 0 16px 8px;">
-          <div style="background:#f0fdff;border:2px solid #06b6d4;border-radius:14px;padding:20px 16px;text-align:center;">
-            <div style="font-size:1.4rem;margin-bottom:4px;">💧</div>
-            <p style="color:#9ca3af;font-size:0.7rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:0 0 6px;">Humidity</p>
-            <p style="color:#0891b2;font-size:2.4rem;font-weight:800;margin:0;line-height:1;">${currentHum.toFixed(1)}%</p>
-            <div style="display:inline-block;background:#0891b2;color:white;border-radius:20px;padding:3px 12px;font-size:0.72rem;font-weight:700;margin-top:8px;">▲ +${exceededBy}% over limit</div>
-            <p style="color:#0891b2;font-size:0.72rem;font-weight:600;margin:6px 0 0;">Threshold: ${threshold}%</p>
-          </div>
-        </td>
-      </tr></table>
-    </div>
-    <div style="background:#ffffff;padding:4px 28px 20px;">
-      <table style="width:100%;border-collapse:collapse;font-size:0.875rem;">
-        <tr style="border-bottom:1px solid #f1f5f9;">
-          <td style="padding:11px 4px;color:#64748b;font-weight:600;">📍 Location</td>
-          <td style="padding:11px 4px;color:#1e293b;font-weight:700;text-align:right;">${LOCATION_NAME}</td>
-        </tr>
-        <tr style="border-bottom:1px solid #f1f5f9;">
-          <td style="padding:11px 4px;color:#64748b;font-weight:600;">🏭 Device</td>
-          <td style="padding:11px 4px;color:#1e293b;font-weight:700;text-align:right;">${device}</td>
-        </tr>
-        <tr style="border-bottom:1px solid #f1f5f9;">
-          <td style="padding:11px 4px;color:#64748b;font-weight:600;">🕐 Alert Time</td>
-          <td style="padding:11px 4px;color:#1e293b;font-weight:700;text-align:right;">${time}</td>
-        </tr>
-        <tr>
-          <td style="padding:11px 4px;color:#64748b;font-weight:600;">⏰ Next Alert</td>
-          <td style="padding:11px 4px;color:#1e293b;font-weight:700;text-align:right;">After 1 hour cooldown</td>
-        </tr>
-      </table>
-    </div>
-    <div style="background:#ffffff;padding:0 28px 28px;text-align:center;">
-      <a href="${DASHBOARD_URL}" target="_blank" style="display:inline-block;background:linear-gradient(135deg,#06b6d4,#3b82f6);color:white;text-decoration:none;padding:13px 32px;border-radius:10px;font-size:0.9rem;font-weight:700;box-shadow:0 4px 14px rgba(6,182,212,0.4);">📊 Open Live Dashboard →</a>
-      <p style="color:#94a3b8;font-size:0.75rem;margin:10px 0 0;">${DASHBOARD_URL}</p>
-    </div>
-    <div style="background:#ecfeff;border-top:1px solid #a5f3fc;padding:14px 28px;text-align:center;">
-      <p style="color:#0891b2;font-size:0.75rem;font-weight:600;margin:0;">Factory Monitor Pro · Aquarelle Clothing Ltd · ${LOCATION_NAME}</p>
-    </div>
-  </div>`;
+      </tr>
+    </table>
+
+    <!-- Metric cards -->
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+      <tr>
+        ${metricCard({
+          icon: '&#127777;', label: 'Temperature', value: tempOk ? currentTemp.toFixed(1) : '--', unit: tempOk ? '°C' : '',
+          badgeText: 'WITHIN RANGE', badgeColor: '#10b981',
+          borderColor: '#6ee7b7', bgColor: '#f0fdf4',
+          noteText: 'Status: Normal', noteColor: '#059669'
+        })}
+        ${metricCard({
+          icon: '&#128167;', label: 'Humidity', value: currentHum.toFixed(1), unit: '%',
+          badgeText: `+${exceededBy}% ABOVE LIMIT`, badgeColor: '#0891b2',
+          borderColor: '#67e8f9', bgColor: '#ecfeff',
+          noteText: `Limit: ${threshold}%`, noteColor: '#0891b2'
+        })}
+      </tr>
+    </table>
+
+    <!-- Details table -->
+    <table width="100%" cellpadding="0" cellspacing="0"
+      style="border-top:1px solid #f1f5f9;">
+      ${detailRow('Location', LOCATION_NAME)}
+      ${detailRow('Device ID', device)}
+      ${detailRow('Alert Triggered', time)}
+      ${detailRow('Next Alert Window', 'After 1-hour cooldown', true)}
+    </table>`;
+
+  return emailWrapper({
+    accentColor: '#0e7490',
+    headerContent: header,
+    bodyContent: body,
+    footerNote: `Factory Monitor Pro &nbsp;·&nbsp; Aquarelle Clothing Ltd &nbsp;·&nbsp; ${LOCATION_NAME}`
+  });
 }
 
+
+function metricCard({ icon, label, value, unit, badgeText, badgeColor, borderColor, bgColor, noteText, noteColor }) {
+  return `
+  <td width="50%" style="padding:0 8px 0 0;vertical-align:top;">
+    <table width="100%" cellpadding="0" cellspacing="0"
+      style="background:${bgColor};border:1.5px solid ${borderColor};border-radius:8px;">
+      <tr><td style="padding:22px 18px;" align="center">
+        <p style="margin:0 0 4px;font-size:22px;">${icon}</p>
+        <p style="margin:0 0 10px;font-size:10px;font-weight:700;letter-spacing:1.5px;
+                  text-transform:uppercase;color:#94a3b8;">${label}</p>
+        <p style="margin:0;font-size:30px;font-weight:800;color:${noteColor};line-height:1;">
+          ${value}<span style="font-size:16px;font-weight:600;">${unit}</span>
+        </p>
+        <div style="display:inline-block;margin-top:10px;background:${badgeColor};
+                    color:#ffffff;border-radius:4px;padding:3px 10px;
+                    font-size:10px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;">
+          ${badgeText}
+        </div>
+        <p style="margin:8px 0 0;font-size:11px;font-weight:600;color:${noteColor};">${noteText}</p>
+      </td></tr>
+    </table>
+  </td>`;
+}
+
+function emailWrapper({ accentColor, headerContent, bodyContent, footerNote }) {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Factory Monitor Pro</title></head>
+<body style="margin:0;padding:0;background:#f0f2f5;font-family:'Segoe UI',Helvetica,Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f2f5;padding:40px 0;">
+  <tr><td align="center">
+    <table width="580" cellpadding="0" cellspacing="0" style="max-width:580px;width:100%;">
+
+      <!-- ── Top brand bar ── -->
+      <tr>
+        <td style="background:#0f172a;padding:14px 32px;border-radius:10px 10px 0 0;">
+          <table width="100%" cellpadding="0" cellspacing="0"><tr>
+            <td style="color:#ffffff;font-size:13px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;">
+              FACTORY MONITOR PRO
+            </td>
+            <td align="right" style="color:#64748b;font-size:11px;font-weight:500;letter-spacing:0.5px;">
+              Aquarelle Clothing Ltd &nbsp;·&nbsp; ${LOCATION_NAME}
+            </td>
+          </tr></table>
+        </td>
+      </tr>
+
+      <!-- ── Accent header ── -->
+      <tr>
+        <td style="background:${accentColor};padding:36px 32px 28px;">
+          ${headerContent}
+        </td>
+      </tr>
+
+      <!-- ── White body ── -->
+      <tr>
+        <td style="background:#ffffff;padding:32px 32px 28px;">
+          ${bodyContent}
+        </td>
+      </tr>
+
+      <!-- ── CTA row ── -->
+      <tr>
+        <td style="background:#ffffff;padding:0 32px 32px;" align="center">
+          <a href="${DASHBOARD_URL}" target="_blank"
+            style="display:inline-block;background:#0f172a;color:#ffffff;text-decoration:none;
+                   padding:14px 36px;border-radius:6px;font-size:13px;font-weight:700;
+                   letter-spacing:0.8px;text-transform:uppercase;">
+            Open Live Dashboard &rarr;
+          </a>
+          <p style="margin:10px 0 0;color:#94a3b8;font-size:11px;">${DASHBOARD_URL}</p>
+        </td>
+      </tr>
+
+      <!-- ── Footer ── -->
+      <tr>
+        <td style="background:#f8fafc;border-top:1px solid #e2e8f0;border-radius:0 0 10px 10px;
+                   padding:16px 32px;" align="center">
+          <p style="margin:0;color:#94a3b8;font-size:11px;line-height:1.6;">
+            ${footerNote}<br>
+            This is an automated alert. Do not reply to this email.
+          </p>
+        </td>
+      </tr>
+
+    </table>
+  </td></tr>
+</table>
+</body></html>`;
+}
+
+// ════════════════════════════════════════════════════════════
+//  3.  TEST EMAIL (config verification)
+// ════════════════════════════════════════════════════════════
 function testEmailHTML(recipients, time) {
-  return `
-  <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:540px;margin:0 auto;border-radius:18px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.14);">
-    <div style="background:linear-gradient(135deg,#10b981,#3b82f6);padding:32px 28px 24px;text-align:center;">
-      <div style="font-size:2.8rem;margin-bottom:6px;">✅</div>
-      <h1 style="color:white;margin:0 0 4px;font-size:1.4rem;font-weight:700;">Email Config Working!</h1>
-      <p style="color:rgba(255,255,255,0.85);margin:0;font-size:0.85rem;">Factory Monitor Pro — Test Email</p>
-    </div>
-    <div style="background:#ffffff;padding:28px;">
-      <div style="background:#f0fdf4;border:2px solid #bbf7d0;border-radius:14px;padding:22px;text-align:center;margin-bottom:20px;">
-        <p style="color:#16a34a;font-size:1.05rem;font-weight:700;margin:0 0 6px;">🎉 Alert system is ready!</p>
-        <p style="color:#64748b;font-size:0.875rem;margin:0;">You will receive Temperature and Humidity alerts whenever thresholds are exceeded.</p>
-      </div>
-      <table style="width:100%;border-collapse:collapse;font-size:0.875rem;">
-        <tr style="border-bottom:1px solid #f1f5f9;">
-          <td style="padding:11px 4px;color:#64748b;font-weight:600;">📍 Location</td>
-          <td style="padding:11px 4px;color:#1e293b;font-weight:700;text-align:right;">${LOCATION_NAME}</td>
-        </tr>
-        <tr style="border-bottom:1px solid #f1f5f9;">
-          <td style="padding:11px 4px;color:#64748b;font-weight:600;">📧 Sent To</td>
-          <td style="padding:11px 4px;color:#1e293b;font-weight:700;text-align:right;">${recipients}</td>
-        </tr>
-        <tr>
-          <td style="padding:11px 4px;color:#64748b;font-weight:600;">🕐 Sent At</td>
-          <td style="padding:11px 4px;color:#1e293b;font-weight:700;text-align:right;">${time}</td>
-        </tr>
-      </table>
-    </div>
-    <div style="background:#ffffff;padding:0 28px 28px;text-align:center;">
-      <a href="${DASHBOARD_URL}" target="_blank" style="display:inline-block;background:linear-gradient(135deg,#10b981,#3b82f6);color:white;text-decoration:none;padding:13px 32px;border-radius:10px;font-size:0.9rem;font-weight:700;box-shadow:0 4px 14px rgba(16,185,129,0.35);">📊 Open Live Dashboard →</a>
-      <p style="color:#94a3b8;font-size:0.75rem;margin:10px 0 0;">${DASHBOARD_URL}</p>
-    </div>
-    <div style="background:#f0fdf4;border-top:1px solid #bbf7d0;padding:14px 28px;text-align:center;">
-      <p style="color:#16a34a;font-size:0.75rem;font-weight:600;margin:0;">Factory Monitor Pro · Aquarelle Clothing Ltd · ${LOCATION_NAME}</p>
-    </div>
-  </div>`;
+  const header = `
+    <table width="100%" cellpadding="0" cellspacing="0"><tr>
+      <td>
+        <p style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:2px;
+                  text-transform:uppercase;color:rgba(255,255,255,0.6);">SYSTEM VERIFICATION</p>
+        <h1 style="margin:0 0 6px;font-size:22px;font-weight:800;color:#ffffff;line-height:1.2;">
+          Email Configuration Confirmed
+        </h1>
+        <p style="margin:0;font-size:13px;color:rgba(255,255,255,0.75);">
+          Alert delivery is operational &nbsp;·&nbsp; ${time}
+        </p>
+      </td>
+      <td align="right" style="vertical-align:top;">
+        <div style="background:rgba(255,255,255,0.15);border-radius:6px;
+                    padding:12px 16px;text-align:center;">
+          <p style="margin:0;font-size:26px;font-weight:900;color:#ffffff;line-height:1;">&#10003;</p>
+          <p style="margin:4px 0 0;font-size:10px;font-weight:700;letter-spacing:1px;
+                    text-transform:uppercase;color:rgba(255,255,255,0.7);">Verified</p>
+        </div>
+      </td>
+    </tr></table>`;
+
+  const body = `
+    <!-- Info block -->
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+      <tr>
+        <td style="background:#f0fdf4;border-left:4px solid #10b981;border-radius:0 6px 6px 0;
+                   padding:14px 18px;">
+          <p style="margin:0;font-size:13px;color:#14532d;font-weight:600;">
+            &#10003;&nbsp; The alert notification system is configured correctly.
+            You will receive automated alerts whenever sensor readings exceed the defined thresholds.
+          </p>
+        </td>
+      </tr>
+    </table>
+
+    <!-- Details table -->
+    <table width="100%" cellpadding="0" cellspacing="0"
+      style="border-top:1px solid #f1f5f9;">
+      ${detailRow('Monitoring Location', LOCATION_NAME)}
+      ${detailRow('Recipients', recipients)}
+      ${detailRow('Verification Time', time)}
+      ${detailRow('Alert Cooldown Period', '1 hour between repeat alerts', true)}
+    </table>
+
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:24px;">
+      <tr>
+        <td style="background:#f8fafc;border-radius:6px;border:1px solid #e2e8f0;padding:16px 18px;">
+          <p style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:1px;
+                    text-transform:uppercase;color:#64748b;">What to expect</p>
+          <p style="margin:0;font-size:12px;color:#475569;line-height:1.7;">
+            &#8227; &nbsp;Temperature alerts fire when readings exceed your configured threshold.<br>
+            &#8227; &nbsp;Humidity alerts fire when readings exceed your configured threshold.<br>
+            &#8227; &nbsp;Each alert type has an independent 1-hour cooldown per device.
+          </p>
+        </td>
+      </tr>
+    </table>`;
+
+  return emailWrapper({
+    accentColor: '#065f46',
+    headerContent: header,
+    bodyContent: body,
+    footerNote: `Factory Monitor Pro &nbsp;·&nbsp; Aquarelle Clothing Ltd &nbsp;·&nbsp; ${LOCATION_NAME}`
+  });
 }
 
+// ════════════════════════════════════════════════════════════
+//  4.  TEST ALERT EMAIL (live sensor preview)
+// ════════════════════════════════════════════════════════════
 function testAlertEmailHTML(device, temp, hum, tempThreshold, humThreshold, time) {
   const tempExceeded = temp > tempThreshold;
   const humExceeded  = hum  > humThreshold;
 
-  const headerGradient = (tempExceeded && humExceeded) ? 'linear-gradient(135deg,#ef4444,#f97316)'
-    : tempExceeded ? 'linear-gradient(135deg,#ef4444,#f97316)'
-    : humExceeded  ? 'linear-gradient(135deg,#06b6d4,#3b82f6)'
-    : 'linear-gradient(135deg,#10b981,#3b82f6)';
+  const statusLabel = (tempExceeded && humExceeded) ? 'Dual Threshold Breach'
+    : tempExceeded ? 'Temperature Threshold Breach'
+    : humExceeded  ? 'Humidity Threshold Breach'
+    : 'All Readings Within Range';
 
-  const headerIcon  = (tempExceeded && humExceeded) ? '⚠️' : tempExceeded ? '🌡️' : humExceeded ? '💧' : '✅';
-  const headerTitle = (tempExceeded && humExceeded) ? 'Temp & Humidity Alert'
-    : tempExceeded ? 'Temperature Alert'
-    : humExceeded  ? 'Humidity Alert'
-    : 'All Values Normal — Test Email';
+  const accentColor = (tempExceeded || humExceeded) ? '#7f1d1d' : '#065f46';
+  const bannerColor = (tempExceeded || humExceeded) ? { bg:'#fff5f5', border:'#ef4444', text:'#7f1d1d' }
+                                                    : { bg:'#f0fdf4', border:'#10b981', text:'#14532d' };
+  const bannerMsg   = (tempExceeded || humExceeded)
+    ? `One or more sensor readings have exceeded configured thresholds. Review the values below and take corrective action if required.`
+    : `All sensor readings are within normal operating ranges. No action is required.`;
 
   const tempCard = tempExceeded ? {
-    bg: '#fff5f5', border: '#ef4444', valueColor: '#ef4444', badgeBg: '#ef4444',
-    badge: `▲ +${(temp - tempThreshold).toFixed(1)}°C over limit`,
-    note: `Threshold: ${tempThreshold}°C`, noteColor: '#ef4444'
+    icon:'&#127777;', label:'Temperature', value: temp.toFixed(1), unit:'°C',
+    badgeText:`+${(temp - tempThreshold).toFixed(1)}°C ABOVE LIMIT`, badgeColor:'#ef4444',
+    borderColor:'#fca5a5', bgColor:'#fff5f5',
+    noteText:`Limit: ${tempThreshold}°C`, noteColor:'#ef4444'
   } : {
-    bg: '#f0fdf4', border: '#22c55e', valueColor: '#16a34a', badgeBg: '#22c55e',
-    badge: '✓ Within Normal Range', note: 'Status: Normal', noteColor: '#16a34a'
+    icon:'&#127777;', label:'Temperature', value: temp.toFixed(1), unit:'°C',
+    badgeText:'WITHIN RANGE', badgeColor:'#10b981',
+    borderColor:'#6ee7b7', bgColor:'#f0fdf4',
+    noteText:'Status: Normal', noteColor:'#059669'
   };
 
   const humCard = humExceeded ? {
-    bg: '#f0fdff', border: '#06b6d4', valueColor: '#0891b2', badgeBg: '#0891b2',
-    badge: `▲ +${(hum - humThreshold).toFixed(1)}% over limit`,
-    note: `Threshold: ${humThreshold}%`, noteColor: '#0891b2'
+    icon:'&#128167;', label:'Humidity', value: hum.toFixed(1), unit:'%',
+    badgeText:`+${(hum - humThreshold).toFixed(1)}% ABOVE LIMIT`, badgeColor:'#0891b2',
+    borderColor:'#67e8f9', bgColor:'#ecfeff',
+    noteText:`Limit: ${humThreshold}%`, noteColor:'#0891b2'
   } : {
-    bg: '#f0fdf4', border: '#22c55e', valueColor: '#16a34a', badgeBg: '#22c55e',
-    badge: '✓ Within Normal Range', note: 'Status: Normal', noteColor: '#16a34a'
+    icon:'&#128167;', label:'Humidity', value: hum.toFixed(1), unit:'%',
+    badgeText:'WITHIN RANGE', badgeColor:'#10b981',
+    borderColor:'#6ee7b7', bgColor:'#f0fdf4',
+    noteText:'Status: Normal', noteColor:'#059669'
   };
 
-  return `
-  <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:540px;margin:0 auto;border-radius:18px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.14);">
-    <div style="background:${headerGradient};padding:32px 28px 24px;text-align:center;">
-      <div style="font-size:2.8rem;margin-bottom:6px;">${headerIcon}</div>
-      <h1 style="color:white;margin:0 0 4px;font-size:1.4rem;font-weight:700;">${headerTitle}</h1>
-      <p style="color:rgba(255,255,255,0.85);margin:0;font-size:0.85rem;">Factory Monitor Pro — ${device}</p>
-      <div style="display:inline-block;background:rgba(255,255,255,0.2);color:white;border-radius:20px;padding:4px 14px;font-size:0.75rem;font-weight:700;margin-top:8px;">📍 ${LOCATION_NAME}</div>
-    </div>
-    <div style="background:#f8fafc;padding:24px 20px 8px;">
-      <table width="100%" cellpadding="0" cellspacing="0"><tr>
-        <td width="50%" style="padding:0 8px 16px 0;">
-          <div style="background:${tempCard.bg};border:2px solid ${tempCard.border};border-radius:14px;padding:20px 14px;text-align:center;">
-            <div style="font-size:1.6rem;margin-bottom:4px;">🌡️</div>
-            <p style="color:#9ca3af;font-size:0.68rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:0 0 6px;">Temperature</p>
-            <p style="color:${tempCard.valueColor};font-size:2.2rem;font-weight:800;margin:0;line-height:1;">${temp.toFixed(1)}°C</p>
-            <div style="display:inline-block;background:${tempCard.badgeBg};color:white;border-radius:20px;padding:3px 10px;font-size:0.70rem;font-weight:700;margin-top:8px;">${tempCard.badge}</div>
-            <p style="color:${tempCard.noteColor};font-size:0.70rem;font-weight:600;margin:6px 0 0;">${tempCard.note}</p>
-          </div>
+  const header = `
+    <table width="100%" cellpadding="0" cellspacing="0"><tr>
+      <td>
+        <p style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:2px;
+                  text-transform:uppercase;color:rgba(255,255,255,0.6);">TEST ALERT PREVIEW</p>
+        <h1 style="margin:0 0 6px;font-size:22px;font-weight:800;color:#ffffff;line-height:1.2;">
+          ${statusLabel}
+        </h1>
+        <p style="margin:0;font-size:13px;color:rgba(255,255,255,0.75);">
+          Device <strong style="color:#fff;">${device}</strong>
+          &nbsp;·&nbsp; ${time}
+        </p>
+      </td>
+    </tr></table>`;
+
+  const body = `
+    <!-- Banner -->
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+      <tr>
+        <td style="background:${bannerColor.bg};border-left:4px solid ${bannerColor.border};
+                   border-radius:0 6px 6px 0;padding:14px 18px;">
+          <p style="margin:0;font-size:13px;color:${bannerColor.text};font-weight:600;">
+            ${bannerMsg}
+          </p>
         </td>
-        <td width="50%" style="padding:0 0 16px 8px;">
-          <div style="background:${humCard.bg};border:2px solid ${humCard.border};border-radius:14px;padding:20px 14px;text-align:center;">
-            <div style="font-size:1.6rem;margin-bottom:4px;">💧</div>
-            <p style="color:#9ca3af;font-size:0.68rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin:0 0 6px;">Humidity</p>
-            <p style="color:${humCard.valueColor};font-size:2.2rem;font-weight:800;margin:0;line-height:1;">${hum.toFixed(1)}%</p>
-            <div style="display:inline-block;background:${humCard.badgeBg};color:white;border-radius:20px;padding:3px 10px;font-size:0.70rem;font-weight:700;margin-top:8px;">${humCard.badge}</div>
-            <p style="color:${humCard.noteColor};font-size:0.70rem;font-weight:600;margin:6px 0 0;">${humCard.note}</p>
-          </div>
+      </tr>
+    </table>
+
+    <!-- Metric cards -->
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+      <tr>
+        ${metricCard(tempCard)}
+        ${metricCard(humCard)}
+      </tr>
+    </table>
+
+    <!-- Details table -->
+    <table width="100%" cellpadding="0" cellspacing="0"
+      style="border-top:1px solid #f1f5f9;">
+      ${detailRow('Location', LOCATION_NAME)}
+      ${detailRow('Device ID', device)}
+      ${detailRow('Temp Threshold', `${tempThreshold}°C`)}
+      ${detailRow('Humidity Threshold', `${humThreshold}%`)}
+      ${detailRow('Snapshot Time', time)}
+      ${detailRow('Alert Cooldown', '1 hour between repeat alerts', true)}
+    </table>
+
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:20px;">
+      <tr>
+        <td style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px 16px;">
+          <p style="margin:0;font-size:11px;color:#94a3b8;font-style:italic;">
+            This is a test preview using live sensor data. Real alerts fire automatically
+            when thresholds are exceeded and the cooldown period has elapsed.
+          </p>
         </td>
-      </tr></table>
-    </div>
-    <div style="background:#ffffff;padding:4px 28px 20px;">
-      <table style="width:100%;border-collapse:collapse;font-size:0.875rem;">
-        <tr style="border-bottom:1px solid #f1f5f9;">
-          <td style="padding:11px 4px;color:#64748b;font-weight:600;">📍 Location</td>
-          <td style="padding:11px 4px;color:#1e293b;font-weight:700;text-align:right;">${LOCATION_NAME}</td>
-        </tr>
-        <tr style="border-bottom:1px solid #f1f5f9;">
-          <td style="padding:11px 4px;color:#64748b;font-weight:600;">🏭 Device</td>
-          <td style="padding:11px 4px;color:#1e293b;font-weight:700;text-align:right;">${device}</td>
-        </tr>
-        <tr style="border-bottom:1px solid #f1f5f9;">
-          <td style="padding:11px 4px;color:#64748b;font-weight:600;">🕐 Alert Time</td>
-          <td style="padding:11px 4px;color:#1e293b;font-weight:700;text-align:right;">${time}</td>
-        </tr>
-        <tr>
-          <td style="padding:11px 4px;color:#64748b;font-weight:600;">⏰ Next Alert</td>
-          <td style="padding:11px 4px;color:#1e293b;font-weight:700;text-align:right;">After 1 hour cooldown</td>
-        </tr>
-      </table>
-    </div>
-    <div style="background:#ffffff;padding:0 28px 28px;text-align:center;">
-      <a href="${DASHBOARD_URL}" target="_blank" style="display:inline-block;background:${headerGradient};color:white;text-decoration:none;padding:13px 32px;border-radius:10px;font-size:0.9rem;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,0.15);">📊 Open Live Dashboard →</a>
-      <p style="color:#94a3b8;font-size:0.72rem;margin:10px 0 0;">${DASHBOARD_URL}</p>
-    </div>
-    <div style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:14px 28px;text-align:center;">
-      <p style="color:#64748b;font-size:0.75rem;font-weight:600;margin:0;">Factory Monitor Pro · Aquarelle Clothing Ltd · ${LOCATION_NAME}</p>
-    </div>
-  </div>`;
+      </tr>
+    </table>`;
+    return emailWrapper({
+    accentColor,
+    headerContent: header,
+    bodyContent: body,
+    footerNote: `Factory Monitor Pro &nbsp;·&nbsp; Aquarelle Clothing Ltd &nbsp;·&nbsp; ${LOCATION_NAME}`
+  });
 }
+
+app.post('/api/send-raw-email', async (req, res) => {
+  try {
+    const { to, subject, html } = req.body;
+    if (!to || !subject || !html)
+      return res.status(400).json({ ok: false, error: 'Missing to / subject / html' });
+
+    const recipients = to.split(',').map(e => e.trim()).filter(Boolean);
+    const result     = await sendEmail(subject, html, recipients);
+    if (!result.ok) return res.status(500).json({ ok: false, error: result.error });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 
 // ── Alert checker ─────────────────────────────────────────────
 async function checkAndAlert(record) {
@@ -601,6 +798,20 @@ app.get('/api/history', async (req, res) => {
       hum: r.humidity
     })));
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/send-raw-email', async (req, res) => {
+  try {
+    const { to, subject, html } = req.body;
+    if (!to || !subject || !html)
+      return res.status(400).json({ ok: false, error: 'Missing to / subject / html' });
+    const recipients = to.split(',').map(e => e.trim()).filter(Boolean);
+    const result = await sendEmail(subject, html, recipients);
+    if (!result.ok) return res.status(500).json({ ok: false, error: result.error });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
 });
 
 const PORT = process.env.PORT || 3000;
