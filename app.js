@@ -192,35 +192,33 @@ async function saveToBackend(temp, hum) {
 // ════════════════════════════════════════════════════════════
 //  FETCH HISTORY FROM THINGSBOARD
 // ════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════
+//  FETCH HISTORY — use your own backend (reliable)
+// ════════════════════════════════════════════════════════════
 async function fetchAllData() {
-  if (!jwtToken) await loginTB();
-  if (!jwtToken) return;
-
-  const endTs   = Date.now();
-  const startTs = endTs - 30 * 24 * 60 * 60 * 1000;
-
   try {
-    const res    = await fetch(
-      `${TB_HOST}/api/plugins/telemetry/DEVICE/${DEVICE_ID}/values/timeseries?keys=temperature,humidity&startTs=${startTs}&endTs=${endTs}&limit=50000`,
-      { headers: { 'X-Authorization': `Bearer ${jwtToken}` } });
-    const tbData = await res.json();
+    const deviceId = document.getElementById('meterSelect')?.value || 'Meter_01';
+    const res = await fetch(`${SERVER_URL}/api/history?deviceId=${deviceId}`);
+    if (!res.ok) throw new Error('History fetch failed: ' + res.status);
+    const records = await res.json();
 
-    const map = {};
-    if (tbData.temperature) tbData.temperature.forEach(i => { map[i.ts] = { timestamp: new Date(i.ts).toISOString(), temp: parseFloat(i.value), hum: null }; });
-    if (tbData.humidity)    tbData.humidity.forEach(i => {
-      if (!map[i.ts]) map[i.ts] = { timestamp: new Date(i.ts).toISOString(), temp: null, hum: parseFloat(i.value) };
-      else map[i.ts].hum = parseFloat(i.value);
-    });
+    allData = records.map(r => ({
+      timestamp: r.timestamp,
+      temp: r.temp,
+      hum: r.hum
+    })).filter(r => r.temp !== null && r.hum !== null);
 
-    allData = Object.values(map).filter(r => r.temp !== null && r.hum !== null);
-    allData.sort((a,b) => new Date(a.timestamp) - new Date(b.timestamp));
+    allData.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 
-    document.getElementById('dataCount').textContent = allData.length;
+    const countEl = document.getElementById('dataCount');
+    if (countEl) countEl.textContent = allData.length;
+
     renderTodayCharts();
     updateStats();
-  } catch (e) { console.warn('fetchAllData failed:', e.message); }
+  } catch (e) {
+    console.error('fetchAllData failed:', e.message);
+  }
 }
-
 // ════════════════════════════════════════════════════════════
 //  SETTINGS — LOAD & SAVE
 // ════════════════════════════════════════════════════════════
@@ -782,6 +780,25 @@ loadSettings().then(() => {
   fetchAllData();
 });
 
-setExportToday();
-setInterval(fetchCurrent,  2000);
-setInterval(fetchAllData, 1800000);
+// ════════════════════════════════════════════════════════════
+//  BOOTSTRAP — wait for DOM
+// ════════════════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', () => {
+  scheduleMidnightReset();
+  initCharts();
+
+  // Safe to attach listeners now
+  document.getElementById('tempDateFrom')?.addEventListener('change', renderTempDetail);
+  document.getElementById('tempDateTo')?.addEventListener('change',   renderTempDetail);
+  document.getElementById('humDateFrom')?.addEventListener('change',  renderHumDetail);
+  document.getElementById('humDateTo')?.addEventListener('change',    renderHumDetail);
+
+  loadSettings().then(() => {
+    fetchCurrent();
+    fetchAllData();
+  });
+
+  setExportToday();
+  setInterval(fetchCurrent,  2000);
+  setInterval(fetchAllData, 1800000);
+});

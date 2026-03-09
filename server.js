@@ -794,7 +794,11 @@ app.get('/api/debug', async (req, res) => {
 
 app.get('/api/history', async (req, res) => {
   try {
-    const records = await SensorData.find({}).sort({ timestamp: 1 }).limit(1000);
+    const deviceId = req.query.deviceId || 'Meter_01'; // ADD THIS
+    const records = await SensorData
+      .find({ deviceId })                              // ADD THIS FILTER
+      .sort({ timestamp: 1 })
+      .limit(1000);
     res.json(records.map(r => ({
       timestamp: r.timestamp,
       temp: r.temperature,
