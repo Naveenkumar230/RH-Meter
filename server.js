@@ -657,14 +657,34 @@ cron.schedule('*/10 * * * *', async () => {
 app.get('/', (req, res) => res.send('🚀 Factory Monitor Bridge is running ✅'));
 
 // ── Save sensor data + trigger alert check ────────────────────
+// Variable to keep track of the last time we actually saved to MongoDB
+let lastMongoSaveTimestamp = 0;
+const THIRTY_MINUTES_MS = 30 * 60 * 1000; 
+
 app.post('/save-data', async (req, res) => {
   try {
     const data = { ...req.body, deviceId: req.body.deviceId || 'Meter_01' };
-    await new SensorData(data).save();
-    console.log('💾 Saved:', data);
+    const now = Date.now();
+
+    // 1. LIVE ALERT CHECK (Run this every time)
+    // This ensures you still get Emergency Emails immediately
     await checkAndAlert(data);
-    res.status(200).send('Saved');
-  } catch (err) { console.error('❌ Save Error:', err); res.status(500).send('Error'); }
+
+    // 2. DATABASE THROTTLE (Only save to MongoDB every 30 mins)
+    if (now - lastMongoSaveTimestamp >= THIRTY_MINUTES_MS) {
+      await new SensorData(data).save();
+      lastMongoSaveTimestamp = now;
+      console.log('💾 [DATABASE] 30-Minute Interval: Data saved to MongoDB');
+    } else {
+      // We don't save, just acknowledge the live hit
+      console.log('⚡ [LIVE] Data received but skipped for DB (Throttling)');
+    }
+
+    res.status(200).send('Processed');
+  } catch (err) {
+    console.error('❌ Save Error:', err);
+    res.status(500).send('Error');
+  }
 });
 
 // ── Latest sensor reading ─────────────────────────────────────

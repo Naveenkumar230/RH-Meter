@@ -120,55 +120,80 @@ async function loginTB() {
 }
 
 // ════════════════════════════════════════════════════════════
-//  FETCH CURRENT READING
+//  FETCH CURRENT READING (FROM MONGODB VIA RENDER)
 // ════════════════════════════════════════════════════════════
 async function fetchCurrent() {
-  if (!jwtToken) await loginTB();
-  if (!jwtToken) return;
+    try {
+        // 1. Fetch the latest single record from your MongoDB via Render
+        // This avoids the ThingsBoard "Device API Disabled" error
+        const res = await fetch(`${SERVER_URL}/api/data?deviceId=Meter_01`);
+        if (!res.ok) throw new Error('Network response was not ok');
+        
+        const mongoData = await res.json();
 
-  try {
-    const res    = await fetch(`${TB_HOST}/api/plugins/telemetry/DEVICE/${DEVICE_ID}/values/timeseries?keys=temperature,humidity`,
-      { headers: { 'X-Authorization': `Bearer ${jwtToken}` } });
-    const tbData = await res.json();
+        // 2. Safety Check: Ensure data exists in the response
+        if (!mongoData || mongoData.temperature === undefined) {
+            console.warn("No data available in MongoDB yet.");
+            updateStatusBadge(false);
+            return;
+        }
 
-    failCount = 0;
-    updateStatusBadge(true);
-    if (!tbData.temperature || !tbData.humidity) return;
+        failCount = 0;
+        updateStatusBadge(true);
 
-    const t = parseFloat(tbData.temperature[0].value);
-    const h = parseFloat(tbData.humidity[0].value);
+        const t = parseFloat(mongoData.temperature);
+        const h = parseFloat(mongoData.humidity);
 
-    // Temperature UI
-    document.getElementById('tempValue').textContent = t.toFixed(1);
-    if (lastTemp !== null) {
-      const diff = t - lastTemp;
-      document.getElementById('tempTrend').textContent     = diff > 0.2 ? '↑' : diff < -0.2 ? '↓' : '→';
-      document.getElementById('tempTrendText').textContent = diff > 0.2 ? 'Rising' : diff < -0.2 ? 'Falling' : 'Stable';
+        // ── Temperature UI Update ──────────────────────────────
+        const tempEl = document.getElementById('tempValue');
+        if (tempEl) tempEl.textContent = t.toFixed(1);
+
+        if (lastTemp !== null) {
+            const diff = t - lastTemp;
+            const trendIcon = document.getElementById('tempTrend');
+            const trendText = document.getElementById('tempTrendText');
+            
+            if (trendIcon) trendIcon.textContent = diff > 0.2 ? '↑' : diff < -0.2 ? '↓' : '→';
+            if (trendText) trendText.textContent = diff > 0.2 ? 'Rising' : diff < -0.2 ? 'Falling' : 'Stable';
+        }
+        lastTemp = t;
+
+        const ts = document.getElementById('tempStatus');
+        if (ts) {
+            ts.className = 'status-badge-inline status-' + getTempLevel(t);
+            ts.textContent = getTempLevel(t).charAt(0).toUpperCase() + getTempLevel(t).slice(1);
+        }
+
+        // ── Humidity UI Update ─────────────────────────────────
+        const humEl = document.getElementById('humValue');
+        if (humEl) humEl.textContent = h.toFixed(1);
+
+        if (lastHum !== null) {
+            const diff = h - lastHum;
+            const trendIcon = document.getElementById('humTrend');
+            const trendText = document.getElementById('humTrendText');
+            
+            if (trendIcon) trendIcon.textContent = diff > 0.5 ? '↑' : diff < -0.5 ? '↓' : '→';
+            if (trendText) trendText.textContent = diff > 0.5 ? 'Rising' : diff < -0.5 ? 'Falling' : 'Stable';
+        }
+        lastHum = h;
+
+        const hs = document.getElementById('humStatus');
+        if (hs) {
+            hs.className = 'status-badge-inline status-' + getHumLevel(h);
+            hs.textContent = getHumLevel(h).charAt(0).toUpperCase() + getHumLevel(h).slice(1);
+        }
+
+        console.log(`📡 Live UI Updated from MongoDB: ${t}°C, ${h}%`);
+
+    } catch (err) {
+        console.warn("Live update failed (MongoDB Link):", err.message);
+        failCount++;
+        // If it fails 3 times, show the offline badge
+        if (failCount >= 3) {
+            updateStatusBadge(false);
+        }
     }
-    lastTemp = t;
-    const ts = document.getElementById('tempStatus');
-    ts.className   = 'status-badge-inline status-' + getTempLevel(t);
-    ts.textContent = getTempLevel(t).charAt(0).toUpperCase() + getTempLevel(t).slice(1);
-
-    // Humidity UI
-    document.getElementById('humValue').textContent = h.toFixed(1);
-    if (lastHum !== null) {
-      const diff = h - lastHum;
-      document.getElementById('humTrend').textContent     = diff > 0.5 ? '↑' : diff < -0.5 ? '↓' : '→';
-      document.getElementById('humTrendText').textContent = diff > 0.5 ? 'Rising' : diff < -0.5 ? 'Falling' : 'Stable';
-    }
-    lastHum = h;
-    const hs = document.getElementById('humStatus');
-    hs.className   = 'status-badge-inline status-' + getHumLevel(h);
-    hs.textContent = getHumLevel(h).charAt(0).toUpperCase() + getHumLevel(h).slice(1);
-
-    // Save to backend (throttled — server does all alert logic)
-    saveToBackend(t, h);
-
-  } catch (err) {
-    failCount++;
-    if (failCount >= 3) { updateStatusBadge(false); jwtToken = null; }
-  }
 }
 
 // ── Throttled backend save (30 Minutes) ─────
