@@ -691,9 +691,16 @@ app.post('/save-data', async (req, res) => {
 app.get('/api/data', async (req, res) => {
   try {
     const deviceId = req.query.deviceId || 'Meter_01';
+    console.log('📥 /api/data hit — deviceId:', deviceId);
+    console.log('📦 MongoDB state:', mongoose.connection.readyState);
+    // 0=disconnected, 1=connected, 2=connecting, 3=disconnecting
     const records = await SensorData.find({ deviceId }).sort({ timestamp: -1 }).limit(1);
+    console.log('✅ Records found:', records.length);
     res.json(records[0] || {});
-  } catch (err) { console.error('❌ Data fetch error:', err); res.status(500).send('Error'); }
+  } catch (err) { 
+    console.error('❌ Data fetch error FULL:', err); 
+    res.status(500).json({ error: err.message, stack: err.stack }); 
+  }
 });
 
 // ── Get settings ──────────────────────────────────────────────
