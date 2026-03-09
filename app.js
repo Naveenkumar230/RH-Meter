@@ -171,21 +171,26 @@ async function fetchCurrent() {
   }
 }
 
-// ── Throttled backend save (10s) — server handles alerts ─────
+// ── Throttled backend save (30 Minutes) ─────
 async function saveToBackend(temp, hum) {
   const now = Date.now();
-  if (now - _lastSaveTs < 10000) return;
+  
+  // ONLY Save to MongoDB every 30 minutes (1,800,000 ms)
+  // This keeps your Database clean and stays under ThingsBoard limits
+  if (now - _lastSaveTs < 1800000) return; 
+  
   _lastSaveTs = now;
   try {
     await fetch(`${SERVER_URL}/save-data`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        deviceId:    document.getElementById('meterSelect')?.value || 'Meter_01',
+        deviceId: 'Meter_01',
         temperature: temp, humidity: hum,
-        tempLevel:   getTempLevel(temp), humLevel: getHumLevel(hum)
+        tempLevel: getTempLevel(temp), humLevel: getHumLevel(hum)
       })
     });
+    console.log("💾 30-Minute Log Saved to MongoDB");
   } catch (e) { console.warn('Backend save failed:', e.message); }
 }
 
@@ -781,4 +786,4 @@ loadSettings().then(() => {
 
 setExportToday();
 setInterval(fetchCurrent,  2000);
-setInterval(fetchAllData, 10000);
+setInterval(fetchAllData, 1800000);
