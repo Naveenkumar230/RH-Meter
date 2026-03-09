@@ -657,50 +657,23 @@ cron.schedule('*/10 * * * *', async () => {
 app.get('/', (req, res) => res.send('🚀 Factory Monitor Bridge is running ✅'));
 
 // ── Save sensor data + trigger alert check ────────────────────
-// Variable to keep track of the last time we actually saved to MongoDB
-let lastMongoSaveTimestamp = 0;
-const THIRTY_MINUTES_MS = 30 * 60 * 1000; 
-
 app.post('/save-data', async (req, res) => {
   try {
     const data = { ...req.body, deviceId: req.body.deviceId || 'Meter_01' };
-    const now = Date.now();
-
-    // 1. LIVE ALERT CHECK (Run this every time)
-    // This ensures you still get Emergency Emails immediately
+    await new SensorData(data).save();
+    console.log('💾 Saved:', data);
     await checkAndAlert(data);
-
-    // 2. DATABASE THROTTLE (Only save to MongoDB every 30 mins)
-    if (now - lastMongoSaveTimestamp >= THIRTY_MINUTES_MS) {
-      await new SensorData(data).save();
-      lastMongoSaveTimestamp = now;
-      console.log('💾 [DATABASE] 30-Minute Interval: Data saved to MongoDB');
-    } else {
-      // We don't save, just acknowledge the live hit
-      console.log('⚡ [LIVE] Data received but skipped for DB (Throttling)');
-    }
-
-    res.status(200).send('Processed');
-  } catch (err) {
-    console.error('❌ Save Error:', err);
-    res.status(500).send('Error');
-  }
+    res.status(200).send('Saved');
+  } catch (err) { console.error('❌ Save Error:', err); res.status(500).send('Error'); }
 });
 
 // ── Latest sensor reading ─────────────────────────────────────
 app.get('/api/data', async (req, res) => {
   try {
-    const deviceId = req.query.deviceId || 'Meter_01';
-    console.log('📥 /api/data hit — deviceId:', deviceId);
-    console.log('📦 MongoDB state:', mongoose.connection.readyState);
-    // 0=disconnected, 1=connected, 2=connecting, 3=disconnecting
+    // Queries MongoDB, NOT ThingsBoard
     const records = await SensorData.find({ deviceId }).sort({ timestamp: -1 }).limit(1);
-    console.log('✅ Records found:', records.length);
     res.json(records[0] || {});
-  } catch (err) { 
-    console.error('❌ Data fetch error FULL:', err); 
-    res.status(500).json({ error: err.message, stack: err.stack }); 
-  }
+  } catch (err) { console.error('❌ Data fetch error:', err); res.status(500).send('Error'); }
 });
 
 // ── Get settings ──────────────────────────────────────────────
@@ -817,22 +790,14 @@ app.get('/api/debug', async (req, res) => {
 });
 
 app.get('/api/history', async (req, res) => {
-  try {
-    // Get the LATEST 1000 records
-    const records = await SensorData.find({})
-      .sort({ timestamp: -1 }) // Sort by newest first
-      .limit(1000);
-    
-    // Reverse them so the chart displays from Oldest to Newest
-    const formatted = records.reverse().map(r => ({
-      timestamp: r.timestamp,
-      temp: r.temperature,
-      hum: r.humidity
-    }));
-    res.json(formatted);
-  } catch (err) { 
-    res.status(500).json({ error: err.message }); 
-  }
+  try {
+    const records = await SensorData.find({}).sort({ timestamp: 1 }).limit(1000);
+    res.json(records.map(r => ({
+      timestamp: r.timestamp,
+      temp: r.temperature,
+      hum: r.humidity
+    })));
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.post('/api/send-raw-email', async (req, res) => {

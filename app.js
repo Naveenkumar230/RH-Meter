@@ -120,102 +120,72 @@ async function loginTB() {
 }
 
 // ════════════════════════════════════════════════════════════
-//  FETCH CURRENT READING (FROM MONGODB VIA RENDER)
+//  FETCH CURRENT READING
 // ════════════════════════════════════════════════════════════
 async function fetchCurrent() {
-    try {
-        // 1. Fetch the latest single record from your MongoDB via Render
-        // This avoids the ThingsBoard "Device API Disabled" error
-        const res = await fetch(`${SERVER_URL}/api/data?deviceId=Meter_01`);
-        if (!res.ok) throw new Error('Network response was not ok');
-        
-        const mongoData = await res.json();
+  if (!jwtToken) await loginTB();
+  if (!jwtToken) return;
 
-        // 2. Safety Check: Ensure data exists in the response
-        if (!mongoData || mongoData.temperature === undefined) {
-            console.warn("No data available in MongoDB yet.");
-            updateStatusBadge(false);
-            return;
-        }
+  try {
+    const res    = await fetch(`${TB_HOST}/api/plugins/telemetry/DEVICE/${DEVICE_ID}/values/timeseries?keys=temperature,humidity`,
+      { headers: { 'X-Authorization': `Bearer ${jwtToken}` } });
+    const tbData = await res.json();
 
-        failCount = 0;
-        updateStatusBadge(true);
+    failCount = 0;
+    updateStatusBadge(true);
+    if (!tbData.temperature || !tbData.humidity) return;
 
-        const t = parseFloat(mongoData.temperature);
-        const h = parseFloat(mongoData.humidity);
+    const t = parseFloat(tbData.temperature[0].value);
+    const h = parseFloat(tbData.humidity[0].value);
 
-        // ── Temperature UI Update ──────────────────────────────
-        const tempEl = document.getElementById('tempValue');
-        if (tempEl) tempEl.textContent = t.toFixed(1);
-
-        if (lastTemp !== null) {
-            const diff = t - lastTemp;
-            const trendIcon = document.getElementById('tempTrend');
-            const trendText = document.getElementById('tempTrendText');
-            
-            if (trendIcon) trendIcon.textContent = diff > 0.2 ? '↑' : diff < -0.2 ? '↓' : '→';
-            if (trendText) trendText.textContent = diff > 0.2 ? 'Rising' : diff < -0.2 ? 'Falling' : 'Stable';
-        }
-        lastTemp = t;
-
-        const ts = document.getElementById('tempStatus');
-        if (ts) {
-            ts.className = 'status-badge-inline status-' + getTempLevel(t);
-            ts.textContent = getTempLevel(t).charAt(0).toUpperCase() + getTempLevel(t).slice(1);
-        }
-
-        // ── Humidity UI Update ─────────────────────────────────
-        const humEl = document.getElementById('humValue');
-        if (humEl) humEl.textContent = h.toFixed(1);
-
-        if (lastHum !== null) {
-            const diff = h - lastHum;
-            const trendIcon = document.getElementById('humTrend');
-            const trendText = document.getElementById('humTrendText');
-            
-            if (trendIcon) trendIcon.textContent = diff > 0.5 ? '↑' : diff < -0.5 ? '↓' : '→';
-            if (trendText) trendText.textContent = diff > 0.5 ? 'Rising' : diff < -0.5 ? 'Falling' : 'Stable';
-        }
-        lastHum = h;
-
-        const hs = document.getElementById('humStatus');
-        if (hs) {
-            hs.className = 'status-badge-inline status-' + getHumLevel(h);
-            hs.textContent = getHumLevel(h).charAt(0).toUpperCase() + getHumLevel(h).slice(1);
-        }
-
-        console.log(`📡 Live UI Updated from MongoDB: ${t}°C, ${h}%`);
-
-    } catch (err) {
-        console.warn("Live update failed (MongoDB Link):", err.message);
-        failCount++;
-        // If it fails 3 times, show the offline badge
-        if (failCount >= 3) {
-            updateStatusBadge(false);
-        }
+    // Temperature UI
+    document.getElementById('tempValue').textContent = t.toFixed(1);
+    if (lastTemp !== null) {
+      const diff = t - lastTemp;
+      document.getElementById('tempTrend').textContent     = diff > 0.2 ? '↑' : diff < -0.2 ? '↓' : '→';
+      document.getElementById('tempTrendText').textContent = diff > 0.2 ? 'Rising' : diff < -0.2 ? 'Falling' : 'Stable';
     }
+    lastTemp = t;
+    const ts = document.getElementById('tempStatus');
+    ts.className   = 'status-badge-inline status-' + getTempLevel(t);
+    ts.textContent = getTempLevel(t).charAt(0).toUpperCase() + getTempLevel(t).slice(1);
+
+    // Humidity UI
+    document.getElementById('humValue').textContent = h.toFixed(1);
+    if (lastHum !== null) {
+      const diff = h - lastHum;
+      document.getElementById('humTrend').textContent     = diff > 0.5 ? '↑' : diff < -0.5 ? '↓' : '→';
+      document.getElementById('humTrendText').textContent = diff > 0.5 ? 'Rising' : diff < -0.5 ? 'Falling' : 'Stable';
+    }
+    lastHum = h;
+    const hs = document.getElementById('humStatus');
+    hs.className   = 'status-badge-inline status-' + getHumLevel(h);
+    hs.textContent = getHumLevel(h).charAt(0).toUpperCase() + getHumLevel(h).slice(1);
+
+    // Save to backend (throttled — server does all alert logic)
+    saveToBackend(t, h);
+
+  } catch (err) {
+    failCount++;
+    if (failCount >= 3) { updateStatusBadge(false); jwtToken = null; }
+  }
 }
 
-// ── Throttled backend save (30 Minutes) ─────
+// ── Throttled backend save (10s) — server handles alerts ─────
 async function saveToBackend(temp, hum) {
   const now = Date.now();
-  
-  // ONLY Save to MongoDB every 30 minutes (1,800,000 ms)
-  // This keeps your Database clean and stays under ThingsBoard limits
-  if (now - _lastSaveTs < 1800000) return; 
-  
+  if (now - _lastSaveTs < 10000) return;
   _lastSaveTs = now;
   try {
     await fetch(`${SERVER_URL}/save-data`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        deviceId: 'Meter_01',
+        deviceId:    document.getElementById('meterSelect')?.value || 'Meter_01',
         temperature: temp, humidity: hum,
-        tempLevel: getTempLevel(temp), humLevel: getHumLevel(hum)
+        tempLevel:   getTempLevel(temp), humLevel: getHumLevel(hum)
       })
     });
-    console.log("💾 30-Minute Log Saved to MongoDB");
   } catch (e) { console.warn('Backend save failed:', e.message); }
 }
 
@@ -223,29 +193,32 @@ async function saveToBackend(temp, hum) {
 //  FETCH HISTORY FROM THINGSBOARD
 // ════════════════════════════════════════════════════════════
 async function fetchAllData() {
-  try {
-    // 1. FETCH FROM MONGODB INSTEAD OF THINGSBOARD
-    const res = await fetch(`${SERVER_URL}/api/history`);
-    if (!res.ok) throw new Error('Failed to fetch history from MongoDB');
-    
-    // 2. GET THE JSON DATA
-    const data = await res.json();
+  if (!jwtToken) await loginTB();
+  if (!jwtToken) return;
 
-    // 3. MAP TO ALLDATA (Your bucket functions will handle the rest)
-    allData = data.map(r => ({
-      timestamp: r.timestamp,
-      temp: r.temp,
-      hum: r.hum
-    }));
+  const endTs   = Date.now();
+  const startTs = endTs - 30 * 24 * 60 * 60 * 1000;
 
-    // 4. UPDATE UI
-    document.getElementById('dataCount').textContent = allData.length;
-    renderTodayCharts();
-    updateStats();
-    console.log("✅ History successfully loaded from MongoDB Atlas");
-  } catch (e) { 
-    console.warn('fetchAllData failed:', e.message); 
-  }
+  try {
+    const res    = await fetch(
+      `${TB_HOST}/api/plugins/telemetry/DEVICE/${DEVICE_ID}/values/timeseries?keys=temperature,humidity&startTs=${startTs}&endTs=${endTs}&limit=50000`,
+      { headers: { 'X-Authorization': `Bearer ${jwtToken}` } });
+    const tbData = await res.json();
+
+    const map = {};
+    if (tbData.temperature) tbData.temperature.forEach(i => { map[i.ts] = { timestamp: new Date(i.ts).toISOString(), temp: parseFloat(i.value), hum: null }; });
+    if (tbData.humidity)    tbData.humidity.forEach(i => {
+      if (!map[i.ts]) map[i.ts] = { timestamp: new Date(i.ts).toISOString(), temp: null, hum: parseFloat(i.value) };
+      else map[i.ts].hum = parseFloat(i.value);
+    });
+
+    allData = Object.values(map).filter(r => r.temp !== null && r.hum !== null);
+    allData.sort((a,b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+    document.getElementById('dataCount').textContent = allData.length;
+    renderTodayCharts();
+    updateStats();
+  } catch (e) { console.warn('fetchAllData failed:', e.message); }
 }
 
 // ════════════════════════════════════════════════════════════
