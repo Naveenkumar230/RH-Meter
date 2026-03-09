@@ -494,14 +494,27 @@ const chartOptions = {
 //  INIT CHARTS
 // ════════════════════════════════════════════════════════════
 function initCharts() {
-  chartTempToday = new Chart(document.getElementById('chartTempToday').getContext('2d'), {
+  // ✅ Destroy existing charts before reinitialising
+  if (chartTempToday)  { chartTempToday.destroy();  chartTempToday  = null; }
+  if (chartHumToday)   { chartHumToday.destroy();   chartHumToday   = null; }
+  if (chartTempDetail) { chartTempDetail.destroy();  chartTempDetail = null; }
+  if (chartHumDetail)  { chartHumDetail.destroy();   chartHumDetail  = null; }
+
+  const tempCanvas = document.getElementById('chartTempToday');
+  const humCanvas  = document.getElementById('chartHumToday');
+  if (!tempCanvas || !humCanvas) {
+    console.warn('Chart canvases not found — skipping initCharts');
+    return;
+  }
+
+  chartTempToday = new Chart(tempCanvas.getContext('2d'), {
     type: 'line',
     data: { labels: [], datasets: [{ data: [], borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.1)', fill: true, tension: 0.4, pointRadius: 0, borderWidth: 2 }] },
     plugins: [tempThresholdPlugin],
     options: chartOptions
   });
 
-  chartHumToday = new Chart(document.getElementById('chartHumToday').getContext('2d'), {
+  chartHumToday = new Chart(humCanvas.getContext('2d'), {
     type: 'line',
     data: { labels: [], datasets: [{ data: [], borderColor: '#06b6d4', backgroundColor: 'rgba(6,182,212,0.1)', fill: true, tension: 0.4, pointRadius: 0, borderWidth: 2 }] },
     plugins: [humThresholdPlugin],
@@ -773,12 +786,12 @@ function scheduleMidnightReset() {
 //  BOOTSTRAP
 // ════════════════════════════════════════════════════════════
 scheduleMidnightReset();
-initCharts();
+// initCharts();
 
-loadSettings().then(() => {
-  fetchCurrent();
-  fetchAllData();
-});
+// loadSettings().then(() => {
+  // fetchCurrent();
+  // fetchAllData();
+// });
 
 // ════════════════════════════════════════════════════════════
 //  BOOTSTRAP — wait for DOM
