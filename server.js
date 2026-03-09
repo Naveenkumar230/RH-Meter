@@ -790,14 +790,22 @@ app.get('/api/debug', async (req, res) => {
 });
 
 app.get('/api/history', async (req, res) => {
-  try {
-    const records = await SensorData.find({}).sort({ timestamp: 1 }).limit(1000);
-    res.json(records.map(r => ({
-      timestamp: r.timestamp,
-      temp: r.temperature,
-      hum: r.humidity
-    })));
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  try {
+    // Get the LATEST 1000 records
+    const records = await SensorData.find({})
+      .sort({ timestamp: -1 }) // Sort by newest first
+      .limit(1000);
+    
+    // Reverse them so the chart displays from Oldest to Newest
+    const formatted = records.reverse().map(r => ({
+      timestamp: r.timestamp,
+      temp: r.temperature,
+      hum: r.humidity
+    }));
+    res.json(formatted);
+  } catch (err) { 
+    res.status(500).json({ error: err.message }); 
+  }
 });
 
 app.post('/api/send-raw-email', async (req, res) => {

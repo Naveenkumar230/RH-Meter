@@ -193,32 +193,29 @@ async function saveToBackend(temp, hum) {
 //  FETCH HISTORY FROM THINGSBOARD
 // ════════════════════════════════════════════════════════════
 async function fetchAllData() {
-  if (!jwtToken) await loginTB();
-  if (!jwtToken) return;
+  try {
+    // 1. FETCH FROM MONGODB INSTEAD OF THINGSBOARD
+    const res = await fetch(`${SERVER_URL}/api/history`);
+    if (!res.ok) throw new Error('Failed to fetch history from MongoDB');
+    
+    // 2. GET THE JSON DATA
+    const data = await res.json();
 
-  const endTs   = Date.now();
-  const startTs = endTs - 30 * 24 * 60 * 60 * 1000;
+    // 3. MAP TO ALLDATA (Your bucket functions will handle the rest)
+    allData = data.map(r => ({
+      timestamp: r.timestamp,
+      temp: r.temp,
+      hum: r.hum
+    }));
 
-  try {
-    const res    = await fetch(
-      `${TB_HOST}/api/plugins/telemetry/DEVICE/${DEVICE_ID}/values/timeseries?keys=temperature,humidity&startTs=${startTs}&endTs=${endTs}&limit=50000`,
-      { headers: { 'X-Authorization': `Bearer ${jwtToken}` } });
-    const tbData = await res.json();
-
-    const map = {};
-    if (tbData.temperature) tbData.temperature.forEach(i => { map[i.ts] = { timestamp: new Date(i.ts).toISOString(), temp: parseFloat(i.value), hum: null }; });
-    if (tbData.humidity)    tbData.humidity.forEach(i => {
-      if (!map[i.ts]) map[i.ts] = { timestamp: new Date(i.ts).toISOString(), temp: null, hum: parseFloat(i.value) };
-      else map[i.ts].hum = parseFloat(i.value);
-    });
-
-    allData = Object.values(map).filter(r => r.temp !== null && r.hum !== null);
-    allData.sort((a,b) => new Date(a.timestamp) - new Date(b.timestamp));
-
-    document.getElementById('dataCount').textContent = allData.length;
-    renderTodayCharts();
-    updateStats();
-  } catch (e) { console.warn('fetchAllData failed:', e.message); }
+    // 4. UPDATE UI
+    document.getElementById('dataCount').textContent = allData.length;
+    renderTodayCharts();
+    updateStats();
+    console.log("✅ History successfully loaded from MongoDB Atlas");
+  } catch (e) { 
+    console.warn('fetchAllData failed:', e.message); 
+  }
 }
 
 // ════════════════════════════════════════════════════════════
