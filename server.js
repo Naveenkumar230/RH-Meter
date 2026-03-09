@@ -670,11 +670,14 @@ app.post('/save-data', async (req, res) => {
 // ── Latest sensor reading ─────────────────────────────────────
 app.get('/api/data', async (req, res) => {
   try {
-    // Queries MongoDB, NOT ThingsBoard
+    const deviceId = req.query.deviceId || 'Meter_01';  // ← this line added
     const records = await SensorData.find({ deviceId }).sort({ timestamp: -1 }).limit(1);
     res.json(records[0] || {});
-  } catch (err) { console.error('❌ Data fetch error:', err); res.status(500).send('Error'); }
-});
+  } catch (err) { 
+    console.error('❌ Data fetch error:', err); 
+    res.status(500).send('Error'); 
+  }
+})
 
 // ── Get settings ──────────────────────────────────────────────
 app.get('/api/settings', async (req, res) => {
