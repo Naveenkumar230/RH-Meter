@@ -703,7 +703,7 @@ app.get('/api/debug', async (req, res) => {
   const s         = await Settings.findOne({ key: 'global' });
   const cooldowns = await AlertCooldown.find({});
   res.json({
-    broker:        HIVEMQ_HOST,
+    broker: HIVEMQ_URL,
     topic:         HIVEMQ_TOPIC,
     recipients:    s?.recipients,
     tempThreshold: s?.tempThreshold,

@@ -396,7 +396,7 @@ void mqttTask() {
     mqttOnline = false;
 
     // [HiveMQ] Set TLS certificate before connecting
-    secureClient.setCACert(ISRG_ROOT_X1);
+secureClient.setInsecure();
 
     String clientId = "ESP32-" + String(Config::DEVICE_ID) + "-" + String(random(0xffff), HEX);
 
