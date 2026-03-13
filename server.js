@@ -66,67 +66,80 @@ mongoose.connection.once('open', async () => {
 });
 
 // ════════════════════════════════════════════════════════════
-//  HIVEMQ MQTT SUBSCRIBER  ← replaces ThingsBoard polling
+//  HIVEMQ MQTT SUBSCRIBER
 // ════════════════════════════════════════════════════════════
-// This tells the server: "Check Render's Environment first. If empty, use these defaults."
-const HIVEMQ_HOST  = process.env.MQTT_URL || 'd034db44805b4258a6c72c3efe0f9019.s1.eu.hivemq.cloud';
-const HIVEMQ_USER  = process.env.MQTT_USER || 'RH-METER';
-const HIVEMQ_PASS  = process.env.MQTT_PASS || 'RH-METEr1234';
-const HIVEMQ_PORT  = 8883;
+
+// 1. Check if MQTT_URL exists in Render Env. 
+// 2. If it does, we use it directly. 
+// 3. If it doesn't, we build it from the host/port.
+const HIVEMQ_URL = process.env.MQTT_URL || `mqtts://d034db44805b4258a6c72c3efe0f9019.s1.eu.hivemq.cloud:8883`;
+const HIVEMQ_USER = process.env.MQTT_USER || 'RH-METER';
+const HIVEMQ_PASS = process.env.MQTT_PASS || 'RH-METEr1234';
 const HIVEMQ_TOPIC = 'AIPL/RH_Meter/+/telemetry';
 
 function startHiveMQSubscriber() {
-  const mqttClient = mqtt.connect(`mqtts://${HIVEMQ_HOST}:${HIVEMQ_PORT}`, {
+  console.log(`[HiveMQ] Attempting connection to: ${HIVEMQ_URL}`);
+
+  const mqttClient = mqtt.connect(HIVEMQ_URL, {
     username:           HIVEMQ_USER,
     password:           HIVEMQ_PASS,
     clientId:           'server-bridge-' + Math.random().toString(16).slice(2, 8),
-    rejectUnauthorized: true,    // enforce TLS certificate check
-    reconnectPeriod:    5000,    // auto-reconnect every 5 s
+    rejectUnauthorized: true,     // Enforce TLS for HiveMQ Cloud
+    reconnectPeriod:    5000,     // Auto-reconnect every 5s
     connectTimeout:     30000,
   });
 
   mqttClient.on('connect', () => {
-    console.log('✅ [HiveMQ] Connected to broker');
+    console.log('✅ [HiveMQ] Connected to broker successfully!');
     mqttClient.subscribe(HIVEMQ_TOPIC, { qos: 1 }, (err) => {
       if (err) console.error('❌ [HiveMQ] Subscribe failed:', err.message);
-      else     console.log(`✅ [HiveMQ] Subscribed → ${HIVEMQ_TOPIC}`);
+      else     console.log(`✅ [HiveMQ] Subscribed to all meters via: ${HIVEMQ_TOPIC}`);
     });
   });
 
   mqttClient.on('message', async (topic, message) => {
     try {
       // topic example: AIPL/RH_Meter/Meter_02/telemetry
-      const deviceId = topic.split('/')[2] || 'Meter_02';
+      const deviceId = topic.split('/')[2] || 'Unknown_Meter';
       const payload  = JSON.parse(message.toString());
 
       const temp = parseFloat(payload.temp);
       const hum  = parseFloat(payload.hum);
 
       if (isNaN(temp) || isNaN(hum)) {
-        console.warn(`⚠️  [HiveMQ] Invalid payload from ${deviceId}:`, payload);
+        console.warn(`⚠️ [HiveMQ] Invalid payload from ${deviceId}:`, payload);
         return;
       }
 
+      // Business Logic for Levels
       const tempLevel = temp <= 27 ? 'normal' : temp <= 35 ? 'warning' : 'critical';
-      const humLevel  = hum  < 40  ? 'critical' : hum <= 70 ? 'normal' : 'warning';
+      const humLevel  = hum < 40   ? 'critical' : hum <= 70 ? 'normal' : 'warning';
 
       const record = { deviceId, temperature: temp, humidity: hum, tempLevel, humLevel };
 
       // Save to MongoDB
       await new SensorData(record).save();
-      console.log(`💾 [HiveMQ] Saved from ${deviceId}: T=${temp}°C  H=${hum}%`);
+      console.log(`💾 [HiveMQ] Saved ${deviceId}: T=${temp}°C, H=${hum}%`);
 
-      // Trigger alert check (same logic as before)
+      // Trigger alerts
       await checkAndAlert(record);
 
     } catch (err) {
-      console.error('❌ [HiveMQ] Message error:', err.message);
+      console.error('❌ [HiveMQ] Message Processing Error:', err.message);
     }
   });
 
   mqttClient.on('reconnect', () => console.log('🔄 [HiveMQ] Reconnecting...'));
-  mqttClient.on('error',     (err) => console.error('❌ [HiveMQ] Error:', err.message));
-  mqttClient.on('offline',   ()    => console.warn('⚠️  [HiveMQ] Client offline'));
+  
+  mqttClient.on('error', (err) => {
+    if (err.message.includes('Connection refused: Not authorized')) {
+      console.error('❌ [HiveMQ] AUTH ERROR: Check your HiveMQ Username/Password!');
+    } else {
+      console.error('❌ [HiveMQ] MQTT Error:', err.message);
+    }
+  });
+
+  mqttClient.on('offline', () => console.warn('⚠️ [HiveMQ] Client offline'));
 }
 
 // Start subscriber after MongoDB is ready
