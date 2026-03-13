@@ -1,7 +1,6 @@
 // ============================================================
 //  Factory Monitor Pro — app.js
-//  Data source: HiveMQ Cloud → server.js → /api/data
-//  (ThingsBoard removed)
+//  Depends on: Chart.js 4.4.0, SheetJS (xlsx.full.min.js)
 // ============================================================
 const SERVER_URL = 'https://rh-meter-bridge.onrender.com';
 
@@ -13,9 +12,17 @@ let chartHumDetail  = null;
 let failCount       = 0;
 let lastTemp        = null;
 let lastHum         = null;
+let _lastSaveTs     = 0;
 
-// ── Thresholds ────────────────────────────────────────────────
+// ── Thresholds (live object — charts read this directly) ─────
 let thresholds = { temp: 35, hum: 70, recipients: '' };
+
+// ── ThingsBoard ───────────────────────────────────────────────
+const TB_HOST   = 'https://thingsboard.cloud';
+const DEVICE_ID = 'b2829b00-0c8a-11f1-b5a7-93241ed57bdc';
+const TB_USER   = 'naveenkumarak2002@gmail.com';
+const TB_PASS   = 'Naveen235623@@@';
+let   jwtToken  = null;
 
 // ════════════════════════════════════════════════════════════
 //  UTILITY
@@ -96,27 +103,40 @@ function updateStatusBadge(isOnline) {
 }
 
 // ════════════════════════════════════════════════════════════
-//  FETCH CURRENT READING  ← now from /api/data (not ThingsBoard)
+//  THINGSBOARD AUTH
+// ════════════════════════════════════════════════════════════
+async function loginTB() {
+  try {
+    const res  = await fetch(`${TB_HOST}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json', Accept:'application/json' },
+      body: JSON.stringify({ username: TB_USER.trim(), password: TB_PASS.trim() })
+    });
+    if (res.status === 401) { console.error('❌ TB Login rejected'); return; }
+    const d = await res.json();
+    jwtToken = d.token;
+    console.log('✅ TB Login OK');
+  } catch (e) { console.error('❌ TB Login error:', e.message); }
+}
+
+// ════════════════════════════════════════════════════════════
+//  FETCH CURRENT READING
 // ════════════════════════════════════════════════════════════
 async function fetchCurrent() {
+  if (!jwtToken) await loginTB();
+  if (!jwtToken) return;
+
   try {
-    const deviceId = document.getElementById('meterSelect')?.value || 'Meter_02';
-    const res      = await fetch(`${SERVER_URL}/api/data?deviceId=${deviceId}`);
-
-    if (!res.ok) throw new Error('Server returned ' + res.status);
-
-    const d = await res.json();
-    if (!d || d.temperature == null || d.humidity == null) {
-      // No data yet — server hasn't received a reading
-      updateStatusBadge(false);
-      return;
-    }
+    const res    = await fetch(`${TB_HOST}/api/plugins/telemetry/DEVICE/${DEVICE_ID}/values/timeseries?keys=temperature,humidity`,
+      { headers: { 'X-Authorization': `Bearer ${jwtToken}` } });
+    const tbData = await res.json();
 
     failCount = 0;
     updateStatusBadge(true);
+    if (!tbData.temperature || !tbData.humidity) return;
 
-    const t = parseFloat(d.temperature);
-    const h = parseFloat(d.humidity);
+    const t = parseFloat(tbData.temperature[0].value);
+    const h = parseFloat(tbData.humidity[0].value);
 
     // Temperature UI
     document.getElementById('tempValue').textContent = t.toFixed(1);
@@ -127,10 +147,8 @@ async function fetchCurrent() {
     }
     lastTemp = t;
     const ts = document.getElementById('tempStatus');
-    if (ts) {
-      ts.className   = 'status-badge-inline status-' + getTempLevel(t);
-      ts.textContent = getTempLevel(t).charAt(0).toUpperCase() + getTempLevel(t).slice(1);
-    }
+    ts.className   = 'status-badge-inline status-' + getTempLevel(t);
+    ts.textContent = getTempLevel(t).charAt(0).toUpperCase() + getTempLevel(t).slice(1);
 
     // Humidity UI
     document.getElementById('humValue').textContent = h.toFixed(1);
@@ -141,25 +159,46 @@ async function fetchCurrent() {
     }
     lastHum = h;
     const hs = document.getElementById('humStatus');
-    if (hs) {
-      hs.className   = 'status-badge-inline status-' + getHumLevel(h);
-      hs.textContent = getHumLevel(h).charAt(0).toUpperCase() + getHumLevel(h).slice(1);
-    }
+    hs.className   = 'status-badge-inline status-' + getHumLevel(h);
+    hs.textContent = getHumLevel(h).charAt(0).toUpperCase() + getHumLevel(h).slice(1);
+
+    // Save to backend (throttled — server does all alert logic)
+    saveToBackend(t, h);
 
   } catch (err) {
     failCount++;
-    if (failCount >= 3) updateStatusBadge(false);
-    console.warn('[fetchCurrent] Error:', err.message);
+    if (failCount >= 3) { updateStatusBadge(false); jwtToken = null; }
   }
 }
 
+// ── Throttled backend save (10s) — server handles alerts ─────
+async function saveToBackend(temp, hum) {
+  const now = Date.now();
+  if (now - _lastSaveTs < 10000) return;
+  _lastSaveTs = now;
+  try {
+    await fetch(`${SERVER_URL}/save-data`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        deviceId:    document.getElementById('meterSelect')?.value || 'Meter_01',
+        temperature: temp, humidity: hum,
+        tempLevel:   getTempLevel(temp), humLevel: getHumLevel(hum)
+      })
+    });
+  } catch (e) { console.warn('Backend save failed:', e.message); }
+}
+
 // ════════════════════════════════════════════════════════════
-//  FETCH HISTORY
+//  FETCH HISTORY FROM THINGSBOARD
+// ════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════
+//  FETCH HISTORY — use your own backend (reliable)
 // ════════════════════════════════════════════════════════════
 async function fetchAllData() {
   try {
-    const deviceId = document.getElementById('meterSelect')?.value || 'Meter_02';
-    const res      = await fetch(`${SERVER_URL}/api/history?deviceId=${deviceId}`);
+    const deviceId = document.getElementById('meterSelect')?.value || 'Meter_01';
+    const res = await fetch(`${SERVER_URL}/api/history?deviceId=${deviceId}`);
     if (!res.ok) throw new Error('History fetch failed: ' + res.status);
     const records = await res.json();
 
@@ -180,7 +219,6 @@ async function fetchAllData() {
     console.error('fetchAllData failed:', e.message);
   }
 }
-
 // ════════════════════════════════════════════════════════════
 //  SETTINGS — LOAD & SAVE
 // ════════════════════════════════════════════════════════════
@@ -199,21 +237,27 @@ async function loadSettings() {
   }
 }
 
+// ── Single authoritative syncThresholdUI ─────────────────────
 function syncThresholdUI() {
+  // Input fields
   const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
   set('thresholdTempInput', thresholds.temp);
   set('thresholdHumInput',  thresholds.hum);
 
+  // Badges in panel header
   const tb = document.getElementById('tempThresholdBadge');
   const hb = document.getElementById('humThresholdBadge');
   if (tb) tb.textContent = thresholds.temp + ' °C';
   if (hb) hb.textContent = thresholds.hum  + ' %';
 
+  // Rebuild recipient chips
   initRecipientChips();
 
+  // ✅ Force ALL charts to redraw threshold lines immediately
   [chartTempToday, chartHumToday, chartTempDetail, chartHumDetail].forEach(c => { if (c) c.update('none'); });
 }
 
+// ── Save settings ─────────────────────────────────────────────
 async function saveThresholdSettings() {
   const entered = prompt('🔒 Enter admin password to save settings:');
   if (entered === null) return;
@@ -236,17 +280,21 @@ async function saveThresholdSettings() {
     if (!res.ok) throw new Error('Server returned ' + res.status);
     const json = await res.json();
 
+    // ✅ Update live thresholds object — charts re-read this automatically
     thresholds.temp       = json.settings?.tempThreshold ?? tv;
     thresholds.hum        = json.settings?.humThreshold  ?? hv;
     thresholds.recipients = recipientList;
 
+    // ✅ Sync UI + force chart lines to update
     syncThresholdUI();
     renderTodayCharts();
     if (chartTempDetail) renderTempDetail();
     if (chartHumDetail)  renderHumDetail();
 
     showToast('✅ Settings saved! Threshold lines updated.', 'success');
+
   } catch (e) {
+    console.error('Save failed:', e.message);
     showToast('❌ Failed to save: ' + e.message, 'error');
   }
 }
@@ -257,22 +305,29 @@ async function saveThresholdSettings() {
 async function sendTestEmail() {
   const chips = document.querySelectorAll('.recipient-chip');
   const recipientList = Array.from(chips).map(c => c.dataset.email).filter(Boolean).join(',');
+
   if (!recipientList) return showToast('Add at least one recipient email first', 'error');
 
   document.querySelectorAll('.btn-test-email').forEach(b => { b.disabled = true; b.textContent = '📨 Sending...'; });
 
   try {
+    // Ensure latest recipients saved in DB first
     await fetch(`${SERVER_URL}/api/settings`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ recipients: recipientList })
     });
+
     const res  = await fetch(`${SERVER_URL}/api/test-email`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ recipients: recipientList })
     });
     const json = await res.json().catch(() => ({}));
-    if (res.ok && json.ok) showToast('✅ Test email sent! Check your inbox.', 'success');
-    else showToast('❌ Email failed: ' + (json.error || `Status ${res.status}`), 'error');
+
+    if (res.ok && json.ok) {
+      showToast('✅ Test email sent! Check your inbox.', 'success');
+    } else {
+      showToast('❌ Email failed: ' + (json.error || `Status ${res.status}`), 'error');
+    }
   } catch (e) {
     showToast('❌ Could not reach server: ' + e.message, 'error');
   } finally {
@@ -316,6 +371,7 @@ function addChip() {
 }
 
 function removeChip(btn) { btn.closest('.recipient-chip').remove(); }
+
 function handleRecipientKeydown(e) { if (e.key === 'Enter') { e.preventDefault(); addChip(); } }
 
 // ════════════════════════════════════════════════════════════
@@ -356,6 +412,9 @@ function updateStats() {
 
 // ════════════════════════════════════════════════════════════
 //  THRESHOLD LINE PLUGIN
+//  ✅ Reads from live `thresholds` object on every draw —
+//     so changing thresholds.temp/hum + chart.update() is
+//     all that's needed to move the line.
 // ════════════════════════════════════════════════════════════
 function makeThresholdPlugin(getVal, color, label) {
   return {
@@ -369,6 +428,8 @@ function makeThresholdPlugin(getVal, color, label) {
       if (y < chartArea.top || y > chartArea.bottom) return;
 
       ctx.save();
+
+      // Dashed line
       ctx.beginPath();
       ctx.moveTo(chartArea.left, y);
       ctx.lineTo(chartArea.right, y);
@@ -378,6 +439,7 @@ function makeThresholdPlugin(getVal, color, label) {
       ctx.stroke();
       ctx.setLineDash([]);
 
+      // Label pill background
       const text    = `${label}: ${value}`;
       ctx.font      = 'bold 11px Inter, sans-serif';
       const tw      = ctx.measureText(text).width;
@@ -401,10 +463,12 @@ function makeThresholdPlugin(getVal, color, label) {
       ctx.closePath();
       ctx.fill();
 
+      // Label text
       ctx.fillStyle    = '#ffffff';
       ctx.textAlign    = 'left';
       ctx.textBaseline = 'middle';
       ctx.fillText(text, px + 8, py + ph / 2);
+
       ctx.restore();
     }
   };
@@ -430,6 +494,7 @@ const chartOptions = {
 //  INIT CHARTS
 // ════════════════════════════════════════════════════════════
 function initCharts() {
+  // ✅ Destroy existing charts before reinitialising
   if (chartTempToday)  { chartTempToday.destroy();  chartTempToday  = null; }
   if (chartHumToday)   { chartHumToday.destroy();   chartHumToday   = null; }
   if (chartTempDetail) { chartTempDetail.destroy();  chartTempDetail = null; }
@@ -437,7 +502,10 @@ function initCharts() {
 
   const tempCanvas = document.getElementById('chartTempToday');
   const humCanvas  = document.getElementById('chartHumToday');
-  if (!tempCanvas || !humCanvas) { console.warn('Chart canvases not found'); return; }
+  if (!tempCanvas || !humCanvas) {
+    console.warn('Chart canvases not found — skipping initCharts');
+    return;
+  }
 
   chartTempToday = new Chart(tempCanvas.getContext('2d'), {
     type: 'line',
@@ -463,11 +531,11 @@ function renderTodayCharts() {
 
   chartTempToday.data.labels           = data.map(b => b.label);
   chartTempToday.data.datasets[0].data = data.map(b => b.temp);
-  chartTempToday.update();
+  chartTempToday.update();   // ✅ threshold plugin redraws at current thresholds.temp
 
   chartHumToday.data.labels            = data.map(b => b.label);
   chartHumToday.data.datasets[0].data  = data.map(b => b.hum);
-  chartHumToday.update();
+  chartHumToday.update();    // ✅ threshold plugin redraws at current thresholds.hum
 }
 
 // ════════════════════════════════════════════════════════════
@@ -632,6 +700,14 @@ function renderHumDetail() {
 }
 
 // ════════════════════════════════════════════════════════════
+//  DATE PICKER LISTENERS
+// ════════════════════════════════════════════════════════════
+document.getElementById('tempDateFrom').addEventListener('change', renderTempDetail);
+document.getElementById('tempDateTo').addEventListener('change',   renderTempDetail);
+document.getElementById('humDateFrom').addEventListener('change',  renderHumDetail);
+document.getElementById('humDateTo').addEventListener('change',    renderHumDetail);
+
+// ════════════════════════════════════════════════════════════
 //  EXPORT
 // ════════════════════════════════════════════════════════════
 function setExportToday() {
@@ -709,10 +785,22 @@ function scheduleMidnightReset() {
 // ════════════════════════════════════════════════════════════
 //  BOOTSTRAP
 // ════════════════════════════════════════════════════════════
+scheduleMidnightReset();
+// initCharts();
+
+// loadSettings().then(() => {
+  // fetchCurrent();
+  // fetchAllData();
+// });
+
+// ════════════════════════════════════════════════════════════
+//  BOOTSTRAP — wait for DOM
+// ════════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
   scheduleMidnightReset();
   initCharts();
 
+  // Safe to attach listeners now
   document.getElementById('tempDateFrom')?.addEventListener('change', renderTempDetail);
   document.getElementById('tempDateTo')?.addEventListener('change',   renderTempDetail);
   document.getElementById('humDateFrom')?.addEventListener('change',  renderHumDetail);
@@ -724,9 +812,6 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   setExportToday();
-
-  // Poll /api/data every 10 seconds (matches ESP32 publish interval)
-  setInterval(fetchCurrent,  10000);
-  // Refresh full history every 30 minutes
+  setInterval(fetchCurrent,  2000);
   setInterval(fetchAllData, 1800000);
 });
