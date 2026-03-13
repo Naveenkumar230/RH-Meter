@@ -98,16 +98,25 @@ function updateStatusBadge(isOnline) {
 // ════════════════════════════════════════════════════════════
 //  FETCH CURRENT READING  ← now from /api/data (not ThingsBoard)
 // ════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════
+//  FETCH CURRENT READING (Optimized for HiveMQ)
+// ════════════════════════════════════════════════════════════
 async function fetchCurrent() {
   try {
     const deviceId = document.getElementById('meterSelect')?.value || 'Meter_02';
-    const res      = await fetch(`${SERVER_URL}/api/data?deviceId=${deviceId}`);
+    // Added _t parameter to prevent browser caching
+    const res = await fetch(`${SERVER_URL}/api/data?deviceId=${deviceId}&_t=${Date.now()}`);
 
     if (!res.ok) throw new Error('Server returned ' + res.status);
 
     const d = await res.json();
-    if (!d || d.temperature == null || d.humidity == null) {
-      // No data yet — server hasn't received a reading
+    
+    // IMPORTANT: Check for 'temperature' OR 'temp' depending on your JSON structure
+    const t = d.temperature !== undefined ? parseFloat(d.temperature) : (d.temp !== undefined ? parseFloat(d.temp) : null);
+    const h = d.humidity !== undefined ? parseFloat(d.humidity) : (d.hum !== undefined ? parseFloat(d.hum) : null);
+
+    if (t === null || h === null) {
+      console.warn('[fetchCurrent] No valid data in response for:', deviceId);
       updateStatusBadge(false);
       return;
     }
@@ -115,36 +124,17 @@ async function fetchCurrent() {
     failCount = 0;
     updateStatusBadge(true);
 
-    const t = parseFloat(d.temperature);
-    const h = parseFloat(d.humidity);
-
-    // Temperature UI
+    // Update UI
     document.getElementById('tempValue').textContent = t.toFixed(1);
+    document.getElementById('humValue').textContent = h.toFixed(1);
+
+    // Trend Logic
     if (lastTemp !== null) {
       const diff = t - lastTemp;
-      document.getElementById('tempTrend').textContent     = diff > 0.2 ? '↑' : diff < -0.2 ? '↓' : '→';
-      document.getElementById('tempTrendText').textContent = diff > 0.2 ? 'Rising' : diff < -0.2 ? 'Falling' : 'Stable';
+      document.getElementById('tempTrend').textContent = diff > 0.1 ? '↑' : diff < -0.1 ? '↓' : '→';
     }
     lastTemp = t;
-    const ts = document.getElementById('tempStatus');
-    if (ts) {
-      ts.className   = 'status-badge-inline status-' + getTempLevel(t);
-      ts.textContent = getTempLevel(t).charAt(0).toUpperCase() + getTempLevel(t).slice(1);
-    }
-
-    // Humidity UI
-    document.getElementById('humValue').textContent = h.toFixed(1);
-    if (lastHum !== null) {
-      const diff = h - lastHum;
-      document.getElementById('humTrend').textContent     = diff > 0.5 ? '↑' : diff < -0.5 ? '↓' : '→';
-      document.getElementById('humTrendText').textContent = diff > 0.5 ? 'Rising' : diff < -0.5 ? 'Falling' : 'Stable';
-    }
     lastHum = h;
-    const hs = document.getElementById('humStatus');
-    if (hs) {
-      hs.className   = 'status-badge-inline status-' + getHumLevel(h);
-      hs.textContent = getHumLevel(h).charAt(0).toUpperCase() + getHumLevel(h).slice(1);
-    }
 
   } catch (err) {
     failCount++;
@@ -154,20 +144,22 @@ async function fetchCurrent() {
 }
 
 // ════════════════════════════════════════════════════════════
-//  FETCH HISTORY
+//  FETCH HISTORY (HiveMQ Optimized)
 // ════════════════════════════════════════════════════════════
 async function fetchAllData() {
   try {
     const deviceId = document.getElementById('meterSelect')?.value || 'Meter_02';
-    const res      = await fetch(`${SERVER_URL}/api/history?deviceId=${deviceId}`);
+    // Added _t parameter to prevent browser caching
+    const res = await fetch(`${SERVER_URL}/api/history?deviceId=${deviceId}&_t=${Date.now()}`);
     if (!res.ok) throw new Error('History fetch failed: ' + res.status);
     const records = await res.json();
 
+    // Map keys to match what HiveMQ/MongoDB uses (temperature vs temp)
     allData = records.map(r => ({
       timestamp: r.timestamp,
-      temp: r.temp,
-      hum: r.hum
-    })).filter(r => r.temp !== null && r.hum !== null);
+      temp: r.temperature !== undefined ? r.temperature : r.temp,
+      hum: r.humidity !== undefined ? r.humidity : r.hum
+    })).filter(r => r.temp != null && r.hum != null);
 
     allData.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 
