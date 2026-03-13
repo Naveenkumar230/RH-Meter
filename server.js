@@ -31,6 +31,7 @@ mongoose.connect(process.env.MONGO_URI || "mongodb+srv://factory_admin:factory_a
   .catch(err => console.error("❌ MongoDB Error:", err));
 
 // ── Schemas ───────────────────────────────────────────────────
+// Change this line in your Schemas section
 const SensorData = mongoose.model('SensorData', new mongoose.Schema({
   deviceId:    { type: String, default: 'Meter_02' },
   temperature: Number,
@@ -38,7 +39,7 @@ const SensorData = mongoose.model('SensorData', new mongoose.Schema({
   tempLevel:   String,
   humLevel:    String,
   timestamp:   { type: Date, default: Date.now }
-}));
+}), 'sensordatas'); // <--- ADD THIS 'sensordatas' string here
 
 const Settings = mongoose.model('Settings', new mongoose.Schema({
   key:           { type: String, default: 'global', unique: true },
