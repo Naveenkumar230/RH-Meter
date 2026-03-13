@@ -66,6 +66,9 @@ emyPxgcYxn/eR44/KJ4EBs+lVDR3veyJm+kXQ99b21/+jh5Xos1AnX5iItreGCc=
 // ============================================================
 //  CONFIGURATION
 // ============================================================
+// ============================================================
+//  CONFIGURATION
+// ============================================================
 namespace Config {
     constexpr const char* WIFI_SSID       = "AIPL-IOT";
     constexpr const char* WIFI_PASS       = "@ipl2027";
@@ -73,20 +76,21 @@ namespace Config {
     constexpr const char* DEVICE_ID       = "Meter_02";
 
     // ── [HiveMQ] Broker settings ─────────────────────────────
-    constexpr const char* MQTT_HOST       = "2018bb4268ed43ada18798af63a53bfc.s1.eu.hivemq.cloud";
-    constexpr int         MQTT_PORT       = 8883;
-    constexpr const char* MQTT_USER       = "RH-METER";
-    constexpr const char* MQTT_PASS       = "RH-METEr1234";
-    constexpr const char* MQTT_TOPIC      = "AIPL/RH_Meter/Meter_02/telemetry";
+    // Corrected: Removed the extra nested namespace line here
+    constexpr const char* MQTT_HOST = "d034db44805b4258a6c72c3efe0f9019.s1.eu.hivemq.cloud";
+    constexpr int         MQTT_PORT = 8883;
+    constexpr const char* MQTT_USER = "RH-METER";
+    constexpr const char* MQTT_PASS = "RH-METEr1234"; 
+    constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_02/telemetry";
 
     // OTA
     constexpr const char* OTA_HOSTNAME    = "FactoryMonitor";
     constexpr const char* OTA_PASSWORD    = "ota_admin_2024";
 
-    // NTP
+    // NTP (Time Sync)
     constexpr const char* NTP_SERVER      = "pool.ntp.org";
-    constexpr long        GMT_OFFSET_SEC  = 19800;
-    constexpr int         DST_OFFSET_SEC  = 0;
+    constexpr long         GMT_OFFSET_SEC  = 19800; // IST Offset
+    constexpr int          DST_OFFSET_SEC  = 0;
 
     // Calibration offsets
     constexpr float TEMP_OFFSET           = -0.8f;
@@ -108,12 +112,12 @@ namespace Config {
     constexpr uint32_t MQTT_CHECK_MS      = 5000;
     constexpr uint32_t LCD_PAGE_MS        = 6000;
 
-    // Hardware
-    constexpr int     I2C_SDA            = 4;
-    constexpr int     I2C_SCL            = 22;
-    constexpr uint8_t LCD_ADDR           = 0x27;
-    constexpr uint8_t SHT_ADDR           = 0x44;
-    constexpr int     MAX_READINGS       = 2880;
+    // Hardware Pins
+    constexpr int     I2C_SDA             = 4;
+    constexpr int     I2C_SCL             = 22;
+    constexpr uint8_t LCD_ADDR            = 0x27;
+    constexpr uint8_t SHT_ADDR            = 0x44;
+    constexpr int     MAX_READINGS        = 2880;
 }
 
 // ============================================================
@@ -251,53 +255,43 @@ void lcdRow(uint8_t row, const String& text, uint8_t width = 16) {
 }
 
 void lcdPageTemperature() {
-    // Row 0: Temp value
-    lcd.setCursor(0, 0);
+    // Row 0: Large Header
+    lcdRow(0, " TEMPERATURE"); 
+    
+    // Row 1: Large Value
+    lcd.setCursor(2, 1); // Indent slightly to center
     lcd.write(CHR_THERM);
-    lcd.print(" T:");
+    lcd.print(" ");
+    
     if (!isnan(currentTemp)) {
-        char buf[7]; dtostrf(currentTemp, 5, 1, buf);
+        char buf[7]; 
+        dtostrf(currentTemp, 5, 1, buf);
         lcd.print(buf);
         lcd.write(CHR_DEG);
-        lcd.print("C ");
+        lcd.print("C");
     } else {
-        lcd.print(" --.-C  ");
-    }
-
-    // Row 1: Status
-    lcd.setCursor(0, 1);
-    if (!isnan(currentTemp)) {
-        String lvl = alertLevel(currentTemp, Config::TEMP_NORMAL, Config::TEMP_WARNING);
-        if      (lvl == "normal")  { lcd.print("Status: NORMAL  "); }
-        else if (lvl == "warning") { lcd.print("Status: WARNING "); }
-        else                       { lcd.print("Status: CRITICAL"); }
-    } else {
-        lcd.print("No Sensor       ");
+        lcd.print("--.-");
+        lcd.write(CHR_DEG);
+        lcd.print("C");
     }
 }
 
 void lcdPageHumidity() {
-    // Row 0: Humidity value
-    lcd.setCursor(0, 0);
-    lcd.write(CHR_DROP);
-    lcd.print(" H:");
-    if (!isnan(currentHum)) {
-        char buf[7]; dtostrf(currentHum, 5, 1, buf);
-        lcd.print(buf);
-        lcd.print("% ");
-    } else {
-        lcd.print("  --.- %  ");
-    }
+    // Row 0: Large Header
+    lcdRow(0, "  HUMIDITY");
 
-    // Row 1: Status
-    lcd.setCursor(0, 1);
+    // Row 1: Large Value
+    lcd.setCursor(2, 1); // Indent slightly to center
+    lcd.write(CHR_DROP);
+    lcd.print(" ");
+
     if (!isnan(currentHum)) {
-        String lvl = humLevel(currentHum);
-        if      (lvl == "normal")  { lcd.print("Status: NORMAL  "); }
-        else if (lvl == "warning") { lcd.print("Status: WET-WARN"); }
-        else                       { lcd.print("Status: DRY-CRIT"); }
+        char buf[7];
+        dtostrf(currentHum, 5, 1, buf);
+        lcd.print(buf);
+        lcd.print("% RH");
     } else {
-        lcd.print("No Sensor       ");
+        lcd.print("--.- %");
     }
 }
 
@@ -375,11 +369,14 @@ void mqttPublish() {
         "{\"temp\":%.1f,\"hum\":%.1f,\"id\":\"%s\"}",
         currentTemp, currentHum, Config::DEVICE_ID);
 
-    bool ok = mqttClient.publish(Config::MQTT_TOPIC, payload);
+    // Dynamic Topic based on the Device ID
+    String dynamicTopic = "AIPL/RH_Meter/" + String(Config::DEVICE_ID) + "/telemetry";
+
+    bool ok = mqttClient.publish(dynamicTopic.c_str(), payload);
     if (ok) {
-        Serial.printf("[HiveMQ] Data sent → %s\n", payload);
+        Serial.printf("[HiveMQ] Data sent to %s → %s\n", dynamicTopic.c_str(), payload);
     } else {
-        Serial.println("[HiveMQ] Publish failed");
+        Serial.println("[HiveMQ] Publish failed - check buffer size or connection");
     }
 }
 

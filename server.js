@@ -68,11 +68,12 @@ mongoose.connection.once('open', async () => {
 // ════════════════════════════════════════════════════════════
 //  HIVEMQ MQTT SUBSCRIBER  ← replaces ThingsBoard polling
 // ════════════════════════════════════════════════════════════
-const HIVEMQ_HOST  = '2018bb4268ed43ada18798af63a53bfc.s1.eu.hivemq.cloud';
+// This tells the server: "Check Render's Environment first. If empty, use these defaults."
+const HIVEMQ_HOST  = process.env.MQTT_URL || 'd034db44805b4258a6c72c3efe0f9019.s1.eu.hivemq.cloud';
+const HIVEMQ_USER  = process.env.MQTT_USER || 'RH-METER';
+const HIVEMQ_PASS  = process.env.MQTT_PASS || 'RH-METEr1234';
 const HIVEMQ_PORT  = 8883;
-const HIVEMQ_USER  = 'RH-METER';
-const HIVEMQ_PASS  = 'RH-METEr1234';
-const HIVEMQ_TOPIC = 'AIPL/RH_Meter/+/telemetry';   // '+' wildcard → all meters
+const HIVEMQ_TOPIC = 'AIPL/RH_Meter/+/telemetry';
 
 function startHiveMQSubscriber() {
   const mqttClient = mqtt.connect(`mqtts://${HIVEMQ_HOST}:${HIVEMQ_PORT}`, {
