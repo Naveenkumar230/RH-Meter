@@ -100,10 +100,12 @@ function startHiveMQSubscriber() {
 
   mqttClient.on('message', async (topic, message) => {
     try {
-      // topic example: AIPL/RH_Meter/Meter_02/telemetry
-      const deviceId = topic.split('/')[2] || 'Unknown_Meter';
-      const payload  = JSON.parse(message.toString());
+      const payload = JSON.parse(message.toString());
+      
+      // Extract deviceId from topic OR payload
+      const deviceId = topic.split('/')[2] || payload.id || 'Meter_02';
 
+      // TRANSLATION: Map 'temp' to 'temperature' and 'hum' to 'humidity'
       const temp = parseFloat(payload.temp);
       const hum  = parseFloat(payload.hum);
 
@@ -112,18 +114,16 @@ function startHiveMQSubscriber() {
         return;
       }
 
-      // Business Logic for Levels
-      const tempLevel = temp <= 27 ? 'normal' : temp <= 35 ? 'warning' : 'critical';
-      const humLevel  = hum < 40   ? 'critical' : hum <= 70 ? 'normal' : 'warning';
+      const record = { 
+        deviceId: deviceId, 
+        temperature: temp,  // Saves as 'temperature' in DB
+        humidity: hum,      // Saves as 'humidity' in DB
+        tempLevel: temp <= 27 ? 'normal' : temp <= 35 ? 'warning' : 'critical',
+        humLevel: hum < 40 ? 'critical' : hum <= 70 ? 'normal' : 'warning'
+      };
 
-      const record = { deviceId, temperature: temp, humidity: hum, tempLevel, humLevel };
-
-      // Save to MongoDB
       await new SensorData(record).save();
       console.log(`💾 [HiveMQ] Saved ${deviceId}: T=${temp}°C, H=${hum}%`);
-
-      // Trigger alerts
-      await checkAndAlert(record);
 
     } catch (err) {
       console.error('❌ [HiveMQ] Message Processing Error:', err.message);
