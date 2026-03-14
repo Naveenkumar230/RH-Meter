@@ -3,9 +3,9 @@
 //  Data source: HiveMQ Cloud → server.js → /api/data
 //  (ThingsBoard removed)
 // ============================================================
-// const SERVER_URL = 'https://rh-meter-bridge.onrender.com';
+const SERVER_URL = 'https://rh-meter-bridge.onrender.com';
 
-const SERVER_URL = 'http://localhost:3001';
+// const SERVER_URL = 'http://localhost:3001';
 
 let allData         = [];
 let chartTempToday  = null;
