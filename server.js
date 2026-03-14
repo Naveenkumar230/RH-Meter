@@ -98,14 +98,12 @@ function startHiveMQSubscriber() {
     });
   });
 
-  mqttClient.on('message', async (topic, message) => {
+mqttClient.on('message', async (topic, message) => {
     try {
       const payload = JSON.parse(message.toString());
       
-      // Extract deviceId from topic OR payload
       const deviceId = topic.split('/')[2] || payload.id || 'Meter_02';
 
-      // TRANSLATION: Map 'temp' to 'temperature' and 'hum' to 'humidity'
       const temp = parseFloat(payload.temp);
       const hum  = parseFloat(payload.hum);
 
@@ -116,14 +114,15 @@ function startHiveMQSubscriber() {
 
       const record = { 
         deviceId: deviceId, 
-        temperature: temp,  // Saves as 'temperature' in DB
-        humidity: hum,      // Saves as 'humidity' in DB
+        temperature: temp,
+        humidity: hum,
         tempLevel: temp <= 27 ? 'normal' : temp <= 35 ? 'warning' : 'critical',
-        humLevel: hum < 40 ? 'critical' : hum <= 70 ? 'normal' : 'warning'
+        humLevel: hum < 40 ? 'critical' : hum <= 70 ? 'normal' : 'critical'  // ← Fix 3
       };
 
       await new SensorData(record).save();
       console.log(`💾 [HiveMQ] Saved ${deviceId}: T=${temp}°C, H=${hum}%`);
+      await checkAndAlert(record);  // ← Fix 1
 
     } catch (err) {
       console.error('❌ [HiveMQ] Message Processing Error:', err.message);
@@ -165,6 +164,13 @@ async function markAlertSent(key) {
 
 // ── Brevo email sender ────────────────────────────────────────
 async function sendEmail(subject, htmlBody, recipients) {
+  const apiKey = process.env.BREVO_API_KEY || BREVO_API_KEY;
+
+  if (!apiKey) {
+    console.error('❌ BREVO_API_KEY is not set — skipping email');
+    return { ok: false, error: 'BREVO_API_KEY not configured' };
+  }
+
   const payload = JSON.stringify({
     sender:      { name: 'Factory Monitor Pro', email: SENDER_EMAIL },
     to:          recipients.map(email => ({ email })),
@@ -179,7 +185,7 @@ async function sendEmail(subject, htmlBody, recipients) {
       method:   'POST',
       headers: {
         'accept':         'application/json',
-        'api-key':        BREVO_API_KEY,
+        'api-key':        apiKey,
         'content-type':   'application/json',
         'content-length': Buffer.byteLength(payload)
       }
@@ -625,9 +631,37 @@ app.post('/save-data', async (req, res) => {
 app.get('/api/history', async (req, res) => {
   try {
     const deviceId = req.query.deviceId || 'Meter_02';
-    const records  = await SensorData.find({ deviceId }).sort({ timestamp: 1 }).limit(1000);
-    res.json(records.map(r => ({ timestamp: r.timestamp, temp: r.temperature, hum: r.humidity })));
-  } catch (err) { res.status(500).json({ error: err.message }); }
+
+    const from = req.query.from
+      ? new Date(req.query.from + 'T00:00:00.000Z')
+      : new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00.000Z');
+
+    const to = req.query.to
+      ? new Date(req.query.to + 'T23:59:59.999Z')
+      : new Date(new Date().toISOString().slice(0, 10) + 'T23:59:59.999Z');
+
+    console.log(`📅 [History] deviceId=${deviceId} from=${from.toISOString()} to=${to.toISOString()}`);
+
+    const records = await SensorData
+      .find({
+        deviceId,
+        timestamp: { $gte: from, $lte: to }
+      })
+      .sort({ timestamp: 1 })
+      .lean()
+      .read('primary');        // ← forces read from primary, bypasses cache
+
+    console.log(`📦 [History] returning ${records.length} records`);
+
+    res.json(records.map(r => ({
+      timestamp: r.timestamp,
+      temp:      r.temperature,
+      hum:       r.humidity
+    })));
+  } catch (err) {
+    console.error('❌ /api/history error:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── Settings ──────────────────────────────────────────────────

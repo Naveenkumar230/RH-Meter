@@ -3,7 +3,9 @@
 //  Data source: HiveMQ Cloud → server.js → /api/data
 //  (ThingsBoard removed)
 // ============================================================
-const SERVER_URL = 'https://rh-meter-bridge.onrender.com';
+// const SERVER_URL = 'https://rh-meter-bridge.onrender.com';
+
+const SERVER_URL = 'http://localhost:3001';
 
 let allData         = [];
 let chartTempToday  = null;
@@ -21,40 +23,56 @@ let thresholds = { temp: 35, hum: 70, recipients: '' };
 //  UTILITY
 // ════════════════════════════════════════════════════════════
 function pad(n)     { return n < 10 ? '0' + n : '' + n; }
-function dateStr(d) { return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()); }
+function dateStr(d) { return d.toISOString().slice(0, 10); }  // ← Fix 2: UTC-based
 
 function filterDate(ds)       { return allData.filter(r => dateStr(new Date(r.timestamp)) === ds); }
 function filterRange(from,to) { return allData.filter(r => { const d = dateStr(new Date(r.timestamp)); return d >= from && d <= to; }); }
 
+function toIST(d) {
+  // Add 5 hours 30 minutes to UTC to get IST
+  const ist = new Date(d.getTime() + (5.5 * 60 * 60 * 1000));
+  return pad(ist.getUTCHours()) + ':' + pad(ist.getUTCMinutes());
+}
+
 function bucket30min(arr) {
   const map = {};
   arr.forEach(r => {
-    const d = new Date(r.timestamp), m = d.getMinutes() < 30 ? '00' : '30';
-    const key = dateStr(d)+' '+pad(d.getHours())+':'+m;
+    const d   = new Date(r.timestamp);
+    const ist = new Date(d.getTime() + (5.5 * 60 * 60 * 1000));
+    const m   = ist.getUTCMinutes() < 30 ? '00' : '30';
+    const key = dateStr(d) + ' ' + pad(ist.getUTCHours()) + ':' + m;
     if (!map[key]) map[key] = { temps:[], hums:[], key };
-    map[key].temps.push(r.temp); map[key].hums.push(r.hum);
+    map[key].temps.push(r.temp);
+    map[key].hums.push(r.hum);
   });
   return Object.keys(map).sort().map(k => {
     const b = map[k];
-    return { label: b.key.split(' ')[1],
-      temp: +(b.temps.reduce((a,v)=>a+v,0)/b.temps.length).toFixed(1),
-      hum:  +(b.hums.reduce((a,v)=>a+v,0)/b.hums.length).toFixed(1) };
+    return {
+      label: b.key.split(' ')[1],
+      temp:  +(b.temps.reduce((a,v)=>a+v,0)/b.temps.length).toFixed(1),
+      hum:   +(b.hums.reduce((a,v)=>a+v,0)/b.hums.length).toFixed(1)
+    };
   });
 }
 
 function bucket5min(arr) {
   const map = {};
   arr.forEach(r => {
-    const d = new Date(r.timestamp), m = Math.floor(d.getMinutes()/5)*5;
-    const key = dateStr(d)+' '+pad(d.getHours())+':'+pad(m);
+    const d   = new Date(r.timestamp);
+    const ist = new Date(d.getTime() + (5.5 * 60 * 60 * 1000));
+    const m   = pad(Math.floor(ist.getUTCMinutes() / 5) * 5);
+    const key = dateStr(d) + ' ' + pad(ist.getUTCHours()) + ':' + m;
     if (!map[key]) map[key] = { temps:[], hums:[], key };
-    map[key].temps.push(r.temp); map[key].hums.push(r.hum);
+    map[key].temps.push(r.temp);
+    map[key].hums.push(r.hum);
   });
   return Object.keys(map).sort().map(k => {
     const b = map[k];
-    return { label: b.key.split(' ')[1],
-      temp: +(b.temps.reduce((a,v)=>a+v,0)/b.temps.length).toFixed(1),
-      hum:  +(b.hums.reduce((a,v)=>a+v,0)/b.hums.length).toFixed(1) };
+    return {
+      label: b.key.split(' ')[1],
+      temp:  +(b.temps.reduce((a,v)=>a+v,0)/b.temps.length).toFixed(1),
+      hum:   +(b.hums.reduce((a,v)=>a+v,0)/b.hums.length).toFixed(1)
+    };
   });
 }
 
@@ -143,22 +161,48 @@ async function fetchCurrent() {
   }
 }
 
+
+async function fetchRangeData(from, to) {
+  try {
+    const deviceId = document.getElementById('meterSelect')?.value || 'Meter_02';
+    const res = await fetch(
+      `${SERVER_URL}/api/history?deviceId=${deviceId}&from=${from}&to=${to}&_t=${Date.now()}`
+    );
+    if (!res.ok) throw new Error('Range fetch failed: ' + res.status);
+    const records = await res.json();
+    return records.map(r => ({
+      timestamp: r.timestamp,
+      temp: r.temperature !== undefined ? r.temperature : r.temp,
+      hum:  r.humidity    !== undefined ? r.humidity    : r.hum
+    })).filter(r => r.temp != null && r.hum != null);
+  } catch (e) {
+    console.error('fetchRangeData failed:', e.message);
+    return [];
+  }
+}
+
 // ════════════════════════════════════════════════════════════
 //  FETCH HISTORY (HiveMQ Optimized)
 // ════════════════════════════════════════════════════════════
 async function fetchAllData() {
   try {
     const deviceId = document.getElementById('meterSelect')?.value || 'Meter_02';
-    // Added _t parameter to prevent browser caching
-    const res = await fetch(`${SERVER_URL}/api/history?deviceId=${deviceId}&_t=${Date.now()}`);
+    
+    // Use today's UTC date by default
+    const today = new Date().toISOString().slice(0, 10);
+    const from  = today;
+    const to    = today;
+
+    const res = await fetch(
+      `${SERVER_URL}/api/history?deviceId=${deviceId}&from=${from}&to=${to}&_t=${Date.now()}`
+    );
     if (!res.ok) throw new Error('History fetch failed: ' + res.status);
     const records = await res.json();
 
-    // Map keys to match what HiveMQ/MongoDB uses (temperature vs temp)
     allData = records.map(r => ({
       timestamp: r.timestamp,
       temp: r.temperature !== undefined ? r.temperature : r.temp,
-      hum: r.humidity !== undefined ? r.humidity : r.hum
+      hum:  r.humidity    !== undefined ? r.humidity    : r.hum
     })).filter(r => r.temp != null && r.hum != null);
 
     allData.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
@@ -499,10 +543,10 @@ function setTodayTemp() {
   renderTempDetail();
 }
 
-function renderTempDetail() {
-  const from      = document.getElementById('tempDateFrom').value;
-  const to        = document.getElementById('tempDateTo').value;
-  const subset    = filterRange(from, to);
+async function renderTempDetail() {
+  const from   = document.getElementById('tempDateFrom').value;
+  const to     = document.getElementById('tempDateTo').value;
+  const subset = await fetchRangeData(from, to);         // ← fetch from server
   const isSameDay = from === to;
 
   const s = stats(subset, 'temp');
@@ -566,10 +610,10 @@ function setTodayHum() {
   renderHumDetail();
 }
 
-function renderHumDetail() {
-  const from      = document.getElementById('humDateFrom').value;
-  const to        = document.getElementById('humDateTo').value;
-  const subset    = filterRange(from, to);
+async function renderHumDetail() {
+  const from   = document.getElementById('humDateFrom').value;
+  const to     = document.getElementById('humDateTo').value;
+  const subset = await fetchRangeData(from, to);         // ← fetch from server
   const isSameDay = from === to;
 
   const s = stats(subset, 'hum');
@@ -705,10 +749,10 @@ document.addEventListener('DOMContentLoaded', () => {
   scheduleMidnightReset();
   initCharts();
 
-  document.getElementById('tempDateFrom')?.addEventListener('change', renderTempDetail);
-  document.getElementById('tempDateTo')?.addEventListener('change',   renderTempDetail);
-  document.getElementById('humDateFrom')?.addEventListener('change',  renderHumDetail);
-  document.getElementById('humDateTo')?.addEventListener('change',    renderHumDetail);
+document.getElementById('tempDateFrom')?.addEventListener('change', renderTempDetail);
+document.getElementById('tempDateTo')?.addEventListener('change',   renderTempDetail);
+document.getElementById('humDateFrom')?.addEventListener('change',  renderHumDetail);
+document.getElementById('humDateTo')?.addEventListener('change',    renderHumDetail);
 
   loadSettings().then(() => {
     fetchCurrent();
@@ -717,8 +761,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   setExportToday();
 
-  // Poll /api/data every 10 seconds (matches ESP32 publish interval)
-  setInterval(fetchCurrent,  10000);
-  // Refresh full history every 30 minutes
-  setInterval(fetchAllData, 1800000);
+setInterval(fetchCurrent,  10000);   // every 10 seconds — keep as is
+setInterval(fetchAllData,  60000);   // every 1 minute — fetch fresh history
 });
