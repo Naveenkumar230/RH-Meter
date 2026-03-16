@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Factory Monitor Pro</title>
+  <title>RH-Meter</title>
   <link rel="icon" href="data:,">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
   <link rel="icon" type="image/png" href="favicon.png">
   <link rel="stylesheet" href="style.css">
 </head>
@@ -27,8 +27,8 @@
     style="height: 52px; width: auto; object-fit: contain;"
   >
   <div>
-    <h1>Relative & Humidity Monitoring System</h1>
-    <div class="subtitle">UNIT-2 <span id="ipAddr"></span></div>
+    <h4>Relative & Humidity Monitoring System</h4>
+    <!-- <div class="subtitle">UNIT-2 <span id="ipAddr"></span></div> -->
   </div>
 </div>
       <div class="header-right">
@@ -283,10 +283,10 @@
       </div>
     </div>
 
-    <div class="actions">
+    <!-- <div class="actions">
       <button class="btn" onclick="exportExcel()">📥 Export Excel</button>
       <button class="btn" onclick="exportCSV()">📄 Export CSV</button>
-    </div>
+    </div> -->
 
   </div><!-- /#dashboardView -->
 
@@ -383,7 +383,7 @@
   </div><!-- /#humidityDetail -->
 
 </div><!-- /.container -->
-
+<!-- 
 <script>
   function toggleThresholdPanel(id) {
     const body = document.getElementById(id);
@@ -392,7 +392,7 @@
     body.previousElementSibling.querySelector('.threshold-toggle').textContent = open ? '▼ Configure' : '▲ Close';
   }
   
-</script>
+</script> -->
 
 <script src="app.js"></script>
 </body>

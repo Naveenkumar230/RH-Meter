@@ -76,6 +76,26 @@ function bucket5min(arr) {
   });
 }
 
+function bucketHourly(arr) {
+  const map = {};
+  arr.forEach(r => {
+    const d   = new Date(r.timestamp);
+    const ist = new Date(d.getTime() + (5.5 * 60 * 60 * 1000));
+    const key = dateStr(d) + ' ' + pad(ist.getUTCHours()) + ':00';
+    if (!map[key]) map[key] = { temps:[], hums:[], key };
+    map[key].temps.push(r.temp);
+    map[key].hums.push(r.hum);
+  });
+  return Object.keys(map).sort().map(k => {
+    const b = map[k];
+    return {
+      timestamp: k,
+      temp: +(b.temps.reduce((a,v)=>a+v,0)/b.temps.length).toFixed(1),
+      hum:  +(b.hums.reduce((a,v)=>a+v,0)/b.hums.length).toFixed(1)
+    };
+  });
+}
+
 function groupByDay(arr) {
   const map = {};
   arr.forEach(r => {
@@ -246,15 +266,11 @@ function syncThresholdUI() {
   if (hb) hb.textContent = thresholds.hum  + ' %';
 
   initRecipientChips();
-
-  [chartTempToday, chartHumToday, chartTempDetail, chartHumDetail].forEach(c => { if (c) c.update('none'); });
+  initCharts();         // recreate with correct scale
+  renderTodayCharts();  // repopulate data
 }
 
 async function saveThresholdSettings() {
-  const entered = prompt('🔒 Enter admin password to save settings:');
-  if (entered === null) return;
-  if (entered !== 'Rhmeter12345') { showToast('❌ Incorrect password', 'error'); return; }
-
   const tv = parseFloat(document.getElementById('thresholdTempInput')?.value);
   const hv = parseFloat(document.getElementById('thresholdHumInput')?.value);
   if (isNaN(tv)) return showToast('Enter a valid temperature threshold', 'error');
@@ -458,7 +474,12 @@ const chartOptions = {
   plugins: { legend: { display: false } },
   scales: {
     x: { grid: { color: '#e2e8f0' }, ticks: { color: '#64748b', maxRotation: 0 } },
-    y: { grid: { color: '#e2e8f0' }, ticks: { color: '#64748b' }, beginAtZero: false }
+    y: { 
+      grid: { color: '#e2e8f0' }, 
+      ticks: { color: '#64748b' }, 
+      beginAtZero: false,
+      suggestedMax: Math.max(thresholds.temp, thresholds.hum) + 5
+    }
   }
 };
 
@@ -477,17 +498,51 @@ function initCharts() {
 
   chartTempToday = new Chart(tempCanvas.getContext('2d'), {
     type: 'line',
-    data: { labels: [], datasets: [{ data: [], borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.1)', fill: true, tension: 0.4, pointRadius: 0, borderWidth: 2 }] },
+    data: {
+      labels: [],
+      datasets: [{
+        data: [],
+        borderColor: '#3b82f6',
+        backgroundColor: 'rgba(59,130,246,0.1)',
+        fill: true, tension: 0.4, pointRadius: 0, borderWidth: 2
+      }]
+    },
     plugins: [tempThresholdPlugin],
-    options: chartOptions
+    options: getChartOptions(thresholds.temp, true)   // isTemp = true → max:40
   });
 
   chartHumToday = new Chart(humCanvas.getContext('2d'), {
     type: 'line',
-    data: { labels: [], datasets: [{ data: [], borderColor: '#06b6d4', backgroundColor: 'rgba(6,182,212,0.1)', fill: true, tension: 0.4, pointRadius: 0, borderWidth: 2 }] },
+    data: {
+      labels: [],
+      datasets: [{
+        data: [],
+        borderColor: '#06b6d4',
+        backgroundColor: 'rgba(6,182,212,0.1)',
+        fill: true, tension: 0.4, pointRadius: 0, borderWidth: 2
+      }]
+    },
     plugins: [humThresholdPlugin],
-    options: chartOptions
+    options: getChartOptions(thresholds.hum, false)   // isTemp = false → auto-scale
   });
+}
+
+
+function getChartOptions(thresholdVal, isTemp) {
+  const yAxis = isTemp
+    ? { min: 15, max: 40, grid: { color: '#e2e8f0' }, ticks: { color: '#64748b' }, beginAtZero: false }
+    : { suggestedMax: thresholdVal + 10, grid: { color: '#e2e8f0' }, ticks: { color: '#64748b' }, beginAtZero: false };
+
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: { duration: 400 },
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { grid: { color: '#e2e8f0' }, ticks: { color: '#64748b', maxRotation: 0 } },
+      y: yAxis
+    }
+  };
 }
 
 // ════════════════════════════════════════════════════════════
@@ -565,11 +620,13 @@ async function renderTempDetail() {
       type: 'line',
       data: { labels: bucketed.map(b => b.label), datasets: [{ label: 'Temperature (°C)', data: bucketed.map(b => b.temp), borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.1)', fill: true, tension: 0.4, pointRadius: 2, borderWidth: 2 }] },
       plugins: [tempThresholdPlugin],
-      options: { ...chartOptions, plugins: { legend: { display: true, labels: { color:'#475569' } } } }
-    });
+options: { ...getChartOptions(thresholds.temp, true), plugins: { legend: { display: true, labels: { color:'#475569' } } } }    });
   } else {
     document.getElementById('tempChartTitle').textContent = '📊 Temperature — Daily Summary';
     const days = groupByDay(subset);
+    const oldTable = document.getElementById('tempDayTable');
+    if (oldTable) oldTable.remove();
+
     document.querySelector('#temperatureDetail .chart-section').insertAdjacentHTML('beforeend',
       `<div id="tempDayTable" style="overflow-x:auto;margin-top:20px;">
         <table style="width:100%;border-collapse:collapse;font-size:0.875rem;">
@@ -587,15 +644,16 @@ async function renderTempDetail() {
           </tr>`).join('')}</tbody>
         </table>
       </div>`);
+
     chartTempDetail = new Chart(document.getElementById('chartTempDetail').getContext('2d'), {
       type: 'bar',
       data: { labels: days.map(d => d.date), datasets: [
-        { label:'Average', data: days.map(d=>d.tempAvg), backgroundColor:'rgba(59,130,246,0.6)',  borderColor:'#3b82f6', borderWidth:2, borderRadius:6 },
-        { label:'Min',     data: days.map(d=>d.tempMin), backgroundColor:'rgba(16,185,129,0.4)',  borderColor:'#10b981', borderWidth:1, borderRadius:6 },
-        { label:'Max',     data: days.map(d=>d.tempMax), backgroundColor:'rgba(239,68,68,0.4)',   borderColor:'#ef4444', borderWidth:1, borderRadius:6 }
+        { label:'Min',     data: days.map(d=>d.tempMin), backgroundColor:'rgba(16,185,129,0.7)',  borderColor:'#10b981', borderWidth:2, borderRadius:6 },
+        { label:'Average', data: days.map(d=>d.tempAvg), backgroundColor:'rgba(59,130,246,0.7)',  borderColor:'#3b82f6', borderWidth:2, borderRadius:6 },
+        { label:'Max',     data: days.map(d=>d.tempMax), backgroundColor:'rgba(239,68,68,0.7)',   borderColor:'#ef4444', borderWidth:2, borderRadius:6 }
       ]},
       plugins: [tempThresholdPlugin],
-      options: { ...chartOptions, plugins: { legend: { display: true, labels: { color:'#475569' } } } }
+options: { ...getChartOptions(thresholds.hum, false), plugins: { legend: { display: true, labels: { color:'#475569' } } } }
     });
   }
 }
@@ -632,11 +690,14 @@ async function renderHumDetail() {
       type: 'line',
       data: { labels: bucketed.map(b => b.label), datasets: [{ label: 'Humidity (%)', data: bucketed.map(b => b.hum), borderColor: '#06b6d4', backgroundColor: 'rgba(6,182,212,0.1)', fill: true, tension: 0.4, pointRadius: 2, borderWidth: 2 }] },
       plugins: [humThresholdPlugin],
-      options: { ...chartOptions, plugins: { legend: { display: true, labels: { color:'#475569' } } } }
+options: { ...getChartOptions(thresholds.hum, false), plugins: { legend: { display: true, labels: { color:'#475569' } } } }
     });
   } else {
     document.getElementById('humChartTitle').textContent = '📊 Humidity — Daily Summary';
     const days = groupByDay(subset);
+    const oldTable = document.getElementById('humDayTable');
+    if (oldTable) oldTable.remove();
+
     document.querySelector('#humidityDetail .chart-section').insertAdjacentHTML('beforeend',
       `<div id="humDayTable" style="overflow-x:auto;margin-top:20px;">
         <table style="width:100%;border-collapse:collapse;font-size:0.875rem;">
@@ -654,15 +715,16 @@ async function renderHumDetail() {
           </tr>`).join('')}</tbody>
         </table>
       </div>`);
+
     chartHumDetail = new Chart(document.getElementById('chartHumDetail').getContext('2d'), {
       type: 'bar',
       data: { labels: days.map(d => d.date), datasets: [
-        { label:'Average', data: days.map(d=>d.humAvg), backgroundColor:'rgba(6,182,212,0.6)',   borderColor:'#06b6d4', borderWidth:2, borderRadius:6 },
-        { label:'Min',     data: days.map(d=>d.humMin), backgroundColor:'rgba(16,185,129,0.4)',  borderColor:'#10b981', borderWidth:1, borderRadius:6 },
-        { label:'Max',     data: days.map(d=>d.humMax), backgroundColor:'rgba(239,68,68,0.4)',   borderColor:'#ef4444', borderWidth:1, borderRadius:6 }
+        { label:'Min',     data: days.map(d=>d.humMin), backgroundColor:'rgba(16,185,129,0.7)',  borderColor:'#10b981', borderWidth:2, borderRadius:6 },
+        { label:'Average', data: days.map(d=>d.humAvg), backgroundColor:'rgba(6,182,212,0.7)',   borderColor:'#06b6d4', borderWidth:2, borderRadius:6 },
+        { label:'Max',     data: days.map(d=>d.humMax), backgroundColor:'rgba(239,68,68,0.7)',   borderColor:'#ef4444', borderWidth:2, borderRadius:6 }
       ]},
       plugins: [humThresholdPlugin],
-      options: { ...chartOptions, plugins: { legend: { display: true, labels: { color:'#475569' } } } }
+      options: { ...getChartOptions(thresholds.hum, false), plugins: { legend: { display: true, labels: { color:'#475569' } } } }
     });
   }
 }
@@ -676,30 +738,193 @@ function setExportToday() {
   document.getElementById('exportDateTo').value   = today;
 }
 
-function exportExcelFiltered() {
+async function exportExcelFiltered() {
   const from = document.getElementById('exportDateFrom').value;
   const to   = document.getElementById('exportDateTo').value;
   if (!from || !to) return alert('Please select a date range.');
-  const filtered = filterRange(from, to);
-  if (!filtered.length) return alert(`No data between ${from} and ${to}.`);
-  const rows = [['Timestamp','Temperature (°C)','Humidity (%)']];
-  filtered.forEach(r => rows.push([r.timestamp, r.temp, r.hum]));
-  const ws = XLSX.utils.aoa_to_sheet(rows); ws['!cols'] = [{wch:24},{wch:22},{wch:20}];
-  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'SensorData');
-  const url = URL.createObjectURL(new Blob([XLSX.write(wb,{bookType:'xlsx',type:'array'})], {type:'application/octet-stream'}));
-  const a = Object.assign(document.createElement('a'), {href:url, download:`FactoryMonitor_${from}_to_${to}.xlsx`});
-  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+
+  const raw = await fetchRangeData(from, to);
+  if (!raw.length) return alert(`No data between ${from} and ${to}.`);
+
+  const isSameDay = from === to;
+  const wb        = XLSX.utils.book_new();
+  const tempThresh = thresholds.temp;
+  const humThresh  = thresholds.hum;
+
+  // ── Shared style builders ──────────────────────────────────
+  function headerStyle(bgHex) {
+    return {
+      font:      { bold: true, color: { rgb: 'FFFFFFFF' }, sz: 11 },
+      fill:      { patternType: 'solid', fgColor: { rgb: bgHex } },
+      alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+      border: {
+        top:    { style: 'medium', color: { rgb: 'FFD1D5DB' } },
+        bottom: { style: 'medium', color: { rgb: 'FFD1D5DB' } },
+        left:   { style: 'medium', color: { rgb: 'FFD1D5DB' } },
+        right:  { style: 'medium', color: { rgb: 'FFD1D5DB' } }
+      }
+    };
+  }
+
+  function labelStyle() {
+    return {
+      font:      { bold: true, color: { rgb: 'FF1F2937' }, sz: 10 },
+      fill:      { patternType: 'solid', fgColor: { rgb: 'FFF3F4F6' } },
+      alignment: { horizontal: 'center', vertical: 'center' },
+      border: {
+        top:    { style: 'thin', color: { rgb: 'FFE5E7EB' } },
+        bottom: { style: 'thin', color: { rgb: 'FFE5E7EB' } },
+        left:   { style: 'thin', color: { rgb: 'FFE5E7EB' } },
+        right:  { style: 'thin', color: { rgb: 'FFE5E7EB' } }
+      }
+    };
+  }
+
+  function dataStyle(val, thresh) {
+    const alert  = val > thresh;
+    const warn   = !alert && val > thresh * 0.9;
+    let fgColor, fontColor;
+    if (alert) { fgColor = 'FFFFF1F2'; fontColor = 'FFBE123C'; }        // red bg, dark red text
+    else if (warn) { fgColor = 'FFFEFCE8'; fontColor = 'FFB45309'; }    // yellow bg, amber text
+    else            { fgColor = 'FFF0FDF4'; fontColor = 'FF15803D'; }   // green bg, green text
+    return {
+      font:      { bold: alert, color: { rgb: fontColor }, sz: 10 },
+      fill:      { patternType: 'solid', fgColor: { rgb: fgColor } },
+      alignment: { horizontal: 'center', vertical: 'center' },
+      border: {
+        top:    { style: 'thin', color: { rgb: 'FFE5E7EB' } },
+        bottom: { style: 'thin', color: { rgb: 'FFE5E7EB' } },
+        left:   { style: 'thin', color: { rgb: 'FFE5E7EB' } },
+        right:  { style: 'thin', color: { rgb: 'FFE5E7EB' } }
+      }
+    };
+  }
+
+  function makeCell(v, s) { return { v, s, t: typeof v === 'number' ? 'n' : 's' }; }
+
+  // ── Header definitions ─────────────────────────────────────
+  //    bgHex values (no # prefix, 8-char AARRGGBB)
+  const H = [
+    makeCell('Hour / Date',        headerStyle('FF1E3A5F')),   // dark navy
+    makeCell('Min Temp (°C)',       headerStyle('FF059669')),   // emerald
+    makeCell('Avg Temp (°C)',       headerStyle('FF2563EB')),   // blue
+    makeCell('Max Temp (°C)',       headerStyle('FFDC2626')),   // red
+    makeCell('Min Humidity (%)',    headerStyle('FF059669')),   // emerald
+    makeCell('Avg Humidity (%)',    headerStyle('FF0891B2')),   // cyan
+    makeCell('Max Humidity (%)',    headerStyle('FFDC2626')),   // red
+  ];
+
+  // ── Build data rows ────────────────────────────────────────
+  const dataRows = [];
+
+  if (isSameDay) {
+    // Hourly bucket
+    const map = {};
+    raw.forEach(r => {
+      const d   = new Date(r.timestamp);
+      const ist = new Date(d.getTime() + (5.5 * 60 * 60 * 1000));
+const key = dateStr(d) + ' ' + pad(ist.getUTCHours()) + ':00';
+      if (!map[key]) map[key] = { temps: [], hums: [] };
+      map[key].temps.push(r.temp);
+      map[key].hums.push(r.hum);
+    });
+
+    Object.keys(map).sort().forEach(key => {
+      const b       = map[key];
+      const avg     = arr => +(arr.reduce((a,v)=>a+v,0)/arr.length).toFixed(1);
+      const minTemp = +Math.min(...b.temps).toFixed(1);
+      const avgTemp = avg(b.temps);
+      const maxTemp = +Math.max(...b.temps).toFixed(1);
+      const minHum  = +Math.min(...b.hums).toFixed(1);
+      const avgHum  = avg(b.hums);
+      const maxHum  = +Math.max(...b.hums).toFixed(1);
+
+      dataRows.push([
+        makeCell(key,      labelStyle()),
+        makeCell(minTemp,  dataStyle(minTemp, tempThresh)),
+        makeCell(avgTemp,  dataStyle(avgTemp, tempThresh)),
+        makeCell(maxTemp,  dataStyle(maxTemp, tempThresh)),
+        makeCell(minHum,   dataStyle(minHum,  humThresh)),
+        makeCell(avgHum,   dataStyle(avgHum,  humThresh)),
+        makeCell(maxHum,   dataStyle(maxHum,  humThresh)),
+      ]);
+    });
+
+  } else {
+    // Daily summary
+    const days = groupByDay(raw);
+    days.forEach(d => {
+      dataRows.push([
+        makeCell(d.date,    labelStyle()),
+        makeCell(d.tempMin, dataStyle(d.tempMin, tempThresh)),
+        makeCell(d.tempAvg, dataStyle(d.tempAvg, tempThresh)),
+        makeCell(d.tempMax, dataStyle(d.tempMax, tempThresh)),
+        makeCell(d.humMin,  dataStyle(d.humMin,  humThresh)),
+        makeCell(d.humAvg,  dataStyle(d.humAvg,  humThresh)),
+        makeCell(d.humMax,  dataStyle(d.humMax,  humThresh)),
+      ]);
+    });
+  }
+
+  // ── Assemble worksheet ─────────────────────────────────────
+  const allRows = [H, ...dataRows];
+  const ws      = XLSX.utils.aoa_to_sheet(allRows);
+
+  ws['!cols'] = [
+    { wch: 14 },
+    { wch: 16 }, { wch: 16 }, { wch: 16 },
+    { wch: 18 }, { wch: 18 }, { wch: 18 }
+  ];
+
+  // Row height — header taller
+  ws['!rows'] = [{ hpt: 36 }, ...dataRows.map(() => ({ hpt: 22 }))];
+
+  const sheetName = isSameDay ? from : `${from} to ${to}`;
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+
+  // ── Download ───────────────────────────────────────────────
+  const filename = isSameDay
+    ? `SensorData_${from}.xlsx`
+    : `SensorData_${from}_to_${to}.xlsx`;
+
+  const url = URL.createObjectURL(new Blob(
+    [XLSX.write(wb, { bookType: 'xlsx', type: 'array' })],
+    { type: 'application/octet-stream' }
+  ));
+  const a = Object.assign(document.createElement('a'), { href: url, download: filename });
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
 }
 
-function exportCSVFiltered() {
+async function exportCSVFiltered() {
   const from = document.getElementById('exportDateFrom').value;
   const to   = document.getElementById('exportDateTo').value;
   if (!from || !to) return alert('Please select a date range.');
-  const filtered = filterRange(from, to);
-  if (!filtered.length) return alert(`No data between ${from} and ${to}.`);
-  let csv = "Timestamp,Temperature (°C),Humidity (%)\n";
-  filtered.forEach(r => { csv += `${r.timestamp},${r.temp},${r.hum}\n`; });
-  const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([csv],{type:'text/csv'})), download:`FactoryMonitor_${from}_to_${to}.csv` });
+
+  const raw = await fetchRangeData(from, to);
+  if (!raw.length) return alert(`No data between ${from} and ${to}.`);
+
+  const isSameDay = from === to;
+  let csv = '';
+
+  if (isSameDay) {
+    const hourly = bucketHourly(raw);
+    csv = "Hour,Avg Temperature (°C),Avg Humidity (%)\n";
+    hourly.forEach(r => { csv += `${r.timestamp},${r.temp},${r.hum}\n`; });
+  } else {
+    const days = groupByDay(raw);
+    csv = "Date,Min Temp (°C),Avg Temp (°C),Max Temp (°C),Min Humidity (%),Avg Humidity (%),Max Humidity (%)\n";
+    days.forEach(d => { csv += `${d.date},${d.tempMin},${d.tempAvg},${d.tempMax},${d.humMin},${d.humAvg},${d.humMax}\n`; });
+  }
+
+  const filename = isSameDay
+    ? `SensorData_${from}.csv`
+    : `SensorData_${from}_to_${to}.csv`;
+
+  const a = Object.assign(document.createElement('a'), {
+    href: URL.createObjectURL(new Blob([csv],{type:'text/csv'})),
+    download: filename
+  });
   a.click();
 }
 
@@ -730,10 +955,27 @@ function switchMeter() { fetchAllData(); fetchCurrent(); }
 function toggleThresholdPanel(id) {
   const body = document.getElementById(id);
   if (!body) return;
-  const open = body.style.display !== 'none';
-  body.style.display = open ? 'none' : 'block';
+  const isOpen = body.style.display !== 'none';
+
+  // If already open, just close it — no password needed
+  if (isOpen) {
+    body.style.display = 'none';
+    const btn = body.previousElementSibling?.querySelector('.threshold-toggle');
+    if (btn) btn.textContent = '▼ Configure';
+    return;
+  }
+
+  // Ask password before opening
+  const entered = prompt('🔒 Enter admin password to configure settings:');
+  if (entered === null) return; // user cancelled
+  if (entered !== 'Rhmeter12345') {
+    alert('❌ Incorrect password. Access denied.');
+    return;
+  }
+
+  body.style.display = 'block';
   const btn = body.previousElementSibling?.querySelector('.threshold-toggle');
-  if (btn) btn.textContent = open ? '▼ Configure' : '▲ Close';
+  if (btn) btn.textContent = '▲ Close';
 }
 
 function scheduleMidnightReset() {

@@ -53,7 +53,7 @@ body {
   box-shadow: var(--shadow);
 }
 
-.header-left h1 {
+.header-left h4 {
   font-size: 1.5rem;
   font-weight: 800;
   background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan));
