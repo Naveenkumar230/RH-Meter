@@ -21,8 +21,13 @@ app.use((req, res, next) => {
   if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
 });
+
 app.use(cors());
 app.use(express.json());
+
+// ── Default page → home.html ──────────────────────────────────
+app.get('/', (req, res) => res.sendFile(__dirname + '/home.html'));
+
 app.use(express.static('.'));
 
 // ── MongoDB ───────────────────────────────────────────────────

@@ -424,7 +424,7 @@ function renderDeviceGrid(filterIds) {
       : 'background:rgba(6,182,212,0.1);color:var(--accent-cyan);border-color:rgba(6,182,212,0.25);';
 
     const card = document.createElement('a');
-    card.href = `index.html?id=${deviceId}`;
+card.href = `detail.html?id=${deviceId}`;
     card.className = `device-card ${alertCard}`;
     card.innerHTML = `
       <div class="device-card-top">
