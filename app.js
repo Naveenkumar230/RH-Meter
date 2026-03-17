@@ -3,7 +3,7 @@
 //  Multi-device | DEVICE_NAME_MAP | Dynamic URL params
 // ============================================================
 const SERVER_URL = 'https://rh-meter-bridge.onrender.com';
-// const SERVER_URL = 'http://localhost:3001';
+// const SERVER_URL = 'http://localhost:3000';
 
 // ════════════════════════════════════════════════════════════
 //  DEVICE NAME MAP

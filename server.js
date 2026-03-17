@@ -13,6 +13,10 @@ const SENDER_EMAIL  = 'naveenkumarak2002@gmail.com';
 const BREVO_API_KEY = process.env.BREVO_API_KEY;
 const app = express();
 
+// ── In-memory stores ──────────────────────────────────────────
+const lastSaveTime   = {};  // { Meter_01: timestamp, Meter_02: timestamp, ... }
+const latestReadings = {};  // { Meter_01: { temp, hum, ... }, ... }
+
 // ── CORS ──────────────────────────────────────────────────────
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
@@ -21,7 +25,6 @@ app.use((req, res, next) => {
   if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
 });
-
 app.use(cors());
 app.use(express.json());
 
@@ -148,9 +151,25 @@ function startHiveMQSubscriber() {
         humLevel:    hum < 40   ? 'critical' : hum <= 70 ? 'normal' : 'critical'
       };
 
-      await new SensorData(record).save();
-      console.log(`💾 [HiveMQ] Saved ${deviceId}: T=${temp}°C, H=${hum}%`);
+      // ── Always update live cache (for dashboard real-time display) ──
+      latestReadings[deviceId] = { ...record, timestamp: new Date() };
+
+      // ── Always check alerts on every reading ──
       await checkAndAlert(record);
+
+      // ── Save to MongoDB only every 30 minutes per device ──
+      const now        = Date.now();
+      const lastSaved  = lastSaveTime[deviceId] || 0;
+      const THIRTY_MIN = 30 * 60 * 1000;
+
+      if (now - lastSaved >= THIRTY_MIN) {
+        lastSaveTime[deviceId] = now;
+        await new SensorData(record).save();
+        console.log(`💾 [HiveMQ] Saved ${deviceId}: T=${temp}°C, H=${hum}% (30min)`);
+      } else {
+        const minsLeft = Math.round((THIRTY_MIN - (now - lastSaved)) / 60000);
+        console.log(`⏭️  [HiveMQ] Live only ${deviceId}: T=${temp}°C H=${hum}% (save in ${minsLeft}min)`);
+      }
 
     } catch (err) {
       console.error('❌ [HiveMQ] Message Processing Error:', err.message);
@@ -237,120 +256,156 @@ const LOCATION_MAP_SERVER = {
   Meter_13:'BNG'
 };
 
-// ── Rich HTML email builder ───────────────────────────────────
-function buildAlertEmail({ deviceId, friendlyName, location, alertType, actualValue, threshold, unit, otherTemp, otherHum, time }) {
+// ── Rich HTML email builder — Variation 4 Teal ───────────────
+function buildAlertEmail({ deviceId, friendlyName, location, alertType, actualValue, threshold, unit, otherTemp, otherHum, tempThreshold, humThreshold, time, date, combined }) {
   const isTemp     = alertType === 'temperature';
-  const color      = isTemp ? '#ef4444' : '#f59e0b';
-  const icon       = isTemp ? '🌡️' : '💧';
-  const label      = isTemp ? 'Temperature' : 'Humidity';
-  const excess     = (actualValue - threshold).toFixed(1);
   const dashUrl    = `https://rh-meter-bridge.onrender.com/index.html?id=${deviceId}`;
+  const logoUrl    = `https://rh-meter-bridge.onrender.com/logo.png`;
+  const unitColor  = location === 'Samudra' ? '#0891b2' : '#0f766e';
+  const unitBg     = location === 'Samudra' ? 'rgba(8,145,178,0.12)' : 'rgba(15,118,110,0.12)';
+  const unitBorder = location === 'Samudra' ? 'rgba(8,145,178,0.3)'  : 'rgba(15,118,110,0.3)';
+
+  // Alert value block builder
+  function alertBlock(type, value, limit, isAlert) {
+    const col   = isAlert ? '#ef4444' : '#16a34a';
+    const bg    = isAlert ? '#fef2f2' : '#f0fdf4';
+    const bdr   = isAlert ? '#fecaca' : '#bbf7d0';
+    const hdrBg = isAlert ? '#ef4444' : '#16a34a';
+    const lbl   = type === 'temperature' ? '🌡️ Temperature' : '💧 Humidity';
+    const u     = type === 'temperature' ? '°C' : '%';
+    const status = isAlert ? 'ALERT 🚨' : 'NORMAL ✓';
+    const excess  = isAlert ? `+${(value - limit).toFixed(1)}${u} over limit` : `${(limit - value).toFixed(1)}${u} below limit`;
+    return `
+      <div style="border:${isAlert ? '2px' : '1px'} solid ${bdr};border-radius:12px;overflow:hidden;">
+        <div style="background:${hdrBg};padding:10px 16px;">
+          <span style="font-size:12px;color:#fff;font-weight:800;text-transform:uppercase;letter-spacing:1px;">${lbl} · ${status}</span>
+        </div>
+        <div style="padding:18px;text-align:center;background:${bg};">
+          <div style="font-size:${isAlert ? '50px' : '32px'};font-weight:900;color:${col};line-height:1;">${value.toFixed(1)}<span style="font-size:${isAlert ? '20px' : '14px'};">${u}</span></div>
+          <div style="margin-top:10px;background:#fff;border-radius:8px;padding:8px 12px;">
+            <table width="100%" style="font-size:12px;border-collapse:collapse;">
+              <tr><td style="color:#64748b;text-align:left;">Threshold</td><td style="text-align:right;font-weight:700;color:#1e293b;">${limit}${u}</td></tr>
+              <tr><td style="color:${col};text-align:left;padding-top:3px;font-weight:700;">${isAlert ? 'Exceeded By' : 'Safe Margin'}</td><td style="text-align:right;font-weight:800;color:${col};padding-top:3px;">${excess}</td></tr>
+            </table>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  const tempIsAlert = otherTemp != null && tempThreshold != null && otherTemp > tempThreshold;
+  const humIsAlert  = otherHum  != null && humThreshold  != null && otherHum  > humThreshold;
+
+  // Build readings section
+  let readingsHtml = '';
+  if (combined) {
+    // Both temp and hum shown side by side — alert one is BIG
+    readingsHtml = `
+      <table width="100%" style="border-collapse:collapse;">
+        <tr>
+          <td width="50%" valign="top" style="padding-right:10px;">
+            ${alertBlock('temperature', otherTemp, tempThreshold, tempIsAlert)}
+          </td>
+          <td width="50%" valign="top" style="padding-left:10px;">
+            ${alertBlock('humidity', otherHum, humThreshold, humIsAlert)}
+          </td>
+        </tr>
+      </table>`;
+  } else {
+    // Single alert — alert BIG (55%), other SMALL (45%)
+    const alertVal   = isTemp ? otherTemp : otherHum;
+    const normalVal  = isTemp ? otherHum  : otherTemp;
+    const alertLimit = isTemp ? tempThreshold : humThreshold;
+    const normalLim  = isTemp ? humThreshold  : tempThreshold;
+    const normalType = isTemp ? 'humidity' : 'temperature';
+    readingsHtml = `
+      <table width="100%" style="border-collapse:collapse;">
+        <tr>
+          <td width="56%" valign="top" style="padding-right:12px;">
+            ${alertBlock(alertType, alertVal, alertLimit, true)}
+          </td>
+          <td width="44%" valign="top">
+            ${alertBlock(normalType, normalVal, normalLim, false)}
+          </td>
+        </tr>
+      </table>`;
+  }
 
   return `<!DOCTYPE html>
 <html>
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#f1f5f9;font-family:'Segoe UI',Arial,sans-serif;">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:32px 16px;">
-  <tr><td align="center">
-    <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+<body style="margin:0;padding:0;background:#f0fdfa;font-family:'Segoe UI',Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0fdfa;padding:28px 16px;">
+<tr><td align="center">
+<table width="580" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #99f6e4;box-shadow:0 4px 24px rgba(0,0,0,0.07);">
 
-      <!-- Header -->
-      <tr><td style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:28px 32px;">
-        <table width="100%"><tr>
-          <td>
-            <div style="font-size:13px;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Factory Monitor Pro</div>
-            <div style="font-size:22px;font-weight:700;color:#ffffff;">${icon} ${label} Alert</div>
-          </td>
-          <td align="right">
-            <div style="background:${color};color:white;padding:8px 16px;border-radius:20px;font-size:13px;font-weight:700;white-space:nowrap;">⚠️ THRESHOLD EXCEEDED</div>
-          </td>
-        </tr></table>
-      </td></tr>
+  <!-- HEADER -->
+  <tr><td style="background:linear-gradient(135deg,#0f766e,#0891b2);padding:24px 32px;">
+    <table width="100%" cellpadding="0" cellspacing="0"><tr>
+      <td valign="middle">
+        <img src="${logoUrl}" height="36" style="height:36px;vertical-align:middle;margin-right:10px;" alt="Logo">
+        <span style="font-size:16px;font-weight:800;color:#ffffff;vertical-align:middle;">RH-Meter Alert System</span>
+        <div style="font-size:11px;color:rgba(255,255,255,0.65);margin-top:5px;padding-left:46px;text-transform:uppercase;letter-spacing:1px;">Relative Humidity Monitoring System</div>
+      </td>
+      <td align="right" valign="top">
+        <div style="background:#ef4444;color:#fff;padding:6px 14px;border-radius:6px;font-size:11px;font-weight:800;white-space:nowrap;">⚠️ THRESHOLD EXCEEDED</div>
+      </td>
+    </tr></table>
+    <!-- Date Time Bar -->
+    <div style="margin-top:14px;background:rgba(255,255,255,0.12);border-radius:8px;padding:10px 16px;">
+      <table width="100%" cellpadding="0" cellspacing="0"><tr>
+        <td style="font-size:12px;color:rgba(255,255,255,0.9);">📅 <b style="color:#fff;">${date}</b></td>
+        <td align="center" style="font-size:12px;color:rgba(255,255,255,0.9);">🕐 <b style="color:#fff;">${time}</b></td>
+        <td align="right" style="font-size:12px;color:#a5f3fc;">📍 <b>${friendlyName}</b></td>
+      </tr></table>
+    </div>
+  </td></tr>
 
-      <!-- Device Info -->
-      <tr><td style="padding:28px 32px 0;">
-        <table width="100%" style="background:#f8fafc;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden;">
-          <tr style="background:#f1f5f9;">
-            <td style="padding:10px 16px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#64748b;" colspan="2">Device Information</td>
-          </tr>
-          <tr style="border-top:1px solid #e2e8f0;">
-            <td style="padding:12px 16px;font-size:13px;color:#64748b;font-weight:600;width:40%;">Device Name</td>
-            <td style="padding:12px 16px;font-size:13px;color:#1e293b;font-weight:700;">${friendlyName}</td>
-          </tr>
-          <tr style="border-top:1px solid #e2e8f0;">
-            <td style="padding:12px 16px;font-size:13px;color:#64748b;font-weight:600;">Meter ID</td>
-            <td style="padding:12px 16px;font-size:13px;color:#1e293b;font-family:monospace;font-weight:700;">${deviceId}</td>
-          </tr>
-          <tr style="border-top:1px solid #e2e8f0;">
-            <td style="padding:12px 16px;font-size:13px;color:#64748b;font-weight:600;">Location</td>
-            <td style="padding:12px 16px;">
-              <span style="background:${location==='Samudra'?'rgba(59,130,246,0.1)':'rgba(6,182,212,0.1)'};color:${location==='Samudra'?'#2563eb':'#0891b2'};border:1px solid ${location==='Samudra'?'rgba(59,130,246,0.3)':'rgba(6,182,212,0.3)'};padding:3px 10px;border-radius:6px;font-size:12px;font-weight:700;">${location}</span>
-            </td>
-          </tr>
-          <tr style="border-top:1px solid #e2e8f0;">
-            <td style="padding:12px 16px;font-size:13px;color:#64748b;font-weight:600;">Alert Time</td>
-            <td style="padding:12px 16px;font-size:13px;color:#1e293b;font-weight:600;">${time}</td>
-          </tr>
-        </table>
-      </td></tr>
-
-      <!-- Alert Details -->
-      <tr><td style="padding:20px 32px 0;">
-        <table width="100%" style="background:#fff5f5;border-radius:12px;border:1.5px solid ${color};overflow:hidden;">
-          <tr style="background:${color};">
-            <td style="padding:10px 16px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#ffffff;" colspan="2">Alert Details</td>
-          </tr>
-          <tr style="border-top:1px solid rgba(239,68,68,0.15);">
-            <td style="padding:12px 16px;font-size:13px;color:#64748b;font-weight:600;width:40%;">Cause</td>
-            <td style="padding:12px 16px;font-size:13px;color:#991b1b;font-weight:700;">${label} exceeded set threshold</td>
-          </tr>
-          <tr style="border-top:1px solid rgba(239,68,68,0.15);">
-            <td style="padding:12px 16px;font-size:13px;color:#64748b;font-weight:600;">Actual Value</td>
-            <td style="padding:12px 16px;font-size:20px;color:${color};font-weight:800;font-family:monospace;">${actualValue.toFixed(1)} ${unit}</td>
-          </tr>
-          <tr style="border-top:1px solid rgba(239,68,68,0.15);">
-            <td style="padding:12px 16px;font-size:13px;color:#64748b;font-weight:600;">Set Threshold</td>
-            <td style="padding:12px 16px;font-size:13px;color:#1e293b;font-weight:700;">${threshold} ${unit}</td>
-          </tr>
-          <tr style="border-top:1px solid rgba(239,68,68,0.15);">
-            <td style="padding:12px 16px;font-size:13px;color:#64748b;font-weight:600;">Exceeded By</td>
-            <td style="padding:12px 16px;font-size:13px;color:${color};font-weight:700;">+${excess} ${unit} above threshold</td>
-          </tr>
-        </table>
-      </td></tr>
-
-      <!-- Current Readings -->
-      <tr><td style="padding:20px 32px 0;">
-        <table width="100%">
-          <tr>
-            <td width="48%" style="background:#eff6ff;border-radius:10px;border:1px solid #bfdbfe;padding:16px;text-align:center;">
-              <div style="font-size:11px;color:#3b82f6;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">🌡️ Temperature</div>
-              <div style="font-size:24px;font-weight:800;color:${isTemp?color:'#2563eb'};font-family:monospace;">${otherTemp != null ? otherTemp.toFixed(1) : '--'} °C</div>
-            </td>
-            <td width="4%"></td>
-            <td width="48%" style="background:#ecfeff;border-radius:10px;border:1px solid #a5f3fc;padding:16px;text-align:center;">
-              <div style="font-size:11px;color:#0891b2;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">💧 Humidity</div>
-              <div style="font-size:24px;font-weight:800;color:${!isTemp?color:'#0891b2'};font-family:monospace;">${otherHum != null ? otherHum.toFixed(1) : '--'} %</div>
-            </td>
-          </tr>
-        </table>
-      </td></tr>
-
-      <!-- CTA Button -->
-      <tr><td style="padding:24px 32px 0;text-align:center;">
-        <a href="${dashUrl}" style="display:inline-block;background:linear-gradient(135deg,#2563eb,#06b6d4);color:white;padding:13px 28px;border-radius:10px;font-size:14px;font-weight:700;text-decoration:none;">
-          View Live Dashboard →
-        </a>
-      </td></tr>
-
-      <!-- Footer -->
-      <tr><td style="padding:24px 32px;text-align:center;border-top:1px solid #e2e8f0;margin-top:24px;">
-        <p style="font-size:12px;color:#94a3b8;margin:0;">Factory Monitor Pro · Aquarelle Clothing Ltd</p>
-        <p style="font-size:11px;color:#cbd5e1;margin:4px 0 0;">This is an automated alert. Next alert for this device in 1 hour.</p>
-      </td></tr>
-
+  <!-- DEVICE INFO -->
+  <tr><td style="padding:22px 32px 0;">
+    <table width="100%" style="border:1px solid #99f6e4;border-radius:10px;overflow:hidden;font-size:13px;border-collapse:collapse;">
+      <tr style="background:#f0fdfa;">
+        <td style="padding:8px 14px;color:#0f766e;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:1px;" colspan="4">Device Information</td>
+      </tr>
+      <tr style="border-top:1px solid #ccfbf1;">
+        <td style="padding:10px 14px;color:#64748b;font-weight:600;width:22%;">Device ID</td>
+        <td style="padding:10px 14px;font-weight:700;font-family:monospace;color:#1e293b;width:28%;">${deviceId}</td>
+        <td style="padding:10px 14px;color:#64748b;font-weight:600;width:22%;">Location</td>
+        <td style="padding:10px 14px;font-weight:700;color:#1e293b;width:28%;">${friendlyName}</td>
+      </tr>
+      <tr style="border-top:1px solid #ccfbf1;">
+        <td style="padding:10px 14px;color:#64748b;font-weight:600;">Unit</td>
+        <td style="padding:10px 14px;"><span style="background:${unitBg};color:${unitColor};border:1px solid ${unitBorder};padding:3px 10px;border-radius:6px;font-size:12px;font-weight:700;">${location}</span></td>
+        <td style="padding:10px 14px;color:#64748b;font-weight:600;">Alert Time</td>
+        <td style="padding:10px 14px;font-weight:600;color:#1e293b;font-size:12px;">${time}</td>
+      </tr>
     </table>
   </td></tr>
+
+  <!-- SENSOR READINGS -->
+  <tr><td style="padding:18px 32px 0;">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#0f766e;margin-bottom:12px;">Sensor Readings</div>
+    ${readingsHtml}
+  </td></tr>
+
+  <!-- CTA BUTTON -->
+  <tr><td style="padding:22px 32px;text-align:center;">
+    <a href="${dashUrl}" style="display:inline-block;background:linear-gradient(135deg,#0f766e,#0891b2);color:#ffffff;padding:13px 44px;border-radius:10px;font-size:14px;font-weight:700;text-decoration:none;">View Live Dashboard →</a>
+    <div style="font-size:11px;color:#94a3b8;margin-top:8px;">Next alert for this device after 1 hour cooldown</div>
+  </td></tr>
+
+  <!-- FOOTER -->
+  <tr><td style="padding:16px 32px;background:#f0fdfa;border-top:1px solid #99f6e4;">
+    <table width="100%" cellpadding="0" cellspacing="0"><tr>
+      <td valign="middle">
+        <img src="${logoUrl}" height="22" style="height:22px;vertical-align:middle;margin-right:8px;" alt="Logo">
+        <span style="font-size:13px;color:#0f766e;font-weight:700;vertical-align:middle;">Aquarelle India Pvt. Ltd.</span>
+      </td>
+      <td align="right" style="font-size:11px;color:#94a3b8;">Automated Monitoring Alert</td>
+    </tr></table>
+  </td></tr>
+
+</table>
+</td></tr>
 </table>
 </body>
 </html>`;
@@ -362,60 +417,92 @@ async function checkAndAlert(record) {
     const settings = await Settings.findOne({ key: 'global' });
     if (!settings) { console.warn('⚠️ No settings in DB'); return; }
 
-    const device       = record.deviceId || 'Meter_02';
-    const temp         = record.temperature;
-    const hum          = record.humidity;
-    const location     = LOCATION_MAP_SERVER[device] || 'Unknown';
-    const time         = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour12: true });
+    const device   = record.deviceId || 'Meter_02';
+    const temp     = record.temperature;
+    const hum      = record.humidity;
+    const location = LOCATION_MAP_SERVER[device] || 'Unknown';
+    const now      = new Date();
+    const time     = now.toLocaleTimeString('en-IN',  { timeZone:'Asia/Kolkata', hour:'2-digit', minute:'2-digit', hour12:true });
+    const date     = now.toLocaleDateString('en-IN',  { timeZone:'Asia/Kolkata', day:'numeric', month:'long', year:'numeric' });
 
     // Get friendly name from MongoDB
     let friendlyName = device;
     try {
       const namesDoc = await DeviceNames.findOne({ key: 'global' });
-      if (namesDoc && namesDoc.names && namesDoc.names[device]) {
-        friendlyName = namesDoc.names[device];
-      }
-    } catch (e) { /* use deviceId as fallback */ }
+      if (namesDoc && namesDoc.names && namesDoc.names[device]) friendlyName = namesDoc.names[device];
+    } catch (e) { /* fallback to deviceId */ }
 
-    if (temp != null) {
-      console.log(`🔍 Temp: ${temp}°C  vs  threshold: ${settings.tempThreshold}°C`);
-      if (temp > settings.tempThreshold) {
-        const key = `${device}_temp`;
-        if (await canSendAlert(key)) {
-          await markAlertSent(key);
-          const html = buildAlertEmail({
-            deviceId: device, friendlyName, location,
-            alertType: 'temperature',
-            actualValue: temp, threshold: settings.tempThreshold, unit: '°C',
-            otherTemp: temp, otherHum: hum, time
-          });
-          await sendAlertEmail(
-            `🌡️ Temperature Alert — ${friendlyName} (${device}) · ${location} · ${temp.toFixed(1)}°C`,
-            html
-          );
-        } else { console.log(`⏳ Temp cooldown active for ${device}`); }
-      } else { console.log(`✅ Temp OK for ${device}`); }
+    const tempBreached = temp != null && temp > settings.tempThreshold;
+    const humBreached  = hum  != null && hum  > settings.humThreshold;
+    const tempKey      = `${device}_temp`;
+    const humKey       = `${device}_hum`;
+    const canTemp      = tempBreached && await canSendAlert(tempKey);
+    const canHum       = humBreached  && await canSendAlert(humKey);
+
+    // ── Combined alert: both breached at same time ────────────
+    if (canTemp && canHum) {
+      await markAlertSent(tempKey);
+      await markAlertSent(humKey);
+      const html = buildAlertEmail({
+        deviceId: device, friendlyName, location,
+        alertType: 'temperature', combined: true,
+        actualValue: temp, threshold: settings.tempThreshold, unit: '°C',
+        otherTemp: temp, otherHum: hum,
+        tempThreshold: settings.tempThreshold, humThreshold: settings.humThreshold,
+        time, date
+      });
+      await sendAlertEmail(
+        `⚠️ Combined Alert — ${friendlyName} | Temp ${temp.toFixed(1)}°C & Humidity ${hum.toFixed(1)}% | ${location}`,
+        html
+      );
+      console.log(`📧 Combined alert sent for ${device}`);
+      return;
     }
 
-    if (hum != null) {
-      console.log(`🔍 Hum: ${hum}%  vs  threshold: ${settings.humThreshold}%`);
-      if (hum > settings.humThreshold) {
-        const key = `${device}_hum`;
-        if (await canSendAlert(key)) {
-          await markAlertSent(key);
-          const html = buildAlertEmail({
-            deviceId: device, friendlyName, location,
-            alertType: 'humidity',
-            actualValue: hum, threshold: settings.humThreshold, unit: '%',
-            otherTemp: temp, otherHum: hum, time
-          });
-          await sendAlertEmail(
-            `💧 Humidity Alert — ${friendlyName} (${device}) · ${location} · ${hum.toFixed(1)}%`,
-            html
-          );
-        } else { console.log(`⏳ Hum cooldown active for ${device}`); }
-      } else { console.log(`✅ Hum OK for ${device}`); }
+    // ── Single temperature alert ──────────────────────────────
+    if (canTemp) {
+      await markAlertSent(tempKey);
+      const html = buildAlertEmail({
+        deviceId: device, friendlyName, location,
+        alertType: 'temperature', combined: false,
+        actualValue: temp, threshold: settings.tempThreshold, unit: '°C',
+        otherTemp: temp, otherHum: hum,
+        tempThreshold: settings.tempThreshold, humThreshold: settings.humThreshold,
+        time, date
+      });
+      await sendAlertEmail(
+        `⚠️ Temperature Alert — ${friendlyName} | ${temp.toFixed(1)}°C | ${location}`,
+        html
+      );
+      console.log(`📧 Temp alert sent for ${device}`);
+    } else if (tempBreached) {
+      console.log(`⏳ Temp cooldown active for ${device}`);
+    } else if (temp != null) {
+      console.log(`✅ Temp OK for ${device}: ${temp}°C`);
     }
+
+    // ── Single humidity alert ─────────────────────────────────
+    if (canHum) {
+      await markAlertSent(humKey);
+      const html = buildAlertEmail({
+        deviceId: device, friendlyName, location,
+        alertType: 'humidity', combined: false,
+        actualValue: hum, threshold: settings.humThreshold, unit: '%',
+        otherTemp: temp, otherHum: hum,
+        tempThreshold: settings.tempThreshold, humThreshold: settings.humThreshold,
+        time, date
+      });
+      await sendAlertEmail(
+        `⚠️ Humidity Alert — ${friendlyName} | ${hum.toFixed(1)}% | ${location}`,
+        html
+      );
+      console.log(`📧 Hum alert sent for ${device}`);
+    } else if (humBreached) {
+      console.log(`⏳ Hum cooldown active for ${device}`);
+    } else if (hum != null) {
+      console.log(`✅ Hum OK for ${device}: ${hum}%`);
+    }
+
   } catch (err) { console.error('❌ Alert check error:', err.message); }
 }
 
@@ -433,7 +520,22 @@ cron.schedule('*/10 * * * *', async () => {
 app.get('/api/data', async (req, res) => {
   try {
     const deviceId = req.query.deviceId || 'Meter_02';
-    const record   = await SensorData.findOne({ deviceId }).sort({ timestamp: -1 });
+
+    // ── Use in-memory cache first (always latest real-time value) ──
+    if (latestReadings[deviceId]) {
+      const r = latestReadings[deviceId];
+      return res.json({
+        temperature: r.temperature,
+        humidity:    r.humidity,
+        tempLevel:   r.tempLevel,
+        humLevel:    r.humLevel,
+        timestamp:   r.timestamp,
+        deviceId:    r.deviceId
+      });
+    }
+
+    // ── Fallback to MongoDB if server just restarted ──
+    const record = await SensorData.findOne({ deviceId }).sort({ timestamp: -1 });
     if (!record) return res.json({});
     res.json({
       temperature: record.temperature,

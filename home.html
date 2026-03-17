@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>RH-Meter — All Devices</title>
+  <title>RH-Meter</title>
   <link rel="icon" type="image/png" href="favicon.png">
   <link rel="stylesheet" href="style.css">
   <style>
@@ -92,35 +92,34 @@
     .header-action-btn:hover  { border-color:var(--accent-blue); color:var(--accent-blue); background:rgba(59,130,246,0.06); }
     .header-action-btn.active { border-color:var(--accent-blue); color:var(--accent-blue); background:rgba(59,130,246,0.08); }
 
-    /* Dropdown panels */
-    .action-dropdown { position:absolute; top:calc(100% + 8px); right:0; width:300px; background:var(--bg-card); border:1px solid var(--border); border-radius:14px; box-shadow:0 8px 32px rgba(0,0,0,0.12); padding:20px; z-index:500; display:none; flex-direction:column; gap:14px; }
-    .action-dropdown.open { display:flex; }
-    .dropdown-title { font-size:0.75rem; font-weight:700; text-transform:uppercase; letter-spacing:1px; color:var(--text-muted); margin-bottom:2px; }
+    /* Dropdown panels — centre modal with dim overlay */
+    .modal-overlay { position:fixed; inset:0; background:rgba(15,23,42,0.5); z-index:600; display:none; align-items:center; justify-content:center; padding:20px; }
+    .modal-overlay.open { display:flex; }
+    .action-dropdown { background:var(--bg-card); border:1px solid var(--border); border-radius:16px; box-shadow:0 20px 60px rgba(0,0,0,0.2); padding:28px; width:100%; max-width:380px; display:flex; flex-direction:column; gap:16px; animation:modalIn 0.2s ease; }
+    @keyframes modalIn { from { opacity:0; transform:scale(0.95) translateY(-8px); } to { opacity:1; transform:scale(1) translateY(0); } }
+    .dropdown-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:4px; }
+    .dropdown-title { font-size:1rem; font-weight:700; color:var(--text); }
+    .dropdown-close { width:30px; height:30px; background:var(--bg); border:1px solid var(--border); border-radius:8px; cursor:pointer; font-size:1rem; color:var(--text-dim); display:flex; align-items:center; justify-content:center; transition:all 0.2s; line-height:1; }
+    .dropdown-close:hover { background:rgba(239,68,68,0.08); border-color:var(--accent-red); color:var(--accent-red); }
     .dropdown-field { display:flex; flex-direction:column; gap:6px; }
     .dropdown-field label { font-size:0.8rem; font-weight:600; color:var(--text-dim); }
     .dropdown-field input[type="date"],
-    .dropdown-field select { padding:9px 12px; background:var(--bg); border:1.5px solid var(--border); border-radius:8px; color:var(--text); font-family:'JetBrains Mono',monospace; font-size:0.85rem; outline:none; width:100%; transition:border-color 0.2s; }
+    .dropdown-field select { padding:10px 12px; background:var(--bg); border:1.5px solid var(--border); border-radius:8px; color:var(--text); font-family:'JetBrains Mono',monospace; font-size:0.875rem; outline:none; width:100%; transition:border-color 0.2s; }
     .dropdown-field input[type="date"]:focus,
-    .dropdown-field select:focus { border-color:var(--accent-blue); }
-    .dropdown-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-    .dropdown-divider { height:1px; background:var(--border); margin:2px 0; }
-    .dropdown-action-btn { width:100%; padding:11px; border:none; border-radius:10px; font-size:0.875rem; font-weight:700; cursor:pointer; transition:all 0.25s ease; margin-top:2px; }
+    .dropdown-field select:focus { border-color:var(--accent-blue); box-shadow:0 0 0 3px rgba(59,130,246,0.1); }
+    .dropdown-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    .dropdown-divider { height:1px; background:var(--border); margin:4px 0; }
+    .dropdown-action-btn { width:100%; padding:12px; border:none; border-radius:10px; font-size:0.9rem; font-weight:700; cursor:pointer; transition:all 0.25s ease; }
     .dropdown-action-btn.filter-btn { background:linear-gradient(135deg,var(--accent-orange),#f97316); color:white; box-shadow:0 4px 14px rgba(245,158,11,0.3); }
-    .dropdown-action-btn.filter-btn:hover { transform:translateY(-1px); box-shadow:0 6px 18px rgba(245,158,11,0.4); }
+    .dropdown-action-btn.filter-btn:hover { transform:translateY(-2px); box-shadow:0 6px 20px rgba(245,158,11,0.4); }
     .dropdown-action-btn.export-btn { background:linear-gradient(135deg,#10b981,#059669); color:white; box-shadow:0 4px 14px rgba(16,185,129,0.3); }
-    .dropdown-action-btn.export-btn:hover { transform:translateY(-1px); box-shadow:0 6px 18px rgba(16,185,129,0.4); }
+    .dropdown-action-btn.export-btn:hover { transform:translateY(-2px); box-shadow:0 6px 20px rgba(16,185,129,0.4); }
     .dropdown-action-btn:disabled { opacity:0.6; cursor:not-allowed; transform:none !important; }
-
     /* Filter active chip */
     .filter-active-chip { display:none; align-items:center; gap:8px; padding:6px 14px; background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.25); border-radius:20px; font-size:0.78rem; font-weight:600; color:var(--accent-red); margin-bottom:16px; }
     .filter-active-chip.visible { display:flex; }
     .filter-active-chip button { background:none; border:none; cursor:pointer; color:var(--accent-red); font-size:0.85rem; padding:0; line-height:1; }
-
-    /* Dropdown backdrop */
-    .dropdown-backdrop { position:fixed; inset:0; z-index:499; display:none; }
-    .dropdown-backdrop.open { display:block; }
-
-    @media (max-width:768px) { .device-grid { grid-template-columns:1fr; } .action-dropdown { width:260px; right:-8px; } }
+    @media (max-width:768px) { .device-grid { grid-template-columns:1fr; } .action-dropdown { max-width:100%; } }
     @media (max-width:480px) { .device-card-data { padding:14px 16px; } .device-card-top { padding:16px 16px 12px; } .device-card-bottom { padding:10px 16px; } .device-data-value { font-size:1.4rem; } }
   </style>
 </head>
@@ -132,61 +131,27 @@
     <div class="home-header-left">
       <img src="logo.png" alt="Logo" style="height:52px;width:auto;object-fit:contain;">
       <div>
-        <h4 style="font-size:1.4rem;font-weight:800;background:linear-gradient(135deg,#3b82f6,#06b6d4);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:3px;">Factory Monitor Pro</h4>
+        <h4 style="font-size:1.4rem;font-weight:800;background:linear-gradient(135deg,#3b82f6,#06b6d4);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:3px;">RH-Meter</h4>
         <div style="font-size:0.8rem;color:var(--text-muted);font-family:'JetBrains Mono',monospace;">Relative Humidity &amp; Temperature — All Devices</div>
       </div>
     </div>
     <div class="home-header-right" style="gap:10px;">
       <div class="records-badge" id="onlineCountBadge">🟢 Checking...</div>
 
-      <!-- Filter Button + Dropdown -->
-      <div style="position:relative;">
+      <!-- Filter Button -->
+      <div>
         <button class="header-action-btn" id="filterBtn" onclick="toggleFilterDropdown()">
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M4 8h8M6 12h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
           Filter
         </button>
-        <div class="action-dropdown" id="filterDropdown">
-          <div class="dropdown-title">🔍 Threshold Filter</div>
-          <div class="dropdown-field">
-            <label>Location</label>
-            <select id="filterLocation">
-              <option value="all">All Locations</option>
-              <option value="samudra">Samudra (Meter 01–10)</option>
-              <option value="bng">BNG (Meter 11–13)</option>
-            </select>
-          </div>
-          <div class="dropdown-row">
-            <div class="dropdown-field"><label>From</label><input type="date" id="filterDateFrom"></div>
-            <div class="dropdown-field"><label>To</label><input type="date" id="filterDateTo"></div>
-          </div>
-          <div class="dropdown-divider"></div>
-          <button class="dropdown-action-btn filter-btn" id="applyFilterBtn" onclick="applyFilterFromDropdown()">🔍 Apply Threshold Filter</button>
-        </div>
       </div>
 
-      <!-- Export Button + Dropdown -->
-      <div style="position:relative;">
+      <!-- Export Button -->
+      <div>
         <button class="header-action-btn" id="exportBtn" onclick="toggleExportDropdown()">
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 2v8M4 10l4 4 4-4M2 14h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
           Export
         </button>
-        <div class="action-dropdown" id="exportDropdown">
-          <div class="dropdown-title">📥 Export Excel</div>
-          <div class="dropdown-field">
-            <label>Location</label>
-            <select id="exportLocation">
-              <option value="all">All Devices (13 sheets)</option>
-              <option value="samudra">Samudra only (10 sheets)</option>
-              <option value="bng">BNG only (3 sheets)</option>
-            </select>
-          </div>
-          <div class="dropdown-row">
-            <div class="dropdown-field"><label>From</label><input type="date" id="exportDateFrom"></div>
-            <div class="dropdown-field"><label>To</label><input type="date" id="exportDateTo"></div>
-          </div>
-          <div class="dropdown-divider"></div>
-          <button class="dropdown-action-btn export-btn" id="exportExcelBtn" onclick="runExportFromDropdown()">📥 Download Excel</button>
-        </div>
       </div>
 
       <!-- Settings -->
@@ -228,6 +193,54 @@
 
 <!-- Dropdown backdrop -->
 <div class="dropdown-backdrop" id="dropdownBackdrop" onclick="closeAllDropdowns()"></div>
+
+<!-- FILTER MODAL -->
+<div class="modal-overlay" id="filterModal" onclick="handleModalOverlayClick(event,'filterModal')">
+  <div class="action-dropdown" id="filterDropdown">
+    <div class="dropdown-header">
+      <div class="dropdown-title">🔍 Threshold Filter</div>
+      <button class="dropdown-close" onclick="closeAllDropdowns()">✕</button>
+    </div>
+    <div class="dropdown-field">
+      <label>Location</label>
+      <select id="filterLocation">
+        <option value="all">All Locations</option>
+        <option value="samudra">Samudra (Meter 01–10)</option>
+        <option value="bng">BNG (Meter 11–13)</option>
+      </select>
+    </div>
+    <div class="dropdown-row">
+      <div class="dropdown-field"><label>From</label><input type="date" id="filterDateFrom"></div>
+      <div class="dropdown-field"><label>To</label><input type="date" id="filterDateTo"></div>
+    </div>
+    <div class="dropdown-divider"></div>
+    <button class="dropdown-action-btn filter-btn" id="applyFilterBtn" onclick="applyFilterFromDropdown()">🔍 Apply Threshold Filter</button>
+  </div>
+</div>
+
+<!-- EXPORT MODAL -->
+<div class="modal-overlay" id="exportModal" onclick="handleModalOverlayClick(event,'exportModal')">
+  <div class="action-dropdown" id="exportDropdown">
+    <div class="dropdown-header">
+      <div class="dropdown-title">📥 Export Excel</div>
+      <button class="dropdown-close" onclick="closeAllDropdowns()">✕</button>
+    </div>
+    <div class="dropdown-field">
+      <label>Location</label>
+      <select id="exportLocation">
+        <option value="all">All Devices (13 sheets)</option>
+        <option value="samudra">Samudra only (10 sheets)</option>
+        <option value="bng">BNG only (3 sheets)</option>
+      </select>
+    </div>
+    <div class="dropdown-row">
+      <div class="dropdown-field"><label>From</label><input type="date" id="exportDateFrom"></div>
+      <div class="dropdown-field"><label>To</label><input type="date" id="exportDateTo"></div>
+    </div>
+    <div class="dropdown-divider"></div>
+    <button class="dropdown-action-btn export-btn" id="exportExcelBtn" onclick="runExportFromDropdown()">📥 Download Excel</button>
+  </div>
+</div>
 
 <!-- SETTINGS DRAWER -->
 <div class="settings-overlay" id="settingsOverlay"></div>
@@ -320,27 +333,28 @@ function applyCurrentFilters() {
 
 // ── Dropdown toggles ──────────────────────────────────────────
 function toggleFilterDropdown() {
-  const isOpen = document.getElementById('filterDropdown').classList.contains('open');
+  const isOpen = document.getElementById('filterModal').classList.contains('open');
   closeAllDropdowns();
   if (!isOpen) {
-    document.getElementById('filterDropdown').classList.add('open');
+    document.getElementById('filterModal').classList.add('open');
     document.getElementById('filterBtn').classList.add('active');
-    document.getElementById('dropdownBackdrop').classList.add('open');
   }
 }
 function toggleExportDropdown() {
-  const isOpen = document.getElementById('exportDropdown').classList.contains('open');
+  const isOpen = document.getElementById('exportModal').classList.contains('open');
   closeAllDropdowns();
   if (!isOpen) {
-    document.getElementById('exportDropdown').classList.add('open');
+    document.getElementById('exportModal').classList.add('open');
     document.getElementById('exportBtn').classList.add('active');
-    document.getElementById('dropdownBackdrop').classList.add('open');
   }
 }
 function closeAllDropdowns() {
-  ['filterDropdown','exportDropdown'].forEach(id => document.getElementById(id)?.classList.remove('open'));
+  ['filterModal','exportModal'].forEach(id => document.getElementById(id)?.classList.remove('open'));
   ['filterBtn','exportBtn'].forEach(id => document.getElementById(id)?.classList.remove('active'));
   document.getElementById('dropdownBackdrop')?.classList.remove('open');
+}
+function handleModalOverlayClick(event, modalId) {
+  if (event.target === document.getElementById(modalId)) closeAllDropdowns();
 }
 
 // ── Apply filter from dropdown ────────────────────────────────
@@ -424,7 +438,7 @@ function renderDeviceGrid(filterIds) {
       : 'background:rgba(6,182,212,0.1);color:var(--accent-cyan);border-color:rgba(6,182,212,0.25);';
 
     const card = document.createElement('a');
-card.href = `detail.html?id=${deviceId}`;
+    card.href = `index.html?id=${deviceId}`;
     card.className = `device-card ${alertCard}`;
     card.innerHTML = `
       <div class="device-card-top">
