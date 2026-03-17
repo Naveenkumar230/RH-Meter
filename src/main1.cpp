@@ -4,7 +4,7 @@
 #include "soc/soc.h"
 #include "soc/rtc_cntl_reg.h"
 #include <esp_task_wdt.h>
-#include <esp_task_wdt.h>
+// #include <esp_task_wdt.h>
 
 // ── Connectivity ─────────────────────────────────────────────
 #include <WiFi.h>
@@ -17,7 +17,9 @@
 #include <Preferences.h>
 
 // ── Sensor ───────────────────────────────────────────────────
-#include <WEMOS_SHT3X.h>
+// #include <WEMOS_SHT3X.h>
+
+#include <Adafruit_SHT31.h>
 
 // ── Display ──────────────────────────────────────────────────
 #include <LiquidCrystal_I2C.h>
@@ -66,14 +68,26 @@ emyPxgcYxn/eR44/KJ4EBs+lVDR3veyJm+kXQ99b21/+jh5Xos1AnX5iItreGCc=
 // ============================================================
 //  CONFIGURATION
 // ============================================================
-// ============================================================
-//  CONFIGURATION
-// ============================================================
+
 namespace Config {
     constexpr const char* WIFI_SSID       = "AIPL-IOT";
     constexpr const char* WIFI_PASS       = "@ipl2027";
 
-    constexpr const char* DEVICE_ID       = "Meter_02";
+    // constexpr const char* DEVICE_ID       = "Meter_01"; // mac 88:57:21:2E:A3:7C
+    // constexpr const char* DEVICE_ID       = "Meter_02";
+  // constexpr const char* DEVICE_ID       = "Meter_03"; // 88:57:21:2F:70:D4
+    //  constexpr const char* DEVICE_ID       = "Meter_04"; // 88:57:21:2E:A0:A8
+    //  constexpr const char* DEVICE_ID       = "Meter_05"; // 88:57:21:2D:55:08 
+        //  constexpr const char* DEVICE_ID       = "Meter_06"; // 88:57:21:2E:15:14
+        //  constexpr const char* DEVICE_ID       = "Meter_07"; // 88:57:21:2E:A3:E0
+        //   constexpr const char* DEVICE_ID       = "Meter_08"; // 88:57:21:2E:B1:78
+        //   constexpr const char* DEVICE_ID       = "Meter_09"; // 88:57:21:2D:53:60
+        //  constexpr const char* DEVICE_ID       = "Meter_10"; // 88:57:21:2F:64:B8 
+        //   constexpr const char* DEVICE_ID       = "Meter_11"; // 88:57:21:2E:7D:C4 
+        //  constexpr const char* DEVICE_ID       = "Meter_12"; // 88:57:21:2D:21:B0 
+        //  constexpr const char* DEVICE_ID       = "Meter_13"; // 88:57:21:2D:52:CC  
+          constexpr const char* DEVICE_ID       = "Meter_14"; // 88:57:21:2D:CC:F0  // Completed 
+
 
     // ── [HiveMQ] Broker settings ─────────────────────────────
     // Corrected: Removed the extra nested namespace line here
@@ -81,7 +95,20 @@ namespace Config {
     constexpr int         MQTT_PORT = 8883;
     constexpr const char* MQTT_USER = "RH-METER";
     constexpr const char* MQTT_PASS = "RH-METEr1234"; 
-    constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_02/telemetry";
+    // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_01/telemetry";
+    // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_02/telemetry";
+        // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_03/telemetry";
+            // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_04/telemetry";
+    // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_05/telemetry";
+    //   constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_06/telemetry";
+        // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_07/telemetry";
+        // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_08/telemetry";
+        //  constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_09/telemetry";
+    //   constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_10/telemetry";
+    //   constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_11/telemetry";
+    //   constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_12/telemetry";
+    //   constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_13/telemetry";
+      constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_14/telemetry";
 
     // OTA
     constexpr const char* OTA_HOSTNAME    = "FactoryMonitor";
@@ -137,7 +164,8 @@ enum LcdChar : uint8_t { CHR_DEG=0, CHR_UP, CHR_DN, CHR_DROP, CHR_THERM, CHR_CHE
 // ============================================================
 //  GLOBAL OBJECTS
 // ============================================================
-SHT3X             sht30(Config::SHT_ADDR);
+// SHT3X             sht30(Config::SHT_ADDR);
+Adafruit_SHT31    sht30;
 LiquidCrystal_I2C lcd(Config::LCD_ADDR, 16, 2);
 WebServer         webServer(80);
 Preferences       prefs;
@@ -413,15 +441,36 @@ secureClient.setInsecure();
 // ============================================================
 //  SENSOR TASK
 // ============================================================
+// void sensorTask() {
+//     int rc = sht30.get();
+//     if (rc != 0) {
+//         Serial.println("[SHT30] Read error");
+//         return;
+//     }
+//     float calT, calH;
+//     if (!applyCalibration(sht30.cTemp, sht30.humidity, calT, calH)) {
+//         Serial.printf("[SHT30] Out-of-range: T=%.2f H=%.2f\n", sht30.cTemp, sht30.humidity);
+//         return;
+//     }
+//     lastTemp    = currentTemp;
+//     lastHum     = currentHum;
+//     currentTemp = calT;
+//     currentHum  = calH;
+//     pushHistory(currentTemp, currentHum);
+//     Serial.printf("[Sensor] T=%.1f°C  H=%.1f%%RH\n", currentTemp, currentHum);
+// }
+
+
 void sensorTask() {
-    int rc = sht30.get();
-    if (rc != 0) {
-        Serial.println("[SHT30] Read error");
+    float rawT = sht30.readTemperature();
+    float rawH = sht30.readHumidity();
+    if (isnan(rawT) || isnan(rawH)) {
+        Serial.println("[SHT30] Read error — check wiring");
         return;
     }
     float calT, calH;
-    if (!applyCalibration(sht30.cTemp, sht30.humidity, calT, calH)) {
-        Serial.printf("[SHT30] Out-of-range: T=%.2f H=%.2f\n", sht30.cTemp, sht30.humidity);
+    if (!applyCalibration(rawT, rawH, calT, calH)) {
+        Serial.printf("[SHT30] Out-of-range: T=%.2f H=%.2f\n", rawT, rawH);
         return;
     }
     lastTemp    = currentTemp;
@@ -430,7 +479,8 @@ void sensorTask() {
     currentHum  = calH;
     pushHistory(currentTemp, currentHum);
     Serial.printf("[Sensor] T=%.1f°C  H=%.1f%%RH\n", currentTemp, currentHum);
-}
+}                               // ← THIS CLOSING BRACKET must be here
+
 
 // ============================================================
 //  LCD TASK
@@ -533,6 +583,9 @@ void setup() {
     lcdCreateChars();
     lcdSplash();
     Serial.println("[LCD] Ready");
+
+    sht30.begin(0x44);
+Serial.println("[SHT30] Sensor initialized");
 
     // WiFiManager
     WiFiManager wm;

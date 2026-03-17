@@ -4,7 +4,7 @@ const cron     = require('node-cron');
 const axios    = require('axios');
 const cors     = require('cors');
 const https    = require('https');
-const mqtt     = require('mqtt');          // ← NEW: HiveMQ subscriber
+const mqtt     = require('mqtt');
 
 // ── Constants ─────────────────────────────────────────────────
 const DASHBOARD_URL = 'https://rh-meter-bridge.onrender.com';
@@ -31,7 +31,6 @@ mongoose.connect(process.env.MONGO_URI || "mongodb+srv://factory_admin:factory_a
   .catch(err => console.error("❌ MongoDB Error:", err));
 
 // ── Schemas ───────────────────────────────────────────────────
-// Change this line in your Schemas section
 const SensorData = mongoose.model('SensorData', new mongoose.Schema({
   deviceId:    { type: String, default: 'Meter_02' },
   temperature: Number,
@@ -39,7 +38,7 @@ const SensorData = mongoose.model('SensorData', new mongoose.Schema({
   tempLevel:   String,
   humLevel:    String,
   timestamp:   { type: Date, default: Date.now }
-}), 'sensordatas'); // <--- ADD THIS 'sensordatas' string here
+}), 'sensordatas');
 
 const Settings = mongoose.model('Settings', new mongoose.Schema({
   key:           { type: String, default: 'global', unique: true },
@@ -53,7 +52,31 @@ const AlertCooldown = mongoose.model('AlertCooldown', new mongoose.Schema({
   lastSentAt: { type: Date, default: null },
 }));
 
+// ── Device Names Schema ───────────────────────────────────────
+// Stores user-friendly names for each device — globally shared
+const DeviceNames = mongoose.model('DeviceNames', new mongoose.Schema({
+  key:   { type: String, default: 'global', unique: true },
+  names: { type: Object, default: {} }  // { "Meter_01": "CT-PAT Area", ... }
+}, { timestamps: true }));
+
 const COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
+
+// ── Default device names ──────────────────────────────────────
+const DEFAULT_NAMES = {
+  "Meter_01": "Production Floor - A",
+  "Meter_02": "CT-PAT Area",
+  "Meter_03": "Quality Control Lab",
+  "Meter_04": "Warehouse - North",
+  "Meter_05": "Warehouse - South",
+  "Meter_06": "Packaging Unit - 1",
+  "Meter_07": "Packaging Unit - 2",
+  "Meter_08": "Cold Storage - A",
+  "Meter_09": "Cold Storage - B",
+  "Meter_10": "Server Room",
+  "Meter_11": "Assembly Line - 1",
+  "Meter_12": "Assembly Line - 2",
+  "Meter_13": "Dispatch Area"
+};
 
 // ── Seed defaults ─────────────────────────────────────────────
 mongoose.connection.once('open', async () => {
@@ -63,19 +86,21 @@ mongoose.connection.once('open', async () => {
       await Settings.create({ key: 'global', tempThreshold: 35, humThreshold: 70, recipients: '' });
       console.log('✅ Default settings seeded');
     }
+    // Seed device names if not present
+    const existingNames = await DeviceNames.findOne({ key: 'global' });
+    if (!existingNames) {
+      await DeviceNames.create({ key: 'global', names: DEFAULT_NAMES });
+      console.log('✅ Default device names seeded');
+    }
   } catch (err) { console.error('❌ Seed error:', err.message); }
 });
 
 // ════════════════════════════════════════════════════════════
 //  HIVEMQ MQTT SUBSCRIBER
 // ════════════════════════════════════════════════════════════
-
-// 1. Check if MQTT_URL exists in Render Env. 
-// 2. If it does, we use it directly. 
-// 3. If it doesn't, we build it from the host/port.
-const HIVEMQ_URL = process.env.MQTT_URL || `mqtts://d034db44805b4258a6c72c3efe0f9019.s1.eu.hivemq.cloud:8883`;
-const HIVEMQ_USER = process.env.MQTT_USER || 'RH-METER';
-const HIVEMQ_PASS = process.env.MQTT_PASS || 'RH-METEr1234';
+const HIVEMQ_URL   = process.env.MQTT_URL  || `mqtts://d034db44805b4258a6c72c3efe0f9019.s1.eu.hivemq.cloud:8883`;
+const HIVEMQ_USER  = process.env.MQTT_USER || 'RH-METER';
+const HIVEMQ_PASS  = process.env.MQTT_PASS || 'RH-METEr1234';
 const HIVEMQ_TOPIC = 'AIPL/RH_Meter/+/telemetry';
 
 function startHiveMQSubscriber() {
@@ -85,8 +110,8 @@ function startHiveMQSubscriber() {
     username:           HIVEMQ_USER,
     password:           HIVEMQ_PASS,
     clientId:           'server-bridge-' + Math.random().toString(16).slice(2, 8),
-    rejectUnauthorized: true,     // Enforce TLS for HiveMQ Cloud
-    reconnectPeriod:    5000,     // Auto-reconnect every 5s
+    rejectUnauthorized: true,
+    reconnectPeriod:    5000,
     connectTimeout:     30000,
   });
 
@@ -98,31 +123,29 @@ function startHiveMQSubscriber() {
     });
   });
 
-mqttClient.on('message', async (topic, message) => {
+  mqttClient.on('message', async (topic, message) => {
     try {
-      const payload = JSON.parse(message.toString());
-      
+      const payload  = JSON.parse(message.toString());
       const deviceId = topic.split('/')[2] || payload.id || 'Meter_02';
-
-      const temp = parseFloat(payload.temp);
-      const hum  = parseFloat(payload.hum);
+      const temp     = parseFloat(payload.temp);
+      const hum      = parseFloat(payload.hum);
 
       if (isNaN(temp) || isNaN(hum)) {
         console.warn(`⚠️ [HiveMQ] Invalid payload from ${deviceId}:`, payload);
         return;
       }
 
-      const record = { 
-        deviceId: deviceId, 
+      const record = {
+        deviceId,
         temperature: temp,
-        humidity: hum,
-        tempLevel: temp <= 27 ? 'normal' : temp <= 35 ? 'warning' : 'critical',
-        humLevel: hum < 40 ? 'critical' : hum <= 70 ? 'normal' : 'critical'  // ← Fix 3
+        humidity:    hum,
+        tempLevel:   temp <= 27 ? 'normal' : temp <= 35 ? 'warning' : 'critical',
+        humLevel:    hum < 40   ? 'critical' : hum <= 70 ? 'normal' : 'critical'
       };
 
       await new SensorData(record).save();
       console.log(`💾 [HiveMQ] Saved ${deviceId}: T=${temp}°C, H=${hum}%`);
-      await checkAndAlert(record);  // ← Fix 1
+      await checkAndAlert(record);
 
     } catch (err) {
       console.error('❌ [HiveMQ] Message Processing Error:', err.message);
@@ -130,22 +153,16 @@ mqttClient.on('message', async (topic, message) => {
   });
 
   mqttClient.on('reconnect', () => console.log('🔄 [HiveMQ] Reconnecting...'));
-  
-  mqttClient.on('error', (err) => {
-    if (err.message.includes('Connection refused: Not authorized')) {
+  mqttClient.on('error',     (err) => {
+    if (err.message.includes('Connection refused: Not authorized'))
       console.error('❌ [HiveMQ] AUTH ERROR: Check your HiveMQ Username/Password!');
-    } else {
+    else
       console.error('❌ [HiveMQ] MQTT Error:', err.message);
-    }
   });
-
   mqttClient.on('offline', () => console.warn('⚠️ [HiveMQ] Client offline'));
 }
 
-// Start subscriber after MongoDB is ready
-mongoose.connection.once('open', () => {
-  startHiveMQSubscriber();
-});
+mongoose.connection.once('open', () => { startHiveMQSubscriber(); });
 
 // ── Cooldown helpers ──────────────────────────────────────────
 async function canSendAlert(key) {
@@ -165,80 +182,195 @@ async function markAlertSent(key) {
 // ── Brevo email sender ────────────────────────────────────────
 async function sendEmail(subject, htmlBody, recipients) {
   const apiKey = process.env.BREVO_API_KEY || BREVO_API_KEY;
-
-  if (!apiKey) {
-    console.error('❌ BREVO_API_KEY is not set — skipping email');
-    return { ok: false, error: 'BREVO_API_KEY not configured' };
-  }
+  if (!apiKey) { console.error('❌ BREVO_API_KEY not set'); return { ok: false, error: 'BREVO_API_KEY not configured' }; }
 
   const payload = JSON.stringify({
-sender: { name: 'RH-Meter Alert System', email: SENDER_EMAIL },
+    sender:      { name: 'RH-Meter Alert System', email: SENDER_EMAIL },
     to:          recipients.map(email => ({ email })),
-    subject:     subject,
+    subject,
     htmlContent: htmlBody
   });
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     const req = https.request({
-      hostname: 'api.brevo.com',
-      path:     '/v3/smtp/email',
-      method:   'POST',
+      hostname: 'api.brevo.com', path: '/v3/smtp/email', method: 'POST',
       headers: {
-        'accept':         'application/json',
-        'api-key':        apiKey,
-        'content-type':   'application/json',
-        'content-length': Buffer.byteLength(payload)
+        'accept': 'application/json', 'api-key': apiKey,
+        'content-type': 'application/json', 'content-length': Buffer.byteLength(payload)
       }
     }, (res) => {
       let data = '';
       res.on('data', chunk => data += chunk);
       res.on('end', () => {
-        if (res.statusCode >= 400) {
-          console.error('❌ Brevo error:', data);
-          resolve({ ok: false, error: data });
-        } else {
-          console.log(`✅ Email sent via Brevo`);
-          resolve({ ok: true });
-        }
+        if (res.statusCode >= 400) { console.error('❌ Brevo error:', data); resolve({ ok: false, error: data }); }
+        else { console.log('✅ Email sent via Brevo'); resolve({ ok: true }); }
       });
     });
-    req.on('error', (err) => {
-      console.error('❌ Brevo request error:', err.message);
-      resolve({ ok: false, error: err.message });
-    });
+    req.on('error', (err) => { console.error('❌ Brevo request error:', err.message); resolve({ ok: false, error: err.message }); });
     req.write(payload);
     req.end();
   });
 }
 
-// ── Core alert email sender ───────────────────────────────────
 async function sendAlertEmail(subject, htmlBody) {
   try {
     const settings     = await Settings.findOne({ key: 'global' });
     const recipientStr = (settings && settings.recipients) || '';
     const recipients   = recipientStr.split(',').map(e => e.trim()).filter(Boolean);
-    if (!recipients.length) {
-      console.warn('⚠️  No recipients configured');
-      return { ok: false, error: 'No recipients configured' };
-    }
+    if (!recipients.length) { console.warn('⚠️ No recipients configured'); return { ok: false, error: 'No recipients configured' }; }
     console.log(`📧 Sending "${subject}" → ${recipients.join(', ')}`);
     return await sendEmail(subject, htmlBody, recipients);
-  } catch (err) {
-    console.error('❌ Email exception:', err.message);
-    return { ok: false, error: err.message };
-  }
+  } catch (err) { console.error('❌ Email exception:', err.message); return { ok: false, error: err.message }; }
 }
 
+// ── Location map (server-side) ────────────────────────────────
+const LOCATION_MAP_SERVER = {
+  Meter_01:'Samudra', Meter_02:'Samudra', Meter_03:'Samudra',
+  Meter_04:'Samudra', Meter_05:'Samudra', Meter_06:'Samudra',
+  Meter_07:'Samudra', Meter_08:'Samudra', Meter_09:'Samudra',
+  Meter_10:'Samudra', Meter_11:'BNG',     Meter_12:'BNG',
+  Meter_13:'BNG'
+};
 
-// ── Email Templates ───────────────────────────────────────────
+// ── Rich HTML email builder ───────────────────────────────────
+function buildAlertEmail({ deviceId, friendlyName, location, alertType, actualValue, threshold, unit, otherTemp, otherHum, time }) {
+  const isTemp     = alertType === 'temperature';
+  const color      = isTemp ? '#ef4444' : '#f59e0b';
+  const icon       = isTemp ? '🌡️' : '💧';
+  const label      = isTemp ? 'Temperature' : 'Humidity';
+  const excess     = (actualValue - threshold).toFixed(1);
+  const dashUrl    = `https://rh-meter-bridge.onrender.com/index.html?id=${deviceId}`;
+
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:'Segoe UI',Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:32px 16px;">
+  <tr><td align="center">
+    <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+
+      <!-- Header -->
+      <tr><td style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:28px 32px;">
+        <table width="100%"><tr>
+          <td>
+            <div style="font-size:13px;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Factory Monitor Pro</div>
+            <div style="font-size:22px;font-weight:700;color:#ffffff;">${icon} ${label} Alert</div>
+          </td>
+          <td align="right">
+            <div style="background:${color};color:white;padding:8px 16px;border-radius:20px;font-size:13px;font-weight:700;white-space:nowrap;">⚠️ THRESHOLD EXCEEDED</div>
+          </td>
+        </tr></table>
+      </td></tr>
+
+      <!-- Device Info -->
+      <tr><td style="padding:28px 32px 0;">
+        <table width="100%" style="background:#f8fafc;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden;">
+          <tr style="background:#f1f5f9;">
+            <td style="padding:10px 16px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#64748b;" colspan="2">Device Information</td>
+          </tr>
+          <tr style="border-top:1px solid #e2e8f0;">
+            <td style="padding:12px 16px;font-size:13px;color:#64748b;font-weight:600;width:40%;">Device Name</td>
+            <td style="padding:12px 16px;font-size:13px;color:#1e293b;font-weight:700;">${friendlyName}</td>
+          </tr>
+          <tr style="border-top:1px solid #e2e8f0;">
+            <td style="padding:12px 16px;font-size:13px;color:#64748b;font-weight:600;">Meter ID</td>
+            <td style="padding:12px 16px;font-size:13px;color:#1e293b;font-family:monospace;font-weight:700;">${deviceId}</td>
+          </tr>
+          <tr style="border-top:1px solid #e2e8f0;">
+            <td style="padding:12px 16px;font-size:13px;color:#64748b;font-weight:600;">Location</td>
+            <td style="padding:12px 16px;">
+              <span style="background:${location==='Samudra'?'rgba(59,130,246,0.1)':'rgba(6,182,212,0.1)'};color:${location==='Samudra'?'#2563eb':'#0891b2'};border:1px solid ${location==='Samudra'?'rgba(59,130,246,0.3)':'rgba(6,182,212,0.3)'};padding:3px 10px;border-radius:6px;font-size:12px;font-weight:700;">${location}</span>
+            </td>
+          </tr>
+          <tr style="border-top:1px solid #e2e8f0;">
+            <td style="padding:12px 16px;font-size:13px;color:#64748b;font-weight:600;">Alert Time</td>
+            <td style="padding:12px 16px;font-size:13px;color:#1e293b;font-weight:600;">${time}</td>
+          </tr>
+        </table>
+      </td></tr>
+
+      <!-- Alert Details -->
+      <tr><td style="padding:20px 32px 0;">
+        <table width="100%" style="background:#fff5f5;border-radius:12px;border:1.5px solid ${color};overflow:hidden;">
+          <tr style="background:${color};">
+            <td style="padding:10px 16px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#ffffff;" colspan="2">Alert Details</td>
+          </tr>
+          <tr style="border-top:1px solid rgba(239,68,68,0.15);">
+            <td style="padding:12px 16px;font-size:13px;color:#64748b;font-weight:600;width:40%;">Cause</td>
+            <td style="padding:12px 16px;font-size:13px;color:#991b1b;font-weight:700;">${label} exceeded set threshold</td>
+          </tr>
+          <tr style="border-top:1px solid rgba(239,68,68,0.15);">
+            <td style="padding:12px 16px;font-size:13px;color:#64748b;font-weight:600;">Actual Value</td>
+            <td style="padding:12px 16px;font-size:20px;color:${color};font-weight:800;font-family:monospace;">${actualValue.toFixed(1)} ${unit}</td>
+          </tr>
+          <tr style="border-top:1px solid rgba(239,68,68,0.15);">
+            <td style="padding:12px 16px;font-size:13px;color:#64748b;font-weight:600;">Set Threshold</td>
+            <td style="padding:12px 16px;font-size:13px;color:#1e293b;font-weight:700;">${threshold} ${unit}</td>
+          </tr>
+          <tr style="border-top:1px solid rgba(239,68,68,0.15);">
+            <td style="padding:12px 16px;font-size:13px;color:#64748b;font-weight:600;">Exceeded By</td>
+            <td style="padding:12px 16px;font-size:13px;color:${color};font-weight:700;">+${excess} ${unit} above threshold</td>
+          </tr>
+        </table>
+      </td></tr>
+
+      <!-- Current Readings -->
+      <tr><td style="padding:20px 32px 0;">
+        <table width="100%">
+          <tr>
+            <td width="48%" style="background:#eff6ff;border-radius:10px;border:1px solid #bfdbfe;padding:16px;text-align:center;">
+              <div style="font-size:11px;color:#3b82f6;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">🌡️ Temperature</div>
+              <div style="font-size:24px;font-weight:800;color:${isTemp?color:'#2563eb'};font-family:monospace;">${otherTemp != null ? otherTemp.toFixed(1) : '--'} °C</div>
+            </td>
+            <td width="4%"></td>
+            <td width="48%" style="background:#ecfeff;border-radius:10px;border:1px solid #a5f3fc;padding:16px;text-align:center;">
+              <div style="font-size:11px;color:#0891b2;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">💧 Humidity</div>
+              <div style="font-size:24px;font-weight:800;color:${!isTemp?color:'#0891b2'};font-family:monospace;">${otherHum != null ? otherHum.toFixed(1) : '--'} %</div>
+            </td>
+          </tr>
+        </table>
+      </td></tr>
+
+      <!-- CTA Button -->
+      <tr><td style="padding:24px 32px 0;text-align:center;">
+        <a href="${dashUrl}" style="display:inline-block;background:linear-gradient(135deg,#2563eb,#06b6d4);color:white;padding:13px 28px;border-radius:10px;font-size:14px;font-weight:700;text-decoration:none;">
+          View Live Dashboard →
+        </a>
+      </td></tr>
+
+      <!-- Footer -->
+      <tr><td style="padding:24px 32px;text-align:center;border-top:1px solid #e2e8f0;margin-top:24px;">
+        <p style="font-size:12px;color:#94a3b8;margin:0;">Factory Monitor Pro · Aquarelle Clothing Ltd</p>
+        <p style="font-size:11px;color:#cbd5e1;margin:4px 0 0;">This is an automated alert. Next alert for this device in 1 hour.</p>
+      </td></tr>
+
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>`;
+}
+
+// ── Alert check ───────────────────────────────────────────────
 async function checkAndAlert(record) {
   try {
     const settings = await Settings.findOne({ key: 'global' });
     if (!settings) { console.warn('⚠️ No settings in DB'); return; }
 
-    const device = record.deviceId || 'Meter_02';
-    const temp   = record.temperature;
-    const hum    = record.humidity;
+    const device       = record.deviceId || 'Meter_02';
+    const temp         = record.temperature;
+    const hum          = record.humidity;
+    const location     = LOCATION_MAP_SERVER[device] || 'Unknown';
+    const time         = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour12: true });
+
+    // Get friendly name from MongoDB
+    let friendlyName = device;
+    try {
+      const namesDoc = await DeviceNames.findOne({ key: 'global' });
+      if (namesDoc && namesDoc.names && namesDoc.names[device]) {
+        friendlyName = namesDoc.names[device];
+      }
+    } catch (e) { /* use deviceId as fallback */ }
 
     if (temp != null) {
       console.log(`🔍 Temp: ${temp}°C  vs  threshold: ${settings.tempThreshold}°C`);
@@ -246,10 +378,18 @@ async function checkAndAlert(record) {
         const key = `${device}_temp`;
         if (await canSendAlert(key)) {
           await markAlertSent(key);
-          const html = await tempEmailHTML(device, temp, settings.tempThreshold, hum);
-          await sendAlertEmail(`🌡️ Temperature Alert — ${device} (${temp.toFixed(1)}°C)`, html);
-        } else { console.log(`⏳ Temp cooldown active`); }
-      } else { console.log(`✅ Temp OK`); }
+          const html = buildAlertEmail({
+            deviceId: device, friendlyName, location,
+            alertType: 'temperature',
+            actualValue: temp, threshold: settings.tempThreshold, unit: '°C',
+            otherTemp: temp, otherHum: hum, time
+          });
+          await sendAlertEmail(
+            `🌡️ Temperature Alert — ${friendlyName} (${device}) · ${location} · ${temp.toFixed(1)}°C`,
+            html
+          );
+        } else { console.log(`⏳ Temp cooldown active for ${device}`); }
+      } else { console.log(`✅ Temp OK for ${device}`); }
     }
 
     if (hum != null) {
@@ -258,10 +398,18 @@ async function checkAndAlert(record) {
         const key = `${device}_hum`;
         if (await canSendAlert(key)) {
           await markAlertSent(key);
-          const html = await humEmailHTML(device, hum, settings.humThreshold, temp);
-          await sendAlertEmail(`💧 Humidity Alert — ${device} (${hum.toFixed(1)}%)`, html);
-        } else { console.log(`⏳ Hum cooldown active`); }
-      } else { console.log(`✅ Hum OK`); }
+          const html = buildAlertEmail({
+            deviceId: device, friendlyName, location,
+            alertType: 'humidity',
+            actualValue: hum, threshold: settings.humThreshold, unit: '%',
+            otherTemp: temp, otherHum: hum, time
+          });
+          await sendAlertEmail(
+            `💧 Humidity Alert — ${friendlyName} (${device}) · ${location} · ${hum.toFixed(1)}%`,
+            html
+          );
+        } else { console.log(`⏳ Hum cooldown active for ${device}`); }
+      } else { console.log(`✅ Hum OK for ${device}`); }
     }
   } catch (err) { console.error('❌ Alert check error:', err.message); }
 }
@@ -276,9 +424,7 @@ cron.schedule('*/10 * * * *', async () => {
 //  ROUTES
 // ════════════════════════════════════════════════════════════
 
-app.get('/', (req, res) => res.send('🚀 Factory Monitor Bridge (HiveMQ) is running ✅'));
-
-// ── Latest sensor reading (used by app.js fetchCurrent) ──────
+// ── Latest sensor reading ─────────────────────────────────────
 app.get('/api/data', async (req, res) => {
   try {
     const deviceId = req.query.deviceId || 'Meter_02';
@@ -292,13 +438,10 @@ app.get('/api/data', async (req, res) => {
       timestamp:   record.timestamp,
       deviceId:    record.deviceId
     });
-  } catch (err) {
-    console.error('❌ /api/data error:', err);
-    res.status(500).send('Error');
-  }
+  } catch (err) { console.error('❌ /api/data error:', err); res.status(500).send('Error'); }
 });
 
-// ── Save sensor data (kept for backward compatibility) ────────
+// ── Save sensor data (backward compatibility) ─────────────────
 app.post('/save-data', async (req, res) => {
   try {
     const data = { ...req.body, deviceId: req.body.deviceId || 'Meter_02' };
@@ -325,13 +468,10 @@ app.get('/api/history', async (req, res) => {
     console.log(`📅 [History] deviceId=${deviceId} from=${from.toISOString()} to=${to.toISOString()}`);
 
     const records = await SensorData
-      .find({
-        deviceId,
-        timestamp: { $gte: from, $lte: to }
-      })
+      .find({ deviceId, timestamp: { $gte: from, $lte: to } })
       .sort({ timestamp: 1 })
       .lean()
-      .read('primary');        // ← forces read from primary, bypasses cache
+      .read('primary');
 
     console.log(`📦 [History] returning ${records.length} records`);
 
@@ -340,10 +480,82 @@ app.get('/api/history', async (req, res) => {
       temp:      r.temperature,
       hum:       r.humidity
     })));
+  } catch (err) { console.error('❌ /api/history error:', err); res.status(500).json({ error: err.message }); }
+});
+
+// ════════════════════════════════════════════════════════════
+//  NEW ENDPOINT — THRESHOLD BREACHES  (PRD 3.4)
+//  GET /api/historical/threshold-breaches
+//  Query params: from, to, tempThreshold, humThreshold
+//  Returns: { deviceIds: ["Meter_02", "Meter_05", ...] }
+//
+//  Logic:
+//  1. Query ALL devices in the date range
+//  2. For each device, check if ANY record exceeded either threshold
+//  3. Return only the deviceIds that had at least one breach
+// ════════════════════════════════════════════════════════════
+app.get('/api/historical/threshold-breaches', async (req, res) => {
+  try {
+    const from          = req.query.from ? new Date(req.query.from + 'T00:00:00.000Z') : new Date();
+    const to            = req.query.to   ? new Date(req.query.to   + 'T23:59:59.999Z') : new Date();
+    const tempThreshold = parseFloat(req.query.tempThreshold) || 35;
+    const humThreshold  = parseFloat(req.query.humThreshold)  || 70;
+
+    console.log(`🔍 [ThresholdBreaches] from=${from.toISOString()} to=${to.toISOString()} tempT=${tempThreshold} humT=${humThreshold}`);
+
+    // Find all records in the date range where either threshold was breached
+    // Use MongoDB aggregation to get unique deviceIds efficiently
+    const breachedDevices = await SensorData.aggregate([
+      {
+        $match: {
+          timestamp: { $gte: from, $lte: to },
+          $or: [
+            { temperature: { $gt: tempThreshold } },
+            { humidity:    { $gt: humThreshold  } }
+          ]
+        }
+      },
+      {
+        $group: { _id: '$deviceId' }
+      },
+      {
+        $sort: { _id: 1 }
+      }
+    ]);
+
+    const deviceIds = breachedDevices.map(d => d._id).filter(Boolean);
+    console.log(`⚠️ [ThresholdBreaches] Found ${deviceIds.length} devices with breaches:`, deviceIds);
+
+    res.json({ deviceIds, from: from.toISOString(), to: to.toISOString(), tempThreshold, humThreshold });
   } catch (err) {
-    console.error('❌ /api/history error:', err);
+    console.error('❌ /api/historical/threshold-breaches error:', err);
     res.status(500).json({ error: err.message });
   }
+});
+
+// ── Device Names ──────────────────────────────────────────────
+// GET /api/device-names → returns global device name map
+app.get('/api/device-names', async (req, res) => {
+  try {
+    let doc = await DeviceNames.findOne({ key: 'global' });
+    if (!doc) doc = await DeviceNames.create({ key: 'global', names: DEFAULT_NAMES });
+    res.json({ names: doc.names });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/device-names → saves updated name map to MongoDB
+app.post('/api/device-names', async (req, res) => {
+  try {
+    const { names } = req.body;
+    if (!names || typeof names !== 'object') return res.status(400).json({ error: 'names object required' });
+    const result = await DeviceNames.findOneAndUpdate(
+      { key: 'global' },
+      { $set: { names } },
+      { upsert: true, new: true }
+    );
+    console.log('✅ Device names updated:', names);
+    res.json({ ok: true, names: result.names });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // ── Settings ──────────────────────────────────────────────────
@@ -377,7 +589,8 @@ app.post('/api/test-email', async (req, res) => {
     if (!recipientStr) return res.status(400).json({ ok: false, error: 'No recipients configured' });
     const recipients = recipientStr.split(',').map(e => e.trim()).filter(Boolean);
     const time       = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
-    const result     = await sendEmail('✅ Factory Monitor Pro — Test Email', testEmailHTML(recipientStr, time), recipients);
+    const html       = `<p>✅ Test email from Factory Monitor Pro. Server time: ${time}</p>`;
+    const result     = await sendEmail('✅ Factory Monitor Pro — Test Email', html, recipients);
     if (!result.ok) return res.status(500).json({ ok: false, error: result.error });
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
@@ -394,13 +607,9 @@ app.post('/api/test-alert-email', async (req, res) => {
     const latest       = await SensorData.findOne({ deviceId }).sort({ timestamp: -1 });
     const temp         = latest?.temperature ?? 36.5;
     const hum          = latest?.humidity    ?? 72.0;
-    const time         = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
     const recipients   = recipientStr.split(',').map(e => e.trim()).filter(Boolean);
-    const result       = await sendEmail(
-      `🔔 Test Alert — ${LOCATION_NAME} | ${deviceId}`,
-      testAlertEmailHTML(deviceId, temp, hum, settings.tempThreshold, settings.humThreshold, time),
-      recipients
-    );
+    const html         = `<p>🔔 Test alert for ${deviceId}. T=${temp}°C, H=${hum}%</p>`;
+    const result       = await sendEmail(`🔔 Test Alert — ${deviceId}`, html, recipients);
     if (!result.ok) return res.status(500).json({ ok: false, error: result.error });
     res.json({ ok: true, usedData: { temp, hum, deviceId } });
   } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
@@ -419,12 +628,9 @@ app.get('/api/debug', async (req, res) => {
   const s         = await Settings.findOne({ key: 'global' });
   const cooldowns = await AlertCooldown.find({});
   res.json({
-    broker: HIVEMQ_URL,
-    topic:         HIVEMQ_TOPIC,
-    recipients:    s?.recipients,
-    tempThreshold: s?.tempThreshold,
-    humThreshold:  s?.humThreshold,
-    brevoKeySet:   !!(process.env.BREVO_API_KEY || BREVO_API_KEY),
+    broker: HIVEMQ_URL, topic: HIVEMQ_TOPIC,
+    recipients: s?.recipients, tempThreshold: s?.tempThreshold, humThreshold: s?.humThreshold,
+    brevoKeySet: !!(process.env.BREVO_API_KEY || BREVO_API_KEY),
     cooldowns,
   });
 });

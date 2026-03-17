@@ -1,0 +1,56 @@
+#include <Arduino.h>
+#include <Wire.h>
+
+void setup() {
+  Serial.begin(115200);
+  delay(1000);
+
+  Wire.begin(4, 22);   // SDA=GPIO4, SCL=GPIO22
+  delay(500);
+
+  Serial.println("=====================================");
+  Serial.println("  ESP32 I2C Scanner — Factory Monitor");
+  Serial.println("  SDA = GPIO 4  |  SCL = GPIO 22");
+  Serial.println("=====================================");
+}
+
+void loop() {
+  Serial.println("\nScanning I2C bus...");
+
+  int found = 0;
+
+  for (int addr = 1; addr < 127; addr++) {
+    Wire.beginTransmission(addr);
+    int err = Wire.endTransmission();
+
+    if (err == 0) {
+      Serial.print("✅ Device found at: 0x");
+      if (addr < 16) Serial.print("0");
+      Serial.print(addr, HEX);
+
+      // Tell user what device it likely is
+      if (addr == 0x44) Serial.println("  ← GY-SHT30 Sensor ✅");
+      else if (addr == 0x45) Serial.println("  ← GY-SHT30 Sensor (ADDR=VCC)");
+      else if (addr == 0x27) Serial.println("  ← LCD Display ✅");
+      else if (addr == 0x3F) Serial.println("  ← LCD Display (alt address)");
+      else                   Serial.println("  ← Unknown device");
+
+      found++;
+    }
+  }
+
+  if (found == 0) {
+    Serial.println("❌ Nothing found!");
+    Serial.println("   → Check your wiring:");
+    Serial.println("   → VCC  to 3.3V");
+    Serial.println("   → GND  to GND");
+    Serial.println("   → SDA  to GPIO 4");
+    Serial.println("   → SCL  to GPIO 22");
+  } else {
+    Serial.print("\nTotal devices found: ");
+    Serial.println(found);
+  }
+
+  Serial.println("=====================================");
+  delay(3000);  // scan every 3 seconds
+}

@@ -1,0 +1,34 @@
+// constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_01/telemetry";
+    // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_02/telemetry";
+        // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_03/telemetry";
+            // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_04/telemetry";
+    constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_05/telemetry";
+   //    constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_06/telemetry";
+
+   //   //    constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_07/telemetry";
+   //   //    constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_08/telemetry";
+      //    constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_09/telemetry";
+   //    constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_10/telemetry";
+   //    constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_11/telemetry";
+   //    constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_12/telemetry";
+   //    constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_13/telemetry";
+   //    constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_14/telemetry";
+
+  
+
+  ////////////////////////////////////////////////////////////////////////////
+
+   // constexpr const char* DEVICE_ID       = "Meter_01"; // mac 88:57:21:2E:A3:7C
+    // constexpr const char* DEVICE_ID       = "Meter_02";
+  // constexpr const char* DEVICE_ID       = "Meter_03"; // 88:57:21:2F:70:D4
+    //  constexpr const char* DEVICE_ID       = "Meter_04"; // 88:57:21:2E:A0:A8
+     constexpr const char* DEVICE_ID       = "Meter_05"; // 88:57:21:2E:A0:A8  //on going 
+     //     constexpr const char* DEVICE_ID       = "Meter_06"; // 88:57:21:2E:A0:A8
+     //     constexpr const char* DEVICE_ID       = "Meter_07"; // 88:57:21:2E:A0:A8
+     //      constexpr const char* DEVICE_ID       = "Meter_08"; // 88:57:21:2E:A0:A8
+     //      constexpr const char* DEVICE_ID       = "Meter_09"; // 88:57:21:2E:A0:A8
+     //     constexpr const char* DEVICE_ID       = "Meter_10"; // 88:57:21:2E:A0:A8
+     //      constexpr const char* DEVICE_ID       = "Meter_11"; // 88:57:21:2E:A0:A8
+     //     constexpr const char* DEVICE_ID       = "Meter_12"; // 88:57:21:2E:A0:A8
+     //     constexpr const char* DEVICE_ID       = "Meter_13"; // 88:57:21:2E:A0:A8
+     //      constexpr const char* DEVICE_ID       = "Meter_14"; // 88:57:21:2E:A0:A8
