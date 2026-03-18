@@ -256,152 +256,238 @@ const LOCATION_MAP_SERVER = {
   Meter_13:'BNG'
 };
 
-// ── Rich HTML email builder — Variation 4 Teal ───────────────
+// ── Email Template — Template A Navy Blue Responsive ─────────
 function buildAlertEmail({ deviceId, friendlyName, location, alertType, actualValue, threshold, unit, otherTemp, otherHum, tempThreshold, humThreshold, time, date, combined }) {
-  const isTemp     = alertType === 'temperature';
-  const dashUrl    = `https://rh-meter-bridge.onrender.com/index.html?id=${deviceId}`;
-  const logoUrl    = `https://rh-meter-bridge.onrender.com/logo.png`;
-  const unitColor  = location === 'Samudra' ? '#0891b2' : '#0f766e';
-  const unitBg     = location === 'Samudra' ? 'rgba(8,145,178,0.12)' : 'rgba(15,118,110,0.12)';
-  const unitBorder = location === 'Samudra' ? 'rgba(8,145,178,0.3)'  : 'rgba(15,118,110,0.3)';
-
-  // Alert value block builder
-  function alertBlock(type, value, limit, isAlert) {
-    const col   = isAlert ? '#ef4444' : '#16a34a';
-    const bg    = isAlert ? '#fef2f2' : '#f0fdf4';
-    const bdr   = isAlert ? '#fecaca' : '#bbf7d0';
-    const hdrBg = isAlert ? '#ef4444' : '#16a34a';
-    const lbl   = type === 'temperature' ? '🌡️ Temperature' : '💧 Humidity';
-    const u     = type === 'temperature' ? '°C' : '%';
-    const status = isAlert ? 'ALERT 🚨' : 'NORMAL ✓';
-    const excess  = isAlert ? `+${(value - limit).toFixed(1)}${u} over limit` : `${(limit - value).toFixed(1)}${u} below limit`;
-    return `
-      <div style="border:${isAlert ? '2px' : '1px'} solid ${bdr};border-radius:12px;overflow:hidden;">
-        <div style="background:${hdrBg};padding:10px 16px;">
-          <span style="font-size:12px;color:#fff;font-weight:800;text-transform:uppercase;letter-spacing:1px;">${lbl} · ${status}</span>
-        </div>
-        <div style="padding:18px;text-align:center;background:${bg};">
-          <div style="font-size:${isAlert ? '50px' : '32px'};font-weight:900;color:${col};line-height:1;">${value.toFixed(1)}<span style="font-size:${isAlert ? '20px' : '14px'};">${u}</span></div>
-          <div style="margin-top:10px;background:#fff;border-radius:8px;padding:8px 12px;">
-            <table width="100%" style="font-size:12px;border-collapse:collapse;">
-              <tr><td style="color:#64748b;text-align:left;">Threshold</td><td style="text-align:right;font-weight:700;color:#1e293b;">${limit}${u}</td></tr>
-              <tr><td style="color:${col};text-align:left;padding-top:3px;font-weight:700;">${isAlert ? 'Exceeded By' : 'Safe Margin'}</td><td style="text-align:right;font-weight:800;color:${col};padding-top:3px;">${excess}</td></tr>
-            </table>
-          </div>
-        </div>
-      </div>`;
-  }
+const dashUrl = `https://rh-meter-bridge.onrender.com/detail.html?id=${deviceId}`;
+  const logoUrl = `https://rh-meter-bridge.onrender.com/logo.png`;
 
   const tempIsAlert = otherTemp != null && tempThreshold != null && otherTemp > tempThreshold;
   const humIsAlert  = otherHum  != null && humThreshold  != null && otherHum  > humThreshold;
+  const tempExcess  = tempIsAlert ? `+${(otherTemp-tempThreshold).toFixed(1)}°C over` : `${(tempThreshold-(otherTemp||0)).toFixed(1)}°C below`;
+  const humExcess   = humIsAlert  ? `+${(otherHum-humThreshold).toFixed(1)}% over`    : `${(humThreshold-(otherHum||0)).toFixed(1)}% below`;
+  const alertLabel  = combined ? 'Multiple Parameters Exceeded'
+    : alertType === 'temperature' ? 'Temperature Threshold Exceeded'
+    : 'Humidity Threshold Exceeded';
 
-  // Build readings section
-  let readingsHtml = '';
-  if (combined) {
-    // Both temp and hum shown side by side — alert one is BIG
-    readingsHtml = `
-      <table width="100%" style="border-collapse:collapse;">
-        <tr>
-          <td width="50%" valign="top" style="padding-right:10px;">
-            ${alertBlock('temperature', otherTemp, tempThreshold, tempIsAlert)}
-          </td>
-          <td width="50%" valign="top" style="padding-left:10px;">
-            ${alertBlock('humidity', otherHum, humThreshold, humIsAlert)}
-          </td>
-        </tr>
-      </table>`;
-  } else {
-    // Single alert — alert BIG (55%), other SMALL (45%)
-    const alertVal   = isTemp ? otherTemp : otherHum;
-    const normalVal  = isTemp ? otherHum  : otherTemp;
-    const alertLimit = isTemp ? tempThreshold : humThreshold;
-    const normalLim  = isTemp ? humThreshold  : tempThreshold;
-    const normalType = isTemp ? 'humidity' : 'temperature';
-    readingsHtml = `
-      <table width="100%" style="border-collapse:collapse;">
-        <tr>
-          <td width="56%" valign="top" style="padding-right:12px;">
-            ${alertBlock(alertType, alertVal, alertLimit, true)}
-          </td>
-          <td width="44%" valign="top">
-            ${alertBlock(normalType, normalVal, normalLim, false)}
-          </td>
-        </tr>
-      </table>`;
+  function block(type, value, lim, isAlert) {
+    const u   = type === 'temperature' ? '°C' : '%';
+    const ico = type === 'temperature' ? '🌡️ Temperature' : '💧 Humidity';
+    const ex  = type === 'temperature' ? tempExcess : humExcess;
+    const bg  = isAlert ? '#fef2f2' : '#f0fdf4';
+    const bdr = isAlert ? '#fca5a5' : '#86efac';
+    const hdr = isAlert ? '#ef4444' : '#16a34a';
+    const col = isAlert ? '#ef4444' : '#16a34a';
+    const sts = isAlert ? '🚨 ALERT' : '✓ NORMAL';
+    const exl = isAlert ? 'Exceeded By' : 'Safe Margin';
+    const v   = value != null ? value.toFixed(1) : '--';
+    return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+      style="border:2px solid ${bdr};border-radius:12px;overflow:hidden;background:${bg};">
+      <tr><td style="background:${hdr};padding:10px 12px;font-size:11px;font-weight:700;
+        color:#fff;text-transform:uppercase;letter-spacing:1px;text-align:center;">
+        ${ico} &nbsp;·&nbsp; ${sts}</td></tr>
+      <tr><td style="padding:16px 12px 6px;text-align:center;">
+        <div style="font-size:46px;font-weight:900;color:${col};line-height:1;
+          font-family:Arial,sans-serif;">${v}<span style="font-size:18px;">${u}</span></div>
+      </td></tr>
+      <tr><td style="padding:0 12px 14px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+          style="background:rgba(255,255,255,0.8);border-radius:8px;">
+          <tr><td style="padding:7px 10px;font-size:12px;color:#64748b;">Threshold</td>
+              <td style="padding:7px 10px;font-size:12px;font-weight:700;color:#1e293b;text-align:right;">${lim}${u}</td></tr>
+          <tr style="border-top:1px solid rgba(0,0,0,0.06);">
+              <td style="padding:7px 10px;font-size:12px;color:${col};font-weight:700;">${exl}</td>
+              <td style="padding:7px 10px;font-size:12px;font-weight:800;color:${col};text-align:right;">${ex}</td></tr>
+        </table>
+      </td></tr>
+    </table>`;
   }
 
   return `<!DOCTYPE html>
-<html>
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#f0fdfa;font-family:'Segoe UI',Arial,sans-serif;">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0fdfa;padding:28px 16px;">
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>RH-Meter Alert</title>
+<style>
+  body,table,td{-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;}
+  @media only screen and (max-width:600px){
+    .eb{padding:10px !important;}
+    .hpad{padding:20px 16px 0 !important;}
+    .dtc{display:block !important;width:100% !important;
+      border-right:none !important;
+      border-bottom:1px solid rgba(255,255,255,0.15) !important;}
+    .cpad{padding:14px 16px 0 !important;}
+    .dtb td{font-size:11px !important;}
+    .devt td{font-size:11px !important;padding:8px 10px !important;}
+    .rc{display:block !important;width:100% !important;padding:0 0 10px 0 !important;}
+    .rsp{display:none !important;}
+    .btn{padding:13px 20px !important;font-size:14px !important;}
+    .fp{padding:14px 16px !important;}
+  }
+</style>
+</head>
+<body style="margin:0;padding:0;background:#e8edf5;
+  font-family:'Segoe UI',Helvetica,Arial,sans-serif;">
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+  class="eb" style="background:#e8edf5;padding:24px 12px;">
 <tr><td align="center">
-<table width="580" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #99f6e4;box-shadow:0 4px 24px rgba(0,0,0,0.07);">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+  style="max-width:580px;background:#fff;border-radius:18px;overflow:hidden;
+    box-shadow:0 8px 40px rgba(0,0,0,0.12);">
 
   <!-- HEADER -->
-  <tr><td style="background:linear-gradient(135deg,#0f766e,#0891b2);padding:24px 32px;">
-    <table width="100%" cellpadding="0" cellspacing="0"><tr>
+  <tr><td style="background:linear-gradient(135deg,#1e3a5f,#1d4ed8);
+    padding:26px 28px 0;" class="hpad">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+      style="margin-bottom:20px;">
+    <tr>
       <td valign="middle">
-        <img src="${logoUrl}" height="36" style="height:36px;vertical-align:middle;margin-right:10px;" alt="Logo">
-        <span style="font-size:16px;font-weight:800;color:#ffffff;vertical-align:middle;">RH-Meter Alert System</span>
-        <div style="font-size:11px;color:rgba(255,255,255,0.65);margin-top:5px;padding-left:46px;text-transform:uppercase;letter-spacing:1px;">Relative Humidity Monitoring System</div>
+        <img src="${logoUrl}" alt="Logo" height="36"
+          style="height:36px;border:0;filter:brightness(0) invert(1);
+            vertical-align:middle;display:inline-block;"
+          onerror="this.style.display='none'">
+        <div style="margin-top:7px;">
+          <div style="font-size:16px;font-weight:800;color:#fff;line-height:1.2;">
+            RH-Meter Alert System</div>
+          <div style="font-size:10px;color:rgba(255,255,255,0.55);
+            text-transform:uppercase;letter-spacing:1.2px;margin-top:3px;">
+            Relative Humidity Monitoring System</div>
+        </div>
       </td>
       <td align="right" valign="top">
-        <div style="background:#ef4444;color:#fff;padding:6px 14px;border-radius:6px;font-size:11px;font-weight:800;white-space:nowrap;">⚠️ THRESHOLD EXCEEDED</div>
+        <div style="background:#ef4444;color:#fff;padding:8px 14px;
+          border-radius:20px;font-size:11px;font-weight:800;white-space:nowrap;">
+          ⚠️ THRESHOLD EXCEEDED</div>
       </td>
-    </tr></table>
-    <!-- Date Time Bar -->
-    <div style="margin-top:14px;background:rgba(255,255,255,0.12);border-radius:8px;padding:10px 16px;">
-      <table width="100%" cellpadding="0" cellspacing="0"><tr>
-        <td style="font-size:12px;color:rgba(255,255,255,0.9);">📅 <b style="color:#fff;">${date}</b></td>
-        <td align="center" style="font-size:12px;color:rgba(255,255,255,0.9);">🕐 <b style="color:#fff;">${time}</b></td>
-        <td align="right" style="font-size:12px;color:#a5f3fc;">📍 <b>${friendlyName}</b></td>
-      </tr></table>
+    </tr>
+    </table>
+
+    <!-- DATE | TIME | UNIT — 3 boxes -->
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+      class="dtb"
+      style="background:rgba(255,255,255,0.1);border-radius:10px 10px 0 0;">
+    <tr>
+      <td width="33%" class="dtc"
+        style="padding:14px 10px;text-align:center;
+          border-right:1px solid rgba(255,255,255,0.15);">
+        <div style="font-size:10px;color:rgba(255,255,255,0.55);
+          text-transform:uppercase;letter-spacing:1.2px;margin-bottom:6px;">
+          📅 Date</div>
+        <div style="font-size:13px;font-weight:800;color:#fff;">${date}</div>
+      </td>
+      <td width="34%" class="dtc"
+        style="padding:14px 10px;text-align:center;
+          border-right:1px solid rgba(255,255,255,0.15);">
+        <div style="font-size:10px;color:rgba(255,255,255,0.55);
+          text-transform:uppercase;letter-spacing:1.2px;margin-bottom:6px;">
+          🕐 Time IST</div>
+        <div style="font-size:13px;font-weight:800;color:#fff;">${time}</div>
+      </td>
+      <td width="33%" class="dtc"
+        style="padding:14px 10px;text-align:center;">
+        <div style="font-size:10px;color:rgba(255,255,255,0.55);
+          text-transform:uppercase;letter-spacing:1.2px;margin-bottom:6px;">
+          📍 Unit</div>
+        <div style="font-size:13px;font-weight:800;color:#93c5fd;">${location}</div>
+      </td>
+    </tr>
+    </table>
+  </td></tr>
+
+  <!-- ALERT HEADLINE -->
+  <tr><td style="background:#fff;padding:18px 28px 0;" class="cpad">
+    <div style="background:#fef2f2;border-left:5px solid #ef4444;
+      border-radius:0 8px 8px 0;padding:13px 16px;">
+      <div style="font-size:10px;color:#ef4444;font-weight:700;
+        text-transform:uppercase;letter-spacing:1.2px;margin-bottom:4px;">
+        ⚠️ Threshold Exceeded</div>
+      <div style="font-size:16px;font-weight:800;color:#1e293b;">
+        ${alertLabel} at
+        <span style="color:#1d4ed8;">${friendlyName}</span></div>
     </div>
   </td></tr>
 
   <!-- DEVICE INFO -->
-  <tr><td style="padding:22px 32px 0;">
-    <table width="100%" style="border:1px solid #99f6e4;border-radius:10px;overflow:hidden;font-size:13px;border-collapse:collapse;">
-      <tr style="background:#f0fdfa;">
-        <td style="padding:8px 14px;color:#0f766e;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:1px;" colspan="4">Device Information</td>
+  <tr><td style="background:#fff;padding:14px 28px 0;" class="cpad">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+      class="devt"
+      style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;
+        border-collapse:separate;border-spacing:0;">
+      <tr style="background:#eff6ff;">
+        <td colspan="4" style="padding:8px 14px;font-size:10px;font-weight:700;
+          text-transform:uppercase;letter-spacing:1.2px;color:#1d4ed8;">
+          Device Information</td></tr>
+      <tr style="border-top:1px solid #e2e8f0;">
+        <td style="padding:10px 12px;font-size:12px;color:#64748b;
+          font-weight:600;background:#f8fafc;width:22%;">Device ID</td>
+        <td style="padding:10px 12px;font-size:13px;font-weight:700;
+          font-family:monospace;color:#1e293b;width:28%;">${deviceId}</td>
+        <td style="padding:10px 12px;font-size:12px;color:#64748b;
+          font-weight:600;background:#f8fafc;width:22%;">Location</td>
+        <td style="padding:10px 12px;font-size:13px;font-weight:700;
+          color:#1e293b;width:28%;">${friendlyName}</td>
       </tr>
-      <tr style="border-top:1px solid #ccfbf1;">
-        <td style="padding:10px 14px;color:#64748b;font-weight:600;width:22%;">Device ID</td>
-        <td style="padding:10px 14px;font-weight:700;font-family:monospace;color:#1e293b;width:28%;">${deviceId}</td>
-        <td style="padding:10px 14px;color:#64748b;font-weight:600;width:22%;">Location</td>
-        <td style="padding:10px 14px;font-weight:700;color:#1e293b;width:28%;">${friendlyName}</td>
-      </tr>
-      <tr style="border-top:1px solid #ccfbf1;">
-        <td style="padding:10px 14px;color:#64748b;font-weight:600;">Unit</td>
-        <td style="padding:10px 14px;"><span style="background:${unitBg};color:${unitColor};border:1px solid ${unitBorder};padding:3px 10px;border-radius:6px;font-size:12px;font-weight:700;">${location}</span></td>
-        <td style="padding:10px 14px;color:#64748b;font-weight:600;">Alert Time</td>
-        <td style="padding:10px 14px;font-weight:600;color:#1e293b;font-size:12px;">${time}</td>
+      <tr style="border-top:1px solid #e2e8f0;">
+        <td style="padding:10px 12px;font-size:12px;color:#64748b;
+          font-weight:600;background:#f8fafc;">Unit</td>
+        <td style="padding:10px 12px;">
+          <span style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;
+            padding:3px 10px;border-radius:6px;font-size:12px;font-weight:700;">
+            ${location}</span></td>
+        <td style="padding:10px 12px;font-size:12px;color:#64748b;
+          font-weight:600;background:#f8fafc;">Alert Time</td>
+        <td style="padding:10px 12px;font-size:12px;font-weight:700;
+          color:#1e293b;">${time} IST</td>
       </tr>
     </table>
   </td></tr>
 
-  <!-- SENSOR READINGS -->
-  <tr><td style="padding:18px 32px 0;">
-    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#0f766e;margin-bottom:12px;">Sensor Readings</div>
-    ${readingsHtml}
+  <!-- SENSOR READINGS — Equal side by side -->
+  <tr><td style="background:#fff;padding:14px 28px 0;" class="cpad">
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;
+      letter-spacing:1.2px;color:#1d4ed8;margin-bottom:12px;">
+      Sensor Readings</div>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+    <tr>
+      <td width="48%" valign="top" class="rc" style="padding-right:6px;">
+        ${block('temperature', otherTemp, tempThreshold, tempIsAlert)}
+      </td>
+      <td width="4%" class="rsp"></td>
+      <td width="48%" valign="top" class="rc" style="padding-left:6px;">
+        ${block('humidity', otherHum, humThreshold, humIsAlert)}
+      </td>
+    </tr>
+    </table>
   </td></tr>
 
-  <!-- CTA BUTTON -->
-  <tr><td style="padding:22px 32px;text-align:center;">
-    <a href="${dashUrl}" style="display:inline-block;background:linear-gradient(135deg,#0f766e,#0891b2);color:#ffffff;padding:13px 44px;border-radius:10px;font-size:14px;font-weight:700;text-decoration:none;">View Live Dashboard →</a>
-    <div style="font-size:11px;color:#94a3b8;margin-top:8px;">Next alert for this device after 1 hour cooldown</div>
+  <!-- CTA -->
+  <tr><td style="background:#fff;padding:20px 28px 8px;text-align:center;">
+    <a href="${dashUrl}" class="btn"
+      style="display:inline-block;background:linear-gradient(135deg,#1e3a5f,#1d4ed8);
+        color:#fff;padding:14px 44px;border-radius:10px;font-size:15px;
+        font-weight:700;text-decoration:none;letter-spacing:0.3px;">
+      View Live Dashboard &rarr;</a>
+    <div style="font-size:11px;color:#94a3b8;margin-top:10px;">
+      Next alert for this device after 3 hour cooldown</div>
   </td></tr>
 
   <!-- FOOTER -->
-  <tr><td style="padding:16px 32px;background:#f0fdfa;border-top:1px solid #99f6e4;">
-    <table width="100%" cellpadding="0" cellspacing="0"><tr>
+  <tr><td style="background:#f8fafc;border-top:1px solid #e2e8f0;
+    padding:16px 28px;border-radius:0 0 18px 18px;" class="fp">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+    <tr>
       <td valign="middle">
-        <img src="${logoUrl}" height="22" style="height:22px;vertical-align:middle;margin-right:8px;" alt="Logo">
-        <span style="font-size:13px;color:#0f766e;font-weight:700;vertical-align:middle;">Aquarelle India Pvt. Ltd.</span>
+        <img src="${logoUrl}" alt="Logo" height="22"
+          style="height:22px;vertical-align:middle;margin-right:8px;border:0;"
+          onerror="this.style.display='none'">
+        <span style="font-size:13px;font-weight:700;color:#1e3a5f;
+          vertical-align:middle;">Aquarelle India Pvt. Ltd.</span>
       </td>
-      <td align="right" style="font-size:11px;color:#94a3b8;">Automated Monitoring Alert</td>
-    </tr></table>
+      <td align="right" style="font-size:11px;color:#94a3b8;">
+        Automated Monitoring System</td>
+    </tr>
+    </table>
   </td></tr>
 
 </table>
@@ -410,6 +496,7 @@ function buildAlertEmail({ deviceId, friendlyName, location, alertType, actualVa
 </body>
 </html>`;
 }
+
 
 // ── Alert check ───────────────────────────────────────────────
 async function checkAndAlert(record) {
