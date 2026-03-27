@@ -75,18 +75,18 @@ namespace Config {
 
     // constexpr const char* DEVICE_ID       = "Meter_01"; // mac 88:57:21:2E:A3:7C
     // constexpr const char* DEVICE_ID       = "Meter_02";
-  // constexpr const char* DEVICE_ID       = "Meter_03"; // 88:57:21:2F:70:D4
+//   constexpr const char* DEVICE_ID       = "Meter_03"; // 88:57:21:2F:70:D4
     //  constexpr const char* DEVICE_ID       = "Meter_04"; // 88:57:21:2E:A0:A8
     //  constexpr const char* DEVICE_ID       = "Meter_05"; // 88:57:21:2D:55:08 
         //  constexpr const char* DEVICE_ID       = "Meter_06"; // 88:57:21:2E:15:14
         //  constexpr const char* DEVICE_ID       = "Meter_07"; // 88:57:21:2E:A3:E0
-        //   constexpr const char* DEVICE_ID       = "Meter_08"; // 88:57:21:2E:B1:78
+          constexpr const char* DEVICE_ID       = "Meter_08"; // 88:57:21:2E:B1:78
         //   constexpr const char* DEVICE_ID       = "Meter_09"; // 88:57:21:2D:53:60
         //  constexpr const char* DEVICE_ID       = "Meter_10"; // 88:57:21:2F:64:B8 
         //   constexpr const char* DEVICE_ID       = "Meter_11"; // 88:57:21:2E:7D:C4 
         //  constexpr const char* DEVICE_ID       = "Meter_12"; // 88:57:21:2D:21:B0 
         //  constexpr const char* DEVICE_ID       = "Meter_13"; // 88:57:21:2D:52:CC  
-          constexpr const char* DEVICE_ID       = "Meter_14"; // 88:57:21:2D:CC:F0  // Completed 
+        //   constexpr const char* DEVICE_ID       = "Meter_14"; // 88:57:21:2D:CC:F0  // Completed 
 
 
     // ── [HiveMQ] Broker settings ─────────────────────────────
@@ -102,13 +102,13 @@ namespace Config {
     // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_05/telemetry";
     //   constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_06/telemetry";
         // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_07/telemetry";
-        // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_08/telemetry";
+        constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_08/telemetry";
         //  constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_09/telemetry";
     //   constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_10/telemetry";
     //   constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_11/telemetry";
     //   constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_12/telemetry";
     //   constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_13/telemetry";
-      constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_14/telemetry";
+    //   constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_14/telemetry";
 
     // OTA
     constexpr const char* OTA_HOSTNAME    = "FactoryMonitor";
@@ -121,7 +121,7 @@ namespace Config {
 
     // Calibration offsets
     constexpr float TEMP_OFFSET           = -0.8f;
-    constexpr float HUM_OFFSET            = +7.1f;
+    constexpr float HUM_OFFSET            = +2.0f;
 
     // Thresholds
     constexpr float TEMP_NORMAL           = 27.0f;
@@ -129,7 +129,7 @@ namespace Config {
     constexpr float HUM_DRY_LIMIT         = 40.0f;
     constexpr float HUM_WET_LIMIT         = 70.0f;
 
-    constexpr uint32_t WDT_TIMEOUT_SEC    = 120;
+    constexpr uint32_t WDT_TIMEOUT_SEC    = 300;
 
     // Timing intervals (ms)
     constexpr uint32_t SENSOR_INTERVAL_MS = 2000;
@@ -140,8 +140,8 @@ namespace Config {
     constexpr uint32_t LCD_PAGE_MS        = 6000;
 
     // Hardware Pins
-    constexpr int     I2C_SDA             = 4;
-    constexpr int     I2C_SCL             = 22;
+    constexpr int     I2C_SDA             = 18;
+    constexpr int     I2C_SCL             = 19;
     constexpr uint8_t LCD_ADDR            = 0x27;
     constexpr uint8_t SHT_ADDR            = 0x44;
     constexpr int     MAX_READINGS        = 2880;
@@ -191,6 +191,7 @@ float lastHum     = NAN;
 bool  wifiOnline  = false;
 bool  mqttOnline  = false;
 bool  otaActive   = false;
+bool  sensorReady = false;
 
 uint32_t tLastSensor  = 0;
 uint32_t tLastCloud   = 0;
@@ -563,19 +564,85 @@ void httpHistory() {
 // ============================================================
 //  SETUP
 // ============================================================
+
+// void setup() {
+//     WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
+//     Serial.begin(115200);
+//     delay(2000);
+//     Serial.println("\n=== Factory Monitor Pro v3.0 — HiveMQ Edition ===");
+
+//     esp_task_wdt_init(Config::WDT_TIMEOUT_SEC, false);
+//     esp_task_wdt_add(nullptr);
+//     Serial.printf("[WDT] Enabled — timeout %ds\n", Config::WDT_TIMEOUT_SEC);
+
+//     nvsInit();
+
+// Wire.begin(Config::I2C_SDA, Config::I2C_SCL, 400000);
+//     lcd.init();
+//     delay(500);
+//     lcd.backlight();
+//     lcd.clear();
+//     lcdCreateChars();
+//     lcdSplash();
+//     Serial.println("[LCD] Ready");
+
+//     sht30.begin(0x44);
+// Serial.println("[SHT30] Sensor initialized");
+
+//     // WiFiManager
+//     // WiFiManager wm;
+//     // wm.setConfigPortalTimeout(180);
+//     wm.setAPCallback([](WiFiManager* m){
+//         Serial.println("[WiFi] Config portal: FactoryMonitor_Setup");
+//         lcd.clear();
+//         lcdRow(1, " Connect to WiFi AP:");
+//         lcdRow(2, "FactoryMonitor_Setup");
+//         lcdRow(3, "Pass: password123   ");
+//     });
+
+//     if (!wm.autoConnect("FactoryMonitor_Setup", "password123")) {
+//         Serial.println("[WiFi] Timeout — offline mode");
+//         wifiOnline = false;
+//     } else {
+//         wifiOnline = true;
+//         configTime(Config::GMT_OFFSET_SEC, Config::DST_OFFSET_SEC, Config::NTP_SERVER);
+//         setupOTA();
+//     }
+
+//     // [HiveMQ] Set buffer size large enough for TLS handshake
+//     mqttClient.setServer(Config::MQTT_HOST, Config::MQTT_PORT);
+//     mqttClient.setKeepAlive(60);
+//     mqttClient.setBufferSize(512);
+
+//     webServer.on("/",             httpRoot);
+//     webServer.on("/api/current",  httpCurrent);
+//     webServer.on("/api/all-data", httpHistory);
+//     webServer.begin();
+
+//     tLastSensor  = millis();
+//     tLastCloud   = millis();
+//     tLastLCD     = millis();
+//     tLastWiFiChk = millis();
+//     tLastMqttChk = millis();
+//     tLCDPage     = millis();
+
+//     mqttClient.setBufferSize(512);
+
+//     Serial.println("[System] Ready\n");
+//     WiFiManager wm;
+// wm.setConnectTimeout(30); // Try for 30 seconds only
+// wm.setConfigPortalTimeout(60); // If it fails, open config portal for 60 seconds
+// }
+
+
 void setup() {
-    WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
+    WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); 
     Serial.begin(115200);
     delay(2000);
     Serial.println("\n=== Factory Monitor Pro v3.0 — HiveMQ Edition ===");
 
-    esp_task_wdt_init(Config::WDT_TIMEOUT_SEC, true);
-    esp_task_wdt_add(nullptr);
-    Serial.printf("[WDT] Enabled — timeout %ds\n", Config::WDT_TIMEOUT_SEC);
-
-    nvsInit();
-
-    Wire.begin(Config::I2C_SDA, Config::I2C_SCL, 50000);
+    // 1. INITIALIZE HARDWARE (LCD & SENSOR)
+Wire.begin(Config::I2C_SDA, Config::I2C_SCL, 400000);
     lcd.init();
     delay(500);
     lcd.backlight();
@@ -584,22 +651,32 @@ void setup() {
     lcdSplash();
     Serial.println("[LCD] Ready");
 
-    sht30.begin(0x44);
-Serial.println("[SHT30] Sensor initialized");
+    // Initialize SHT31
+   if (!sht30.begin(0x44)) {
+    Serial.println("[ERROR] SHT30 not found!");
+    sensorReady = false;
+} else {
+    Serial.println("[SHT30] Sensor initialized");
+    sensorReady = true;
+}
 
-    // WiFiManager
+    nvsInit();
+
+    // 2. WIFI CONFIGURATION (BEFORE Watchdog starts)
     WiFiManager wm;
-    wm.setConfigPortalTimeout(180);
+    wm.setConnectTimeout(30);       // Try for 30 seconds
+    wm.setConfigPortalTimeout(60);  // Open portal for 60 seconds if it fails
+    
     wm.setAPCallback([](WiFiManager* m){
-        Serial.println("[WiFi] Config portal: FactoryMonitor_Setup");
+        Serial.println("[WiFi] Config portal active: FactoryMonitor_Setup");
         lcd.clear();
-        lcdRow(1, " Connect to WiFi AP:");
+        lcdRow(1, " Connect to WiFi:");
         lcdRow(2, "FactoryMonitor_Setup");
-        lcdRow(3, "Pass: password123   ");
     });
 
+    // Attempt to connect
     if (!wm.autoConnect("FactoryMonitor_Setup", "password123")) {
-        Serial.println("[WiFi] Timeout — offline mode");
+        Serial.println("[WiFi] Timeout — running in offline mode");
         wifiOnline = false;
     } else {
         wifiOnline = true;
@@ -607,24 +684,24 @@ Serial.println("[SHT30] Sensor initialized");
         setupOTA();
     }
 
-    // [HiveMQ] Set buffer size large enough for TLS handshake
-    mqttClient.setServer(Config::MQTT_HOST, Config::MQTT_PORT);
-    mqttClient.setKeepAlive(60);
-    mqttClient.setBufferSize(512);
-
-    webServer.on("/",             httpRoot);
-    webServer.on("/api/current",  httpCurrent);
+    // 3. START WEB SERVER
+    webServer.on("/", httpRoot);
+    webServer.on("/api/current", httpCurrent);
     webServer.on("/api/all-data", httpHistory);
     webServer.begin();
 
-    tLastSensor  = millis();
-    tLastCloud   = millis();
-    tLastLCD     = millis();
-    tLastWiFiChk = millis();
-    tLastMqttChk = millis();
-    tLCDPage     = millis();
+    // 4. START WATCHDOG (Last step)
+    // Using your requested 300s timeout. 
+    // Set to 'true' if you want it to REBOOT on freeze, 'false' if you just want a Serial error.
+    esp_task_wdt_init(Config::WDT_TIMEOUT_SEC, true); 
+    esp_task_wdt_add(nullptr);
 
-    mqttClient.setBufferSize(512);
+    // Timing Init
+    tLastSensor = tLastCloud = tLastLCD = tLastWiFiChk = tLastMqttChk = tLCDPage = millis();
+
+    mqttClient.setServer(Config::MQTT_HOST, Config::MQTT_PORT);
+mqttClient.setKeepAlive(60);
+mqttClient.setBufferSize(512);
 
     Serial.println("[System] Ready\n");
 }
@@ -648,10 +725,10 @@ void loop() {
         tLastMqttChk = now;
         mqttTask();
     }
-    if (now - tLastSensor >= Config::SENSOR_INTERVAL_MS) {
-        tLastSensor = now;
-        sensorTask();
-    }
+    if (sensorReady && now - tLastSensor >= Config::SENSOR_INTERVAL_MS) {
+    tLastSensor = now;
+    sensorTask();
+}
     if (now - tLastCloud >= Config::CLOUD_INTERVAL_MS) {
         tLastCloud = now;
         mqttPublish();

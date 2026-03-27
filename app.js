@@ -2,7 +2,7 @@
 //  Factory Monitor Pro — app.js  v3.0
 //  Multi-device | DEVICE_NAME_MAP | Dynamic URL params
 // ============================================================
-const SERVER_URL = 'https://rh-meter-bridge.onrender.com';
+const SERVER_URL = 'https://rh-meter-production.up.railway.app';
 // const SERVER_URL = 'http://localhost:3000';
 
 // ════════════════════════════════════════════════════════════
