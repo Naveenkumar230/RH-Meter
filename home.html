@@ -331,10 +331,22 @@ function filterByLocation(loc) {
 
 function applyCurrentFilters() {
   let visibleIds = null;
-  if (activeLocationFilter !== 'all') visibleIds = LOCATION_MAP[activeLocationFilter] || null;
+
+  // Start with threshold filter results (if active)
   if (activeThresholdIds !== null) {
-    visibleIds = visibleIds === null ? activeThresholdIds : visibleIds.filter(id => activeThresholdIds.includes(id));
+    visibleIds = [...activeThresholdIds];
   }
+
+  // Then apply location filter on top
+  if (activeLocationFilter !== 'all') {
+    const locIds = LOCATION_MAP[activeLocationFilter] || [];
+    if (visibleIds === null) {
+      visibleIds = locIds;
+    } else {
+      visibleIds = visibleIds.filter(id => locIds.includes(id));
+    }
+  }
+
   renderDeviceGrid(visibleIds);
 }
 
@@ -384,7 +396,7 @@ if (loc === 'samudra' || loc === 'bng' || loc === 'rd') {
   ids = ids.filter(id => !LOCATION_MAP.rd.includes(id));
 }    activeThresholdIds = ids;
     closeAllDropdowns();
-    const locLabel = loc==='all'?'All':loc==='samudra'?'Samudra':'BNG';
+const locLabel = loc==='all' ? 'All' : loc==='samudra' ? 'Samudra' : loc==='bng' ? 'BNG' : 'R&D';
     showFilterChip(`⚠️ ${ids.length} device(s) exceeded threshold · ${locLabel} · ${from} → ${to}`);
     applyCurrentFilters();
     if (ids.length===0) showToast('✅ No threshold breaches found','success');
