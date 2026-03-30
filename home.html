@@ -82,6 +82,9 @@
     .loc-btn-all.active,     .loc-btn-all:hover     { background:rgba(100,116,139,0.08); border-color:var(--text-muted); }
     .loc-btn-samudra.active, .loc-btn-samudra:hover { background:rgba(59,130,246,0.1);  border-color:var(--accent-blue); box-shadow:0 4px 16px rgba(59,130,246,0.2); }
     .loc-btn-bng.active,     .loc-btn-bng:hover     { background:rgba(6,182,212,0.1);   border-color:var(--accent-cyan); box-shadow:0 4px 16px rgba(6,182,212,0.2); }
+    .loc-btn-rd { color:#a855f7; border-color:rgba(168,85,247,0.3); }
+.loc-btn-rd.active, .loc-btn-rd:hover { background:rgba(168,85,247,0.1); border-color:#a855f7; box-shadow:0 4px 16px rgba(168,85,247,0.2); }
+.loc-dot-rd { background:#a855f7; }
     .loc-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
     .loc-dot-all     { background:var(--text-muted); }
     .loc-dot-samudra { background:var(--accent-blue); }
@@ -161,19 +164,19 @@
 
   <!-- LOCATION TOGGLE BUTTONS -->
   <div class="location-toggle-bar">
-    <button class="loc-btn loc-btn-all active" id="locBtnAll" onclick="filterByLocation('all')">
-      <span class="loc-dot loc-dot-all"></span> All Devices
-      <span style="font-size:0.75rem;font-family:'JetBrains Mono',monospace;opacity:0.7;">13</span>
-    </button>
-    <button class="loc-btn loc-btn-samudra" id="locBtnSamudra" onclick="filterByLocation('samudra')">
-      <span class="loc-dot loc-dot-samudra"></span> Samudra
-      <span style="font-size:0.75rem;font-family:'JetBrains Mono',monospace;opacity:0.7;">01–10</span>
-    </button>
-    <button class="loc-btn loc-btn-bng" id="locBtnBng" onclick="filterByLocation('bng')">
-      <span class="loc-dot loc-dot-bng"></span> BNG
-      <span style="font-size:0.75rem;font-family:'JetBrains Mono',monospace;opacity:0.7;">11–13</span>
-    </button>
-  </div>
+  <button class="loc-btn loc-btn-samudra" id="locBtnSamudra" onclick="filterByLocation('samudra')">
+    <span class="loc-dot loc-dot-samudra"></span> Samudra
+  </button>
+  <button class="loc-btn loc-btn-bng" id="locBtnBng" onclick="filterByLocation('bng')">
+    <span class="loc-dot loc-dot-bng"></span> BNG
+  </button>
+  <button class="loc-btn loc-btn-rd" id="locBtnRd" onclick="filterByLocation('rd')">
+    <span class="loc-dot loc-dot-rd"></span> R&amp;D
+  </button>
+  <button class="loc-btn loc-btn-all active" id="locBtnAll" onclick="filterByLocation('all')">
+    <span class="loc-dot loc-dot-all"></span> All Devices
+  </button>
+</div>
 
   <!-- FILTER ACTIVE CHIP -->
   <div class="filter-active-chip" id="filterActiveChip">
@@ -204,10 +207,11 @@
     <div class="dropdown-field">
       <label>Location</label>
       <select id="filterLocation">
-        <option value="all">All Locations</option>
-        <option value="samudra">Samudra (Meter 01–10)</option>
-        <option value="bng">BNG (Meter 11–13)</option>
-      </select>
+  <option value="all">All Locations (excl. R&amp;D)</option>
+  <option value="samudra">Samudra</option>
+  <option value="bng">BNG</option>
+  <option value="rd">R&amp;D</option>
+</select>
     </div>
     <div class="dropdown-row">
       <div class="dropdown-field"><label>From</label><input type="date" id="filterDateFrom"></div>
@@ -228,10 +232,11 @@
     <div class="dropdown-field">
       <label>Location</label>
       <select id="exportLocation">
-        <option value="all">All Devices (13 sheets)</option>
-        <option value="samudra">Samudra only (10 sheets)</option>
-        <option value="bng">BNG only (3 sheets)</option>
-      </select>
+  <option value="all">All Devices (excl. R&amp;D)</option>
+  <option value="samudra">Samudra only</option>
+  <option value="bng">BNG only</option>
+  <option value="rd">R&amp;D only</option>
+</select>
     </div>
     <div class="dropdown-row">
       <div class="dropdown-field"><label>From</label><input type="date" id="exportDateFrom"></div>
@@ -318,6 +323,7 @@ function filterByLocation(loc) {
   document.getElementById('locBtnAll').classList.toggle('active',     loc==='all');
   document.getElementById('locBtnSamudra').classList.toggle('active', loc==='samudra');
   document.getElementById('locBtnBng').classList.toggle('active',     loc==='bng');
+  document.getElementById('locBtnRd').classList.toggle('active',      loc==='rd');
   hideFilterChip();
   applyCurrentFilters();
 }
@@ -370,8 +376,12 @@ async function applyFilterFromDropdown() {
     if (!res.ok) throw new Error('Server error');
     const data = await res.json();
     let ids = data.deviceIds || [];
-    if (loc !== 'all') ids = ids.filter(id => LOCATION_MAP[loc]?.includes(id));
-    activeThresholdIds = ids;
+if (loc === 'samudra' || loc === 'bng' || loc === 'rd') {
+  ids = ids.filter(id => LOCATION_MAP[loc]?.includes(id));
+} else {
+  // 'all' means all except R&D
+  ids = ids.filter(id => !LOCATION_MAP.rd.includes(id));
+}    activeThresholdIds = ids;
     closeAllDropdowns();
     const locLabel = loc==='all'?'All':loc==='samudra'?'Samudra':'BNG';
     showFilterChip(`⚠️ ${ids.length} device(s) exceeded threshold · ${locLabel} · ${from} → ${to}`);
@@ -394,7 +404,13 @@ async function runExportFromDropdown() {
   if (!from || !to) return showToast('Please select a date range','error');
   const btn = document.getElementById('exportExcelBtn');
   btn.disabled=true; btn.textContent='⏳ Preparing...';
-  let deviceIds = loc==='samudra'?LOCATION_MAP.samudra : loc==='bng'?LOCATION_MAP.bng : Object.keys(DEVICE_NAME_MAP);
+
+  let deviceIds;
+  if      (loc === 'samudra') deviceIds = LOCATION_MAP.samudra;
+  else if (loc === 'bng')     deviceIds = LOCATION_MAP.bng;
+  else if (loc === 'rd')      deviceIds = LOCATION_MAP.rd;
+  else                        deviceIds = [...LOCATION_MAP.samudra, ...LOCATION_MAP.bng]; // all excl R&D
+
   closeAllDropdowns();
   await exportAllDevicesExcel(deviceIds, from, to);
   btn.disabled=false; btn.textContent='📥 Download Excel';
@@ -432,10 +448,13 @@ function renderDeviceGrid(filterIds) {
     const alertCard = (tempAlert||humAlert)?'alert-card':cardClass;
 
     const isSamudra = LOCATION_MAP.samudra.includes(deviceId);
-    const locLabel  = isSamudra ? 'Samudra' : 'BNG';
-    const locStyle  = isSamudra
-      ? 'background:rgba(59,130,246,0.1);color:var(--accent-blue);border-color:rgba(59,130,246,0.25);'
-      : 'background:rgba(6,182,212,0.1);color:var(--accent-cyan);border-color:rgba(6,182,212,0.25);';
+const isRD      = LOCATION_MAP.rd.includes(deviceId);
+const locLabel  = isSamudra ? 'Samudra' : isRD ? 'R&D' : 'BNG';
+const locStyle  = isSamudra
+  ? 'background:rgba(59,130,246,0.1);color:var(--accent-blue);border-color:rgba(59,130,246,0.25);'
+  : isRD
+  ? 'background:rgba(168,85,247,0.1);color:#a855f7;border-color:rgba(168,85,247,0.25);'
+  : 'background:rgba(6,182,212,0.1);color:var(--accent-cyan);border-color:rgba(6,182,212,0.25);';
 
     const card = document.createElement('a');
 card.href = `detail.html?id=${deviceId}`;

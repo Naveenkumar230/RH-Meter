@@ -4,20 +4,19 @@
 #include "soc/soc.h"
 #include "soc/rtc_cntl_reg.h"
 #include <esp_task_wdt.h>
-#include <esp_task_wdt.h>
 
 // ── Connectivity ─────────────────────────────────────────────
 #include <WiFi.h>
-#include <WiFiClientSecure.h>   // [HiveMQ] TLS secure connection
+#include <WiFiClientSecure.h>
 #include <WiFiManager.h>
 #include <ArduinoOTA.h>
-#include <PubSubClient.h>       // MQTT → HiveMQ Cloud
+#include <PubSubClient.h>
 
 // ── Persistence ──────────────────────────────────────────────
 #include <Preferences.h>
 
 // ── Sensor ───────────────────────────────────────────────────
-#include <WEMOS_SHT3X.h>
+#include <Adafruit_SHT31.h>
 
 // ── Display ──────────────────────────────────────────────────
 #include <LiquidCrystal_I2C.h>
@@ -66,35 +65,58 @@ emyPxgcYxn/eR44/KJ4EBs+lVDR3veyJm+kXQ99b21/+jh5Xos1AnX5iItreGCc=
 // ============================================================
 //  CONFIGURATION
 // ============================================================
-// ============================================================
-//  CONFIGURATION
-// ============================================================
 namespace Config {
     constexpr const char* WIFI_SSID       = "AIPL-IOT";
     constexpr const char* WIFI_PASS       = "@ipl2027";
 
-    constexpr const char* DEVICE_ID       = "Meter_02";
+    // constexpr const char* DEVICE_ID    = "Meter_01";  // new code
+    // constexpr const char* DEVICE_ID    = "Meter_02";  // old code
+    // constexpr const char* DEVICE_ID    = "Meter_03";  // old code
+    //    constexpr const char* DEVICE_ID    = "Meter_04";  // new code
+    // constexpr const char* DEVICE_ID    = "Meter_05"; //old code
+    // constexpr const char* DEVICE_ID    = "Meter_06"; //old code
+    constexpr const char* DEVICE_ID    = "Meter_07"; //new code
+    // constexpr const char* DEVICE_ID    = "Meter_08"; // old code
+    // constexpr const char* DEVICE_ID    = "Meter_09"; // completed
+    // constexpr const char* DEVICE_ID    = "Meter_10"; //completed
+    // constexpr const char* DEVICE_ID    = "Meter_11";   //completed
+    // constexpr const char* DEVICE_ID    = "Meter_12"; // completed
+    // constexpr const char* DEVICE_ID    = "Meter_13"; // completed
+    // constexpr const char* DEVICE_ID    = "Meter_14";
 
-    // ── [HiveMQ] Broker settings ─────────────────────────────
-    // Corrected: Removed the extra nested namespace line here
-    constexpr const char* MQTT_HOST = "d034db44805b4258a6c72c3efe0f9019.s1.eu.hivemq.cloud";
-    constexpr int         MQTT_PORT = 8883;
-    constexpr const char* MQTT_USER = "RH-METER";
-    constexpr const char* MQTT_PASS = "RH-METEr1234"; 
-    constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_02/telemetry";
+    // ── HiveMQ Broker ────────────────────────────────────────
+    constexpr const char* MQTT_HOST    = "d034db44805b4258a6c72c3efe0f9019.s1.eu.hivemq.cloud";
+    constexpr int         MQTT_PORT    = 8883;
+    constexpr const char* MQTT_USER    = "RH-METER";
+    constexpr const char* MQTT_PASS    = "RH-METEr1234";
+
+    // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_01/telemetry";  
+    // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_02/telemetry";
+    // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_03/telemetry";
+    //    constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_04/telemetry";
+    // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_05/telemetry";
+    // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_06/telemetry";
+    constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_07/telemetry";
+    // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_08/telemetry";
+    // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_09/telemetry";
+    // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_10/telemetry";
+    // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_11/telemetry";
+    // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_12/telemetry";
+    // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_13/telemetry";
+    // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_14/telemetry";
 
     // OTA
     constexpr const char* OTA_HOSTNAME    = "FactoryMonitor";
     constexpr const char* OTA_PASSWORD    = "ota_admin_2024";
 
-    // NTP (Time Sync)
+    // NTP
     constexpr const char* NTP_SERVER      = "pool.ntp.org";
-    constexpr long         GMT_OFFSET_SEC  = 19800; // IST Offset
+    constexpr long         GMT_OFFSET_SEC  = 19800; // IST
     constexpr int          DST_OFFSET_SEC  = 0;
 
-    // Calibration offsets
+    // Calibration
     constexpr float TEMP_OFFSET           = -0.8f;
-    constexpr float HUM_OFFSET            = +7.1f;
+    constexpr float HUM_OFFSET            = +2.0f;
 
     // Thresholds
     constexpr float TEMP_NORMAL           = 27.0f;
@@ -102,7 +124,7 @@ namespace Config {
     constexpr float HUM_DRY_LIMIT         = 40.0f;
     constexpr float HUM_WET_LIMIT         = 70.0f;
 
-    constexpr uint32_t WDT_TIMEOUT_SEC    = 120;
+    constexpr uint32_t WDT_TIMEOUT_SEC    = 300;
 
     // Timing intervals (ms)
     constexpr uint32_t SENSOR_INTERVAL_MS = 2000;
@@ -112,9 +134,18 @@ namespace Config {
     constexpr uint32_t MQTT_CHECK_MS      = 5000;
     constexpr uint32_t LCD_PAGE_MS        = 6000;
 
-    // Hardware Pins
-    constexpr int     I2C_SDA             = 4;
-    constexpr int     I2C_SCL             = 22;
+    // ── Hardware Pins — DUAL I2C BUS ─────────────────────────
+    constexpr int     I2C_SDA             = 18;   // SHT30 SDA → Wire  (Bus0)
+    constexpr int     I2C_SCL             = 22;   // SHT30 SCL → Wire  (Bus0)
+    constexpr int     LCD_SDA             = 21;   // LCD SDA   → Wire1 (Bus1)
+    constexpr int     LCD_SCL             = 23;   // LCD SCL   → Wire1 (Bus1)
+
+
+    // This before some of the divice goes with the
+    // constexpr int     I2C_SDA             = 18;  
+    // constexpr int     I2C_SCL             = 19;
+
+
     constexpr uint8_t LCD_ADDR            = 0x27;
     constexpr uint8_t SHT_ADDR            = 0x44;
     constexpr int     MAX_READINGS        = 2880;
@@ -137,12 +168,11 @@ enum LcdChar : uint8_t { CHR_DEG=0, CHR_UP, CHR_DN, CHR_DROP, CHR_THERM, CHR_CHE
 // ============================================================
 //  GLOBAL OBJECTS
 // ============================================================
-SHT3X             sht30(Config::SHT_ADDR);
+Adafruit_SHT31    sht30;
 LiquidCrystal_I2C lcd(Config::LCD_ADDR, 16, 2);
 WebServer         webServer(80);
 Preferences       prefs;
 
-// [HiveMQ] Secure TLS client instead of plain WiFiClient
 WiFiClientSecure  secureClient;
 PubSubClient      mqttClient(secureClient);
 
@@ -163,6 +193,7 @@ float lastHum     = NAN;
 bool  wifiOnline  = false;
 bool  mqttOnline  = false;
 bool  otaActive   = false;
+bool  sensorReady = false;
 
 uint32_t tLastSensor  = 0;
 uint32_t tLastCloud   = 0;
@@ -229,7 +260,7 @@ void pushHistory(float t, float h) {
 }
 
 // ============================================================
-//  LCD HELPERS  (unchanged from original)
+//  LCD HELPERS
 // ============================================================
 void lcdCreateChars() {
     lcd.createChar(CHR_DEG,   gDegree);
@@ -242,11 +273,6 @@ void lcdCreateChars() {
     lcd.createChar(CHR_WIFI,  gWifi);
 }
 
-void lcdStatusBar(uint8_t page) {
-    // Not used for 16x2 — status shown via Serial only
-    (void)page;
-}
-
 void lcdRow(uint8_t row, const String& text, uint8_t width = 16) {
     lcd.setCursor(0, row);
     String s = text;
@@ -255,16 +281,12 @@ void lcdRow(uint8_t row, const String& text, uint8_t width = 16) {
 }
 
 void lcdPageTemperature() {
-    // Row 0: Large Header
-    lcdRow(0, " TEMPERATURE"); 
-    
-    // Row 1: Large Value
-    lcd.setCursor(2, 1); // Indent slightly to center
+    lcdRow(0, " TEMPERATURE");
+    lcd.setCursor(2, 1);
     lcd.write(CHR_THERM);
     lcd.print(" ");
-    
     if (!isnan(currentTemp)) {
-        char buf[7]; 
+        char buf[7];
         dtostrf(currentTemp, 5, 1, buf);
         lcd.print(buf);
         lcd.write(CHR_DEG);
@@ -277,14 +299,10 @@ void lcdPageTemperature() {
 }
 
 void lcdPageHumidity() {
-    // Row 0: Large Header
     lcdRow(0, "  HUMIDITY");
-
-    // Row 1: Large Value
-    lcd.setCursor(2, 1); // Indent slightly to center
+    lcd.setCursor(2, 1);
     lcd.write(CHR_DROP);
     lcd.print(" ");
-
     if (!isnan(currentHum)) {
         char buf[7];
         dtostrf(currentHum, 5, 1, buf);
@@ -311,25 +329,25 @@ void setupOTA() {
     ArduinoOTA.onStart([]() {
         otaActive = true;
         lcd.clear();
-        lcdRow(1, "  ** OTA UPDATE **  ");
-        lcdRow(2, "  Do NOT power off! ");
+        lcdRow(0, "** OTA UPDATE **");
+        lcdRow(1, "Do NOT power off");
         Serial.println("[OTA] Update started");
     });
     ArduinoOTA.onEnd([]() {
         otaActive = false;
-        lcdRow(3, "  Done! Rebooting.. ");
+        lcdRow(1, "Done! Rebooting.");
         Serial.println("[OTA] Complete");
     });
     ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
         esp_task_wdt_reset();
-        char buf[21];
-        snprintf(buf, sizeof(buf), "  Progress: %3d %%    ", progress * 100 / total);
-        lcdRow(3, buf);
+        char buf[17];
+        snprintf(buf, sizeof(buf), "Progress: %3d%%  ", progress * 100 / total);
+        lcdRow(1, buf);
     });
     ArduinoOTA.onError([](ota_error_t err) {
         otaActive = false;
         Serial.printf("[OTA] Error #%u\n", err);
-        lcdRow(3, "  OTA ERROR!        ");
+        lcdRow(1, "OTA ERROR!      ");
     });
     ArduinoOTA.begin();
     Serial.println("[OTA] Ready");
@@ -355,12 +373,8 @@ void wifiTask() {
 }
 
 // ============================================================
-//  MQTT / HIVEMQ — SELF-HEALING  [HiveMQ]
+//  MQTT / HIVEMQ — SELF-HEALING
 // ============================================================
-/**
- * Publishes JSON payload to HiveMQ topic every CLOUD_INTERVAL_MS.
- * Payload: {"temp":xx.x,"hum":xx.x,"id":"Meter_02"}
- */
 void mqttPublish() {
     if (!mqttClient.connected() || isnan(currentTemp) || isnan(currentHum)) return;
 
@@ -369,21 +383,16 @@ void mqttPublish() {
         "{\"temp\":%.1f,\"hum\":%.1f,\"id\":\"%s\"}",
         currentTemp, currentHum, Config::DEVICE_ID);
 
-    // Dynamic Topic based on the Device ID
     String dynamicTopic = "AIPL/RH_Meter/" + String(Config::DEVICE_ID) + "/telemetry";
 
     bool ok = mqttClient.publish(dynamicTopic.c_str(), payload);
     if (ok) {
-        Serial.printf("[HiveMQ] Data sent to %s → %s\n", dynamicTopic.c_str(), payload);
+        Serial.printf("[HiveMQ] Sent → %s : %s\n", dynamicTopic.c_str(), payload);
     } else {
-        Serial.println("[HiveMQ] Publish failed - check buffer size or connection");
+        Serial.println("[HiveMQ] Publish failed");
     }
 }
 
-/**
- * Reconnects to HiveMQ Cloud over TLS (port 8883).
- * Uses ISRG Root X1 certificate for server verification.
- */
 void mqttTask() {
     if (!wifiOnline) return;
 
@@ -394,18 +403,16 @@ void mqttTask() {
     }
 
     mqttOnline = false;
-
-    // [HiveMQ] Set TLS certificate before connecting
-secureClient.setInsecure();
+    secureClient.setInsecure();
 
     String clientId = "ESP32-" + String(Config::DEVICE_ID) + "-" + String(random(0xffff), HEX);
 
     Serial.print("[HiveMQ] Connecting... ");
     if (mqttClient.connect(clientId.c_str(), Config::MQTT_USER, Config::MQTT_PASS)) {
         mqttOnline = true;
-        Serial.println("[HiveMQ] Connected ✅");
+        Serial.println("Connected ✅");
     } else {
-        Serial.printf("[HiveMQ] Failed (rc=%d) — retry in %ds\n",
+        Serial.printf("Failed (rc=%d) — retry in %ds\n",
                       mqttClient.state(), Config::MQTT_CHECK_MS / 1000);
     }
 }
@@ -414,22 +421,25 @@ secureClient.setInsecure();
 //  SENSOR TASK
 // ============================================================
 void sensorTask() {
-    int rc = sht30.get();
-    if (rc != 0) {
-        Serial.println("[SHT30] Read error");
+    float rawT = sht30.readTemperature();
+    float rawH = sht30.readHumidity();
+
+    if (isnan(rawT) || isnan(rawH)) {
+        // ── Do NOT reset Wire here — LCD is on separate Wire1 bus
+        // ── Just keep last known good data
+        Serial.println("[SHT30] Read error — keeping last good value");
         return;
     }
+
     float calT, calH;
-    if (!applyCalibration(sht30.cTemp, sht30.humidity, calT, calH)) {
-        Serial.printf("[SHT30] Out-of-range: T=%.2f H=%.2f\n", sht30.cTemp, sht30.humidity);
-        return;
+    if (applyCalibration(rawT, rawH, calT, calH)) {
+        lastTemp    = currentTemp;
+        lastHum     = currentHum;
+        currentTemp = calT;
+        currentHum  = calH;
+        pushHistory(currentTemp, currentHum);
+        Serial.printf("[Sensor] T=%.1f°C  H=%.1f%%RH\n", currentTemp, currentHum);
     }
-    lastTemp    = currentTemp;
-    lastHum     = currentHum;
-    currentTemp = calT;
-    currentHum  = calH;
-    pushHistory(currentTemp, currentHum);
-    Serial.printf("[Sensor] T=%.1f°C  H=%.1f%%RH\n", currentTemp, currentHum);
 }
 
 // ============================================================
@@ -446,7 +456,7 @@ void lcdTask() {
 }
 
 // ============================================================
-//  WEB API  (unchanged)
+//  WEB API
 // ============================================================
 const char HTML_ROOT[] PROGMEM = R"html(<!DOCTYPE html>
 <html><head><meta charset="UTF-8">
@@ -479,12 +489,12 @@ void httpRoot()    { webServer.send_P(200, "text/html", HTML_ROOT); }
 
 void httpCurrent() {
     String j = "{";
-    j += "\"temp\":"      + (isnan(currentTemp) ? String("null") : String(currentTemp,1)) + ",";
-    j += "\"hum\":"       + (isnan(currentHum)  ? String("null") : String(currentHum,1))  + ",";
-    j += "\"tempLevel\":\"" + (isnan(currentTemp) ? "unknown" : alertLevel(currentTemp, Config::TEMP_NORMAL, Config::TEMP_WARNING)) + "\",";
-    j += "\"humLevel\":\"" + (isnan(currentHum)  ? "unknown" : humLevel(currentHum)) + "\",";
-    j += "\"wifi\":"      + String(wifiOnline ? "true" : "false") + ",";
-    j += "\"mqtt\":"      + String(mqttOnline ? "true" : "false");
+    j += "\"temp\":"        + (isnan(currentTemp) ? String("null") : String(currentTemp,1)) + ",";
+    j += "\"hum\":"         + (isnan(currentHum)  ? String("null") : String(currentHum,1))  + ",";
+    j += "\"tempLevel\":\"" + (isnan(currentTemp)  ? "unknown" : alertLevel(currentTemp, Config::TEMP_NORMAL, Config::TEMP_WARNING)) + "\",";
+    j += "\"humLevel\":\""  + (isnan(currentHum)   ? "unknown" : humLevel(currentHum)) + "\",";
+    j += "\"wifi\":"        + String(wifiOnline ? "true" : "false") + ",";
+    j += "\"mqtt\":"        + String(mqttOnline ? "true" : "false");
     j += "}";
     webServer.sendHeader("Access-Control-Allow-Origin", "*");
     webServer.send(200, "application/json", j);
@@ -519,13 +529,18 @@ void setup() {
     delay(2000);
     Serial.println("\n=== Factory Monitor Pro v3.0 — HiveMQ Edition ===");
 
-    esp_task_wdt_init(Config::WDT_TIMEOUT_SEC, true);
-    esp_task_wdt_add(nullptr);
-    Serial.printf("[WDT] Enabled — timeout %ds\n", Config::WDT_TIMEOUT_SEC);
+    // ── 1. SHT30 on Wire (GPIO 18/22) ────────────────────────
+    Wire.begin(Config::I2C_SDA, Config::I2C_SCL, 100000);
+    if (!sht30.begin(Config::SHT_ADDR)) {
+        Serial.println("[ERROR] SHT30 not found!");
+        sensorReady = false;
+    } else {
+        Serial.println("[SHT30] Sensor initialized");
+        sensorReady = true;
+    }
 
-    nvsInit();
-
-    Wire.begin(Config::I2C_SDA, Config::I2C_SCL, 50000);
+    // ── 2. LCD on Wire1 (GPIO 21/23) — separate bus ──────────
+    Wire1.begin(Config::LCD_SDA, Config::LCD_SCL, 100000);
     lcd.init();
     delay(500);
     lcd.backlight();
@@ -534,15 +549,18 @@ void setup() {
     lcdSplash();
     Serial.println("[LCD] Ready");
 
-    // WiFiManager
+    nvsInit();
+
+    // ── 3. WiFi ───────────────────────────────────────────────
     WiFiManager wm;
-    wm.setConfigPortalTimeout(180);
+    wm.setConnectTimeout(30);
+    wm.setConfigPortalTimeout(60);
+
     wm.setAPCallback([](WiFiManager* m){
         Serial.println("[WiFi] Config portal: FactoryMonitor_Setup");
         lcd.clear();
-        lcdRow(1, " Connect to WiFi AP:");
-        lcdRow(2, "FactoryMonitor_Setup");
-        lcdRow(3, "Pass: password123   ");
+        lcdRow(0, "Connect to WiFi:");
+        lcdRow(1, "FactoryMonitor_AP");
     });
 
     if (!wm.autoConnect("FactoryMonitor_Setup", "password123")) {
@@ -554,24 +572,23 @@ void setup() {
         setupOTA();
     }
 
-    // [HiveMQ] Set buffer size large enough for TLS handshake
-    mqttClient.setServer(Config::MQTT_HOST, Config::MQTT_PORT);
-    mqttClient.setKeepAlive(60);
-    mqttClient.setBufferSize(512);
-
+    // ── 4. Web Server ─────────────────────────────────────────
     webServer.on("/",             httpRoot);
     webServer.on("/api/current",  httpCurrent);
     webServer.on("/api/all-data", httpHistory);
     webServer.begin();
 
-    tLastSensor  = millis();
-    tLastCloud   = millis();
-    tLastLCD     = millis();
-    tLastWiFiChk = millis();
-    tLastMqttChk = millis();
-    tLCDPage     = millis();
-
+    // ── 5. MQTT ───────────────────────────────────────────────
+    mqttClient.setServer(Config::MQTT_HOST, Config::MQTT_PORT);
+    mqttClient.setKeepAlive(60);
     mqttClient.setBufferSize(512);
+
+    // ── 6. Watchdog (last step) ───────────────────────────────
+    esp_task_wdt_init(Config::WDT_TIMEOUT_SEC, true);
+    esp_task_wdt_add(nullptr);
+    Serial.printf("[WDT] Enabled — timeout %ds\n", Config::WDT_TIMEOUT_SEC);
+
+    tLastSensor = tLastCloud = tLastLCD = tLastWiFiChk = tLastMqttChk = tLCDPage = millis();
 
     Serial.println("[System] Ready\n");
 }
@@ -595,7 +612,7 @@ void loop() {
         tLastMqttChk = now;
         mqttTask();
     }
-    if (now - tLastSensor >= Config::SENSOR_INTERVAL_MS) {
+    if (sensorReady && now - tLastSensor >= Config::SENSOR_INTERVAL_MS) {
         tLastSensor = now;
         sensorTask();
     }

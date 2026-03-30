@@ -249,10 +249,10 @@ async function sendAlertEmail(subject, htmlBody) {
 
 // ── Location map (server-side) ────────────────────────────────
 const LOCATION_MAP_SERVER = {
-  Meter_01:'Samudra', Meter_02:'Samudra', Meter_03:'Samudra',
+  Meter_01:'Samudra', Meter_02:'R&D',     Meter_03:'Samudra',
   Meter_04:'Samudra', Meter_05:'Samudra', Meter_06:'Samudra',
   Meter_07:'Samudra', Meter_08:'Samudra', Meter_09:'Samudra',
-  Meter_10:'Samudra', Meter_11:'BNG',     Meter_12:'BNG',
+  Meter_10:'BNG',     Meter_11:'BNG',     Meter_12:'BNG',
   Meter_13:'BNG'
 };
 
@@ -367,37 +367,37 @@ function buildAlertEmail({ deviceId, friendlyName, location, alertType, actualVa
     </tr>
     </table>
 
-    <!-- DATE | TIME | UNIT — 3 big prominent boxes -->
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
-      style="border-radius:12px 12px 0 0;overflow:hidden;background:#0f2744;">
-    <tr>
-      <td width="33%" class="dtbox"
-        style="padding:18px 14px;text-align:center;
-          border-right:1px solid rgba(255,255,255,0.1);">
-        <div style="font-size:22px;margin-bottom:8px;">&#128197;</div>
-        <div style="font-size:10px;color:rgba(255,255,255,0.45);
-          text-transform:uppercase;letter-spacing:1.2px;margin-bottom:8px;">Date</div>
-        <div style="font-size:14px;font-weight:800;color:#ffffff;
-          line-height:1.4;">${date}</div>
-      </td>
-      <td width="34%" class="dtbox"
-        style="padding:18px 14px;text-align:center;
-          border-right:1px solid rgba(255,255,255,0.1);">
-        <div style="font-size:22px;margin-bottom:8px;">&#128336;</div>
-        <div style="font-size:10px;color:rgba(255,255,255,0.45);
-          text-transform:uppercase;letter-spacing:1.2px;margin-bottom:8px;">Time IST</div>
-        <div style="font-size:18px;font-weight:900;color:#ffffff;">${time}</div>
-      </td>
-      <td width="33%" class="dtbox"
-        style="padding:18px 14px;text-align:center;">
-        <div style="font-size:22px;margin-bottom:8px;">&#128205;</div>
-        <div style="font-size:10px;color:rgba(255,255,255,0.45);
-          text-transform:uppercase;letter-spacing:1.2px;margin-bottom:8px;">Unit</div>
-        <div style="font-size:14px;font-weight:800;color:#60a5fa;">${location}</div>
-      </td>
-    </tr>
-    </table>
-  </td></tr>
+  //   <!-- DATE | TIME | UNIT — 3 big prominent boxes -->
+  //   <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+  //     style="border-radius:12px 12px 0 0;overflow:hidden;background:#0f2744;">
+  //   <tr>
+  //     <td width="33%" class="dtbox"
+  //       style="padding:18px 14px;text-align:center;
+  //         border-right:1px solid rgba(255,255,255,0.1);">
+  //       <div style="font-size:22px;margin-bottom:8px;">&#128197;</div>
+  //       <div style="font-size:10px;color:rgba(255,255,255,0.45);
+  //         text-transform:uppercase;letter-spacing:1.2px;margin-bottom:8px;">Date</div>
+  //       <div style="font-size:14px;font-weight:800;color:#ffffff;
+  //         line-height:1.4;">${date}</div>
+  //     </td>
+  //     <td width="34%" class="dtbox"
+  //       style="padding:18px 14px;text-align:center;
+  //         border-right:1px solid rgba(255,255,255,0.1);">
+  //       <div style="font-size:22px;margin-bottom:8px;">&#128336;</div>
+  //       <div style="font-size:10px;color:rgba(255,255,255,0.45);
+  //         text-transform:uppercase;letter-spacing:1.2px;margin-bottom:8px;">Time IST</div>
+  //       <div style="font-size:18px;font-weight:900;color:#ffffff;">${time}</div>
+  //     </td>
+  //     <td width="33%" class="dtbox"
+  //       style="padding:18px 14px;text-align:center;">
+  //       <div style="font-size:22px;margin-bottom:8px;">&#128205;</div>
+  //       <div style="font-size:10px;color:rgba(255,255,255,0.45);
+  //         text-transform:uppercase;letter-spacing:1.2px;margin-bottom:8px;">Unit</div>
+  //       <div style="font-size:14px;font-weight:800;color:#60a5fa;">${location}</div>
+  //     </td>
+  //   </tr>
+  //   </table>
+  // </td></tr>
 
   <!-- ALERT HEADLINE -->
   <tr><td style="background:#ffffff;padding:18px 28px 0;" class="cpad">

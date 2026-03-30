@@ -76,11 +76,11 @@ namespace Config {
     // constexpr const char* DEVICE_ID       = "Meter_01"; // mac 88:57:21:2E:A3:7C
     // constexpr const char* DEVICE_ID       = "Meter_02";
 //   constexpr const char* DEVICE_ID       = "Meter_03"; // 88:57:21:2F:70:D4
-    //  constexpr const char* DEVICE_ID       = "Meter_04"; // 88:57:21:2E:A0:A8
+     constexpr const char* DEVICE_ID       = "Meter_04"; // 88:57:21:2E:A0:A8
     //  constexpr const char* DEVICE_ID       = "Meter_05"; // 88:57:21:2D:55:08 
         //  constexpr const char* DEVICE_ID       = "Meter_06"; // 88:57:21:2E:15:14
         //  constexpr const char* DEVICE_ID       = "Meter_07"; // 88:57:21:2E:A3:E0
-          constexpr const char* DEVICE_ID       = "Meter_08"; // 88:57:21:2E:B1:78
+        //   constexpr const char* DEVICE_ID       = "Meter_08"; // 88:57:21:2E:B1:78
         //   constexpr const char* DEVICE_ID       = "Meter_09"; // 88:57:21:2D:53:60
         //  constexpr const char* DEVICE_ID       = "Meter_10"; // 88:57:21:2F:64:B8 
         //   constexpr const char* DEVICE_ID       = "Meter_11"; // 88:57:21:2E:7D:C4 
@@ -98,11 +98,11 @@ namespace Config {
     // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_01/telemetry";
     // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_02/telemetry";
         // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_03/telemetry";
-            // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_04/telemetry";
+            constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_04/telemetry";
     // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_05/telemetry";
     //   constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_06/telemetry";
         // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_07/telemetry";
-        constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_08/telemetry";
+        // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_08/telemetry";
         //  constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_09/telemetry";
     //   constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_10/telemetry";
     //   constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_11/telemetry";
@@ -141,6 +141,8 @@ namespace Config {
 
     // Hardware Pins
     constexpr int     I2C_SDA             = 18;
+        // constexpr int     I2C_SCL             = 22;
+
     constexpr int     I2C_SCL             = 19;
     constexpr uint8_t LCD_ADDR            = 0x27;
     constexpr uint8_t SHT_ADDR            = 0x44;
@@ -465,21 +467,26 @@ secureClient.setInsecure();
 void sensorTask() {
     float rawT = sht30.readTemperature();
     float rawH = sht30.readHumidity();
+
     if (isnan(rawT) || isnan(rawH)) {
-        Serial.println("[SHT30] Read error — check wiring");
-        return;
+        Serial.println("[SHT30] Bus Stuck! Recovering...");
+        
+        // Force I2C Reset
+        Wire.end(); 
+        delay(50);
+        Wire.begin(Config::I2C_SDA, Config::I2C_SCL, 100000); 
+        
+        // Keep using the last known good data so the Dashboard doesn't show "null"
+        return; 
     }
+    
     float calT, calH;
-    if (!applyCalibration(rawT, rawH, calT, calH)) {
-        Serial.printf("[SHT30] Out-of-range: T=%.2f H=%.2f\n", rawT, rawH);
-        return;
+    if (applyCalibration(rawT, rawH, calT, calH)) {
+        currentTemp = calT;
+        currentHum  = calH;
+        pushHistory(currentTemp, currentHum);
+        Serial.printf("[Sensor] T=%.1f°C  H=%.1f%%RH\n", currentTemp, currentHum);
     }
-    lastTemp    = currentTemp;
-    lastHum     = currentHum;
-    currentTemp = calT;
-    currentHum  = calH;
-    pushHistory(currentTemp, currentHum);
-    Serial.printf("[Sensor] T=%.1f°C  H=%.1f%%RH\n", currentTemp, currentHum);
 }                               // ← THIS CLOSING BRACKET must be here
 
 
@@ -642,7 +649,7 @@ void setup() {
     Serial.println("\n=== Factory Monitor Pro v3.0 — HiveMQ Edition ===");
 
     // 1. INITIALIZE HARDWARE (LCD & SENSOR)
-Wire.begin(Config::I2C_SDA, Config::I2C_SCL, 400000);
+Wire.begin(Config::I2C_SDA, Config::I2C_SCL, 100000);
     lcd.init();
     delay(500);
     lcd.backlight();
