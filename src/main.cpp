@@ -71,11 +71,11 @@ namespace Config {
 
     // constexpr const char* DEVICE_ID    = "Meter_01";  // new code
     // constexpr const char* DEVICE_ID    = "Meter_02";  // old code
-    // constexpr const char* DEVICE_ID    = "Meter_03";  // old code
+    constexpr const char* DEVICE_ID    = "Meter_03";  // new code 
     //    constexpr const char* DEVICE_ID    = "Meter_04";  // new code
     // constexpr const char* DEVICE_ID    = "Meter_05"; //old code
-    // constexpr const char* DEVICE_ID    = "Meter_06"; //old code
-    constexpr const char* DEVICE_ID    = "Meter_07"; //new code
+    // constexpr const char* DEVICE_ID    = "Meter_06"; //new code 
+    // constexpr const char* DEVICE_ID    = "Meter_07"; //new code
     // constexpr const char* DEVICE_ID    = "Meter_08"; // old code
     // constexpr const char* DEVICE_ID    = "Meter_09"; // completed
     // constexpr const char* DEVICE_ID    = "Meter_10"; //completed
@@ -92,11 +92,11 @@ namespace Config {
 
     // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_01/telemetry";  
     // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_02/telemetry";
-    // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_03/telemetry";
+    constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_03/telemetry";
     //    constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_04/telemetry";
     // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_05/telemetry";
     // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_06/telemetry";
-    constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_07/telemetry";
+    // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_07/telemetry";
     // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_08/telemetry";
     // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_09/telemetry";
     // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_10/telemetry";

@@ -30,6 +30,8 @@ app.use(express.json());
 
 // ── Default page → home.html ──────────────────────────────────
 app.get('/', (req, res) => res.sendFile(__dirname + '/home.html'));
+app.get('/api/ping', (req, res) => res.json({ ok: true, ts: Date.now() }));
+
 
 app.use(express.static('.'));
 
@@ -596,14 +598,20 @@ async function checkAndAlert(record) {
 }
 
 // ── Keep-alive ping ───────────────────────────────────────────
-cron.schedule('*/10 * * * *', async () => {
-  try { await axios.get('https://rh-meter-bridge.onrender.com/'); console.log('⚡ Self-ping OK'); }
-  catch (e) { console.error('Self-ping failed:', e.message); }
-});
 
+cron.schedule('*/10 * * * *', async () => {
+  try {
+    await axios.get('https://rh-meter-bridge.onrender.com/api/ping');
+    console.log('⚡ Self-ping OK');
+  } catch (e) {
+    console.error('Self-ping failed:', e.message);
+  }
+});
 // ════════════════════════════════════════════════════════════
 //  ROUTES
 // ════════════════════════════════════════════════════════════
+
+
 
 // ── Latest sensor reading ─────────────────────────────────────
 app.get('/api/data', async (req, res) => {
