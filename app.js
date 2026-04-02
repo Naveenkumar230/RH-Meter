@@ -64,6 +64,37 @@ async function saveDeviceNameMap(map) {
   }
 }
 
+let DEVICE_RECIPIENTS_MAP = {}; // { "Meter_01": "a@b.com,c@d.com", ... }
+
+async function loadDeviceRecipients() {
+  try {
+    const res = await fetch(`${SERVER_URL}/api/device-recipients`);
+    if (!res.ok) throw new Error('Not OK');
+    const data = await res.json();
+    if (data.recipients && typeof data.recipients === 'object') {
+      DEVICE_RECIPIENTS_MAP = data.recipients;
+    }
+  } catch(e) {
+    console.warn('[DeviceRecipients] Failed to load:', e.message);
+    DEVICE_RECIPIENTS_MAP = {};
+  }
+}
+
+async function saveDeviceRecipients(map) {
+  try {
+    const res = await fetch(`${SERVER_URL}/api/device-recipients`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ recipients: map })
+    });
+    if (!res.ok) throw new Error('Server returned ' + res.status);
+    console.log('[DeviceRecipients] Saved ✅');
+  } catch(e) {
+    console.error('[DeviceRecipients] Failed to save:', e.message);
+    throw e;
+  }
+}
+
 // Live map — starts with defaults, gets overwritten from MongoDB on init
 let DEVICE_NAME_MAP = { ...DEFAULT_DEVICE_NAME_MAP };
 
@@ -573,12 +604,41 @@ function initCharts() {
 // ════════════════════════════════════════════════════════════
 function renderTodayCharts() {
   if (!chartTempToday || !chartHumToday) return;
-  const data = bucket30min(filterDate(dateStr(new Date())));
-  chartTempToday.data.labels           = data.map(b => b.label);
-  chartTempToday.data.datasets[0].data = data.map(b => b.temp);
+
+  // Build full 24-hour skeleton: 00:00, 00:30, 01:00 ... 23:30
+  const allSlots = [];
+  for (let h = 0; h < 24; h++) {
+    allSlots.push(pad(h) + ':00');
+    allSlots.push(pad(h) + ':30');
+  }
+
+  // Bucket today's data into 30-min IST slots
+  const todayData = filterDate(dateStr(new Date()));
+  const bucketMap = {};
+  todayData.forEach(r => {
+    const ist = new Date(new Date(r.timestamp).getTime() + 5.5 * 60 * 60 * 1000);
+    const m   = ist.getUTCMinutes() < 30 ? '00' : '30';
+    const key = pad(ist.getUTCHours()) + ':' + m;
+    if (!bucketMap[key]) bucketMap[key] = { temps: [], hums: [] };
+    bucketMap[key].temps.push(r.temp);
+    bucketMap[key].hums.push(r.hum);
+  });
+
+  const tempData = allSlots.map(slot =>
+    bucketMap[slot] ? +(bucketMap[slot].temps.reduce((a,v)=>a+v,0)/bucketMap[slot].temps.length).toFixed(1) : null
+  );
+  const humData = allSlots.map(slot =>
+    bucketMap[slot] ? +(bucketMap[slot].hums.reduce((a,v)=>a+v,0)/bucketMap[slot].hums.length).toFixed(1) : null
+  );
+
+  chartTempToday.data.labels           = allSlots;
+  chartTempToday.data.datasets[0].data = tempData;
+  chartTempToday.data.datasets[0].spanGaps = false;
   chartTempToday.update();
-  chartHumToday.data.labels            = data.map(b => b.label);
-  chartHumToday.data.datasets[0].data  = data.map(b => b.hum);
+
+  chartHumToday.data.labels            = allSlots;
+  chartHumToday.data.datasets[0].data  = humData;
+  chartHumToday.data.datasets[0].spanGaps = false;
   chartHumToday.update();
 }
 
@@ -994,14 +1054,12 @@ function handleSettingsPasswordKeydown(e) {
   if (e.key === 'Enter') unlockSettings();
 }
 
-function populateSettingsDrawer() {
-  // Populate threshold inputs
+async function populateSettingsDrawer() {
   const tempInp = document.getElementById('drawerTempThreshold');
   const humInp  = document.getElementById('drawerHumThreshold');
   if (tempInp) tempInp.value = thresholds.temp;
   if (humInp)  humInp.value  = thresholds.hum;
 
-  // Populate email chips
   const container = document.getElementById('drawerRecipientChips');
   if (container) {
     container.innerHTML = '';
@@ -1016,7 +1074,7 @@ function populateSettingsDrawer() {
     }
   }
 
-  // Populate device name editor
+  await loadDeviceRecipients();
   populateNameEditor();
 }
 
@@ -1024,32 +1082,121 @@ function populateNameEditor() {
   const list = document.getElementById('nameEditorList');
   if (!list) return;
   list.innerHTML = '';
+
   Object.keys(DEVICE_NAME_MAP).forEach(deviceId => {
-    const row = document.createElement('div');
-    row.className = 'name-editor-row';
-    row.innerHTML = `
-      <span class="name-editor-id">${deviceId}</span>
-      <input class="name-editor-input" type="text" data-device="${deviceId}"
-             value="${DEVICE_NAME_MAP[deviceId]}" placeholder="Enter area name">
+    const currentEmails = DEVICE_RECIPIENTS_MAP[deviceId] || '';
+    const friendlyName  = DEVICE_NAME_MAP[deviceId];
+
+    // location label
+    const isSamudra = ['Meter_01','Meter_03','Meter_04','Meter_05','Meter_06','Meter_07','Meter_08','Meter_09'].includes(deviceId);
+    const isRD      = ['Meter_02'].includes(deviceId);
+    const locLabel  = isSamudra ? 'Samudra' : isRD ? 'R&D' : 'BNG';
+    const locColor  = isSamudra ? 'var(--accent-blue)' : isRD ? '#a855f7' : 'var(--accent-cyan)';
+
+    const card = document.createElement('div');
+    card.style.cssText = `
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px 18px;
+      margin-bottom: 12px;
     `;
-    list.appendChild(row);
+
+    // build existing email chips html
+    const chipsHtml = currentEmails
+      ? currentEmails.split(',').map(e => e.trim()).filter(Boolean).map(email =>
+          `<div class="recipient-chip" data-email="${email}">
+            <span class="chip-email">✉️ ${email}</span>
+            <button class="chip-remove" onclick="removeDeviceChip(this)">✕ Delete</button>
+          </div>`
+        ).join('')
+      : `<div style="font-size:0.78rem;color:var(--text-muted);padding:4px 0;">No recipients added yet</div>`;
+
+    card.innerHTML = `
+      <!-- Top row: ID badge + name + location -->
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+        <span style="
+          font-size:0.7rem;font-family:'JetBrains Mono',monospace;font-weight:600;
+          color:var(--text-muted);background:var(--bg);border:1px solid var(--border);
+          border-radius:6px;padding:3px 9px;white-space:nowrap;flex-shrink:0;">
+          ${deviceId}
+        </span>
+        <input
+          class="name-editor-input"
+          type="text"
+          data-device="${deviceId}"
+          value="${friendlyName}"
+          placeholder="Enter area name"
+          style="flex:1;padding:7px 11px;border:1px solid var(--border);
+            border-radius:8px;background:var(--bg);color:var(--text);
+            font-size:0.875rem;outline:none;"
+        >
+        <span style="
+          font-size:0.65rem;font-weight:700;padding:3px 9px;border-radius:6px;
+          border:1px solid;white-space:nowrap;flex-shrink:0;
+          color:${locColor};border-color:${locColor}30;
+          background:${locColor}15;">
+          ${locLabel}
+        </span>
+      </div>
+
+      <!-- Divider -->
+      <div style="height:1px;background:var(--border);margin-bottom:12px;"></div>
+
+      <!-- Recipients label -->
+      <div style="font-size:0.7rem;font-weight:700;color:var(--text-muted);
+        text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px;">
+        📧 Device-specific recipients
+      </div>
+
+      <!-- Chips -->
+      <div class="chips-container device-chips" id="chips-${deviceId}"
+        style="margin-bottom:10px;">${chipsHtml}</div>
+
+      <!-- Add email row -->
+      <div style="display:flex;gap:8px;align-items:center;">
+        <input
+          type="email"
+          class="threshold-input-wide device-email-input"
+          id="emailInput-${deviceId}"
+          placeholder="Add email for ${deviceId}"
+          style="flex:1;font-size:0.8rem;"
+          onkeydown="handleDeviceEmailKeydown(event,'${deviceId}')">
+        <button class="btn-add-chip" onclick="addDeviceChip('${deviceId}')">+ Add</button>
+      </div>
+    `;
+
+    list.appendChild(card);
   });
 }
-
 async function saveDeviceNames() {
+  // Collect updated device names
   const inputs = document.querySelectorAll('.name-editor-input');
   inputs.forEach(inp => {
     const deviceId = inp.dataset.device;
     const newName  = inp.value.trim();
     if (deviceId && newName) DEVICE_NAME_MAP[deviceId] = newName;
   });
+
+  // Collect per-device recipients
+  const newRecipientsMap = {};
+  Object.keys(DEVICE_NAME_MAP).forEach(deviceId => {
+    const container = document.getElementById(`chips-${deviceId}`);
+    if (container) {
+      const emails = Array.from(container.querySelectorAll('.recipient-chip'))
+        .map(c => c.dataset.email).filter(Boolean).join(',');
+      if (emails) newRecipientsMap[deviceId] = emails;
+    }
+  });
+  DEVICE_RECIPIENTS_MAP = newRecipientsMap;
+
   try {
     await saveDeviceNameMap(DEVICE_NAME_MAP);
-    showToast('✅ Device names saved globally!', 'success');
-    // Refresh the device grid immediately
+    await saveDeviceRecipients(DEVICE_RECIPIENTS_MAP);
+    showToast('✅ Device names & recipients saved!', 'success');
     if (typeof renderDeviceGrid === 'function') renderDeviceGrid();
-  } catch (e) {
-    showToast('❌ Failed to save names: ' + e.message, 'error');
+  } catch(e) {
+    showToast('❌ Failed to save: ' + e.message, 'error');
   }
 }
 
@@ -1072,6 +1219,83 @@ function addDrawerChip() {
 }
 
 function removeDrawerChip(btn) { btn.closest('.recipient-chip').remove(); }
+
+// ── Per-device recipient helpers ──────────────────────────────
+// let DEVICE_RECIPIENTS_MAP = {};
+
+async function loadDeviceRecipients() {
+  try {
+    const res = await fetch(`${SERVER_URL}/api/device-recipients`);
+    if (!res.ok) throw new Error('Not OK');
+    const data = await res.json();
+    if (data.recipients && typeof data.recipients === 'object') {
+      DEVICE_RECIPIENTS_MAP = data.recipients;
+    }
+  } catch(e) {
+    console.warn('[DeviceRecipients] Failed to load:', e.message);
+    DEVICE_RECIPIENTS_MAP = {};
+  }
+}
+
+async function saveDeviceRecipients(map) {
+  const res = await fetch(`${SERVER_URL}/api/device-recipients`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ recipients: map })
+  });
+  if (!res.ok) throw new Error('Server returned ' + res.status);
+}
+
+function addDeviceChip(deviceId) {
+  const input = document.getElementById(`emailInput-${deviceId}`);
+  if (!input) return;
+  const email = input.value.trim().toLowerCase();
+  if (!email) return showToast('Please enter an email', 'error');
+  if (!email.includes('@') || !email.includes('.')) return showToast('Enter a valid email', 'error');
+  const container = document.getElementById(`chips-${deviceId}`);
+  // clear "no recipients" placeholder if present
+  const placeholder = container.querySelector('div');
+  if (placeholder && !placeholder.classList.contains('recipient-chip')) placeholder.remove();
+  const existing = Array.from(container.querySelectorAll('.recipient-chip')).map(c => c.dataset.email);
+  if (existing.includes(email)) return showToast('Email already added', 'error');
+  const chip = document.createElement('div');
+  chip.className     = 'recipient-chip';
+  chip.dataset.email = email;
+  chip.innerHTML     = `<span class="chip-email">✉️ ${email}</span><button class="chip-remove" onclick="removeDeviceChip(this)">✕ Delete</button>`;
+  container.appendChild(chip);
+  input.value = '';
+  input.focus();
+}
+
+function removeDeviceChip(btn) { btn.closest('.recipient-chip').remove(); }
+
+function handleDeviceEmailKeydown(e, deviceId) {
+  if (e.key === 'Enter') { e.preventDefault(); addDeviceChip(deviceId); }
+}
+
+function addDeviceChip(deviceId) {
+  const input = document.getElementById(`emailInput-${deviceId}`);
+  if (!input) return;
+  const email = input.value.trim().toLowerCase();
+  if (!email) return showToast('Please enter an email', 'error');
+  if (!email.includes('@') || !email.includes('.')) return showToast('Enter a valid email', 'error');
+  const container = document.getElementById(`chips-${deviceId}`);
+  const existing  = Array.from(container.querySelectorAll('.recipient-chip')).map(c => c.dataset.email);
+  if (existing.includes(email)) return showToast('Email already added', 'error');
+  const chip = document.createElement('div');
+  chip.className     = 'recipient-chip';
+  chip.dataset.email = email;
+  chip.innerHTML     = `<span class="chip-email">✉️ ${email}</span><button class="chip-remove" onclick="removeDeviceChip(this)">✕</button>`;
+  container.appendChild(chip);
+  input.value = '';
+  input.focus();
+}
+
+function removeDeviceChip(btn) { btn.closest('.recipient-chip').remove(); }
+
+function handleDeviceEmailKeydown(e, deviceId) {
+  if (e.key === 'Enter') { e.preventDefault(); addDeviceChip(deviceId); }
+}
 
 function handleDrawerEmailKeydown(e) { if (e.key === 'Enter') { e.preventDefault(); addDrawerChip(); } }
 
@@ -1494,17 +1718,24 @@ function scheduleMidnightReset() {
 // ════════════════════════════════════════════════════════════
 //  BOOTSTRAP — DETAIL PAGE  (index.html)
 // ════════════════════════════════════════════════════════════
-function initDetailPage() {
+async function initDetailPage() {
   if (!document.getElementById('dashboardView')) return;
 
-  // Set page header with friendly device name
+  // Always fetch latest names from MongoDB so renames reflect immediately
+  await loadDeviceNameMap();
+
   const deviceId     = getCurrentDeviceId();
   const friendlyName = getFriendlyName(deviceId);
-  const titleEl      = document.getElementById('pageDeviceTitle');
-  if (titleEl) titleEl.textContent = `Data Visualization: ${friendlyName}`;
 
-  // Update document title
-  document.title = `${friendlyName} — Factory Monitor Pro`;
+  // Update title, browser tab, and chart titles
+  const titleEl = document.getElementById('pageDeviceTitle');
+  if (titleEl) titleEl.textContent = `Data Visualization: ${friendlyName}`;
+  document.title = `${friendlyName} — RH-Meter`;
+
+  const tempChartTitle = document.getElementById('tempChartTitle');
+  const humChartTitle  = document.getElementById('humChartTitle');
+  if (tempChartTitle) tempChartTitle.textContent = `📈 Temperature — ${friendlyName}`;
+  if (humChartTitle)  humChartTitle.textContent  = `💧 Humidity — ${friendlyName}`;
 
   scheduleMidnightReset();
   initCharts();
@@ -1521,8 +1752,8 @@ function initDetailPage() {
 
   setExportToday();
 
-  setInterval(fetchCurrent,  10000);
-  setInterval(fetchAllData,  60000);
+  setInterval(fetchCurrent, 10000);
+  setInterval(fetchAllData, 60000);
 }
 
 // ════════════════════════════════════════════════════════════
@@ -1564,6 +1795,6 @@ document.addEventListener('DOMContentLoaded', () => {
   if (document.getElementById('deviceGrid')) {
     initHomePage();
   } else if (document.getElementById('dashboardView')) {
-    initDetailPage();
+    initDetailPage(); // async function, no need to await at top level
   }
 });

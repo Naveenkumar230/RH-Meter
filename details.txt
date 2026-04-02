@@ -34,6 +34,8 @@
      //      constexpr const char* DEVICE_ID       = "Meter_14"; // 88:57:21:2E:A0:A8
 
 
+Api key for the Gemini -> AIzaSyAds9YFmkBS3M1H9PBrGA16PwPdLH3VBdc
+
 
 
      both zipper - > merun , 
@@ -49,8 +51,4 @@
      orange - > round neck 1
      white round neck full 1 
      polo 1 
-     winter m size green 1
-     gold 1 winter 
-
-
-
+     winter m s

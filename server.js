@@ -14,8 +14,8 @@ const BREVO_API_KEY = process.env.BREVO_API_KEY;
 const app = express();
 
 // ── In-memory stores ──────────────────────────────────────────
-const lastSaveTime   = {};  // { Meter_01: timestamp, Meter_02: timestamp, ... }
-const latestReadings = {};  // { Meter_01: { temp, hum, ... }, ... }
+const lastSaveTime   = {};
+const latestReadings = {};
 
 // ── CORS ──────────────────────────────────────────────────────
 app.use((req, res, next) => {
@@ -28,11 +28,8 @@ app.use((req, res, next) => {
 app.use(cors());
 app.use(express.json());
 
-// ── Default page → home.html ──────────────────────────────────
 app.get('/', (req, res) => res.sendFile(__dirname + '/home.html'));
 app.get('/api/ping', (req, res) => res.json({ ok: true, ts: Date.now() }));
-
-
 app.use(express.static('.'));
 
 // ── MongoDB ───────────────────────────────────────────────────
@@ -63,10 +60,15 @@ const AlertCooldown = mongoose.model('AlertCooldown', new mongoose.Schema({
 }));
 
 // ── Device Names Schema ───────────────────────────────────────
-// Stores user-friendly names for each device — globally shared
 const DeviceNames = mongoose.model('DeviceNames', new mongoose.Schema({
   key:   { type: String, default: 'global', unique: true },
-  names: { type: Object, default: {} }  // { "Meter_01": "CT-PAT Area", ... }
+  names: { type: Object, default: {} }
+}, { timestamps: true }));
+
+// ── Per-Device Recipients Schema ──────────────────────────────
+const DeviceRecipients = mongoose.model('DeviceRecipients', new mongoose.Schema({
+  key:        { type: String, default: 'global', unique: true },
+  recipients: { type: Object, default: {} }  // { "Meter_01": "a@b.com,c@d.com", ... }
 }, { timestamps: true }));
 
 const COOLDOWN_MS = 3 * 60 * 60 * 1000; // 3 hours
@@ -96,11 +98,15 @@ mongoose.connection.once('open', async () => {
       await Settings.create({ key: 'global', tempThreshold: 35, humThreshold: 70, recipients: '' });
       console.log('✅ Default settings seeded');
     }
-    // Seed device names if not present
     const existingNames = await DeviceNames.findOne({ key: 'global' });
     if (!existingNames) {
       await DeviceNames.create({ key: 'global', names: DEFAULT_NAMES });
       console.log('✅ Default device names seeded');
+    }
+    const existingRecipients = await DeviceRecipients.findOne({ key: 'global' });
+    if (!existingRecipients) {
+      await DeviceRecipients.create({ key: 'global', recipients: {} });
+      console.log('✅ Default device recipients seeded');
     }
   } catch (err) { console.error('❌ Seed error:', err.message); }
 });
@@ -153,13 +159,9 @@ function startHiveMQSubscriber() {
         humLevel:    hum < 40   ? 'critical' : hum <= 70 ? 'normal' : 'critical'
       };
 
-      // ── Always update live cache (for dashboard real-time display) ──
       latestReadings[deviceId] = { ...record, timestamp: new Date() };
-
-      // ── Always check alerts on every reading ──
       await checkAndAlert(record);
 
-      // ── Save to MongoDB only every 30 minutes per device ──
       const now        = Date.now();
       const lastSaved  = lastSaveTime[deviceId] || 0;
       const THIRTY_MIN = 30 * 60 * 1000;
@@ -179,7 +181,7 @@ function startHiveMQSubscriber() {
   });
 
   mqttClient.on('reconnect', () => console.log('🔄 [HiveMQ] Reconnecting...'));
-  mqttClient.on('error',     (err) => {
+  mqttClient.on('error', (err) => {
     if (err.message.includes('Connection refused: Not authorized'))
       console.error('❌ [HiveMQ] AUTH ERROR: Check your HiveMQ Username/Password!');
     else
@@ -238,17 +240,6 @@ async function sendEmail(subject, htmlBody, recipients) {
   });
 }
 
-async function sendAlertEmail(subject, htmlBody) {
-  try {
-    const settings     = await Settings.findOne({ key: 'global' });
-    const recipientStr = (settings && settings.recipients) || '';
-    const recipients   = recipientStr.split(',').map(e => e.trim()).filter(Boolean);
-    if (!recipients.length) { console.warn('⚠️ No recipients configured'); return { ok: false, error: 'No recipients configured' }; }
-    console.log(`📧 Sending "${subject}" → ${recipients.join(', ')}`);
-    return await sendEmail(subject, htmlBody, recipients);
-  } catch (err) { console.error('❌ Email exception:', err.message); return { ok: false, error: err.message }; }
-}
-
 // ── Location map (server-side) ────────────────────────────────
 const LOCATION_MAP_SERVER = {
   Meter_01:'Samudra', Meter_02:'R&D',     Meter_03:'Samudra',
@@ -258,7 +249,7 @@ const LOCATION_MAP_SERVER = {
   Meter_13:'BNG'
 };
 
-// ── Email Template — Navy Blue Template 1 Final ──────────────
+// ── Email Template ────────────────────────────────────────────
 function buildAlertEmail({ deviceId, friendlyName, location, alertType, actualValue, threshold, unit, otherTemp, otherHum, tempThreshold, humThreshold, time, date, combined }) {
   const dashUrl = `https://rh-meter-bridge.onrender.com/detail.html?id=${deviceId}`;
 
@@ -323,10 +314,6 @@ function buildAlertEmail({ deviceId, friendlyName, location, alertType, actualVa
   @media only screen and (max-width:600px){
     .eb{padding:10px !important;}
     .hpad{padding:20px 16px 0 !important;}
-    .dtbox{display:block !important;width:100% !important;
-      border-right:none !important;
-      border-bottom:1px solid rgba(255,255,255,0.15) !important;
-      padding:16px !important;}
     .cpad{padding:14px 16px 0 !important;}
     .devrow td{display:block !important;width:100% !important;
       border-right:none !important;}
@@ -350,9 +337,8 @@ function buildAlertEmail({ deviceId, friendlyName, location, alertType, actualVa
 
   <!-- HEADER -->
   <tr><td style="background:linear-gradient(135deg,#1e3a5f,#1d4ed8);
-    padding:24px 28px 0;" class="hpad">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
-      style="margin-bottom:22px;">
+    padding:24px 28px 20px;" class="hpad">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
     <tr>
       <td valign="top">
         <div style="font-size:10px;color:rgba(255,255,255,0.5);
@@ -368,38 +354,7 @@ function buildAlertEmail({ deviceId, friendlyName, location, alertType, actualVa
       </td>
     </tr>
     </table>
-
-  //   <!-- DATE | TIME | UNIT — 3 big prominent boxes -->
-  //   <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
-  //     style="border-radius:12px 12px 0 0;overflow:hidden;background:#0f2744;">
-  //   <tr>
-  //     <td width="33%" class="dtbox"
-  //       style="padding:18px 14px;text-align:center;
-  //         border-right:1px solid rgba(255,255,255,0.1);">
-  //       <div style="font-size:22px;margin-bottom:8px;">&#128197;</div>
-  //       <div style="font-size:10px;color:rgba(255,255,255,0.45);
-  //         text-transform:uppercase;letter-spacing:1.2px;margin-bottom:8px;">Date</div>
-  //       <div style="font-size:14px;font-weight:800;color:#ffffff;
-  //         line-height:1.4;">${date}</div>
-  //     </td>
-  //     <td width="34%" class="dtbox"
-  //       style="padding:18px 14px;text-align:center;
-  //         border-right:1px solid rgba(255,255,255,0.1);">
-  //       <div style="font-size:22px;margin-bottom:8px;">&#128336;</div>
-  //       <div style="font-size:10px;color:rgba(255,255,255,0.45);
-  //         text-transform:uppercase;letter-spacing:1.2px;margin-bottom:8px;">Time IST</div>
-  //       <div style="font-size:18px;font-weight:900;color:#ffffff;">${time}</div>
-  //     </td>
-  //     <td width="33%" class="dtbox"
-  //       style="padding:18px 14px;text-align:center;">
-  //       <div style="font-size:22px;margin-bottom:8px;">&#128205;</div>
-  //       <div style="font-size:10px;color:rgba(255,255,255,0.45);
-  //         text-transform:uppercase;letter-spacing:1.2px;margin-bottom:8px;">Unit</div>
-  //       <div style="font-size:14px;font-weight:800;color:#60a5fa;">${location}</div>
-  //     </td>
-  //   </tr>
-  //   </table>
-  // </td></tr>
+  </td></tr>
 
   <!-- ALERT HEADLINE -->
   <tr><td style="background:#ffffff;padding:18px 28px 0;" class="cpad">
@@ -466,14 +421,17 @@ function buildAlertEmail({ deviceId, friendlyName, location, alertType, actualVa
   </td></tr>
 
   <!-- DASHBOARD BUTTON -->
-  <tr><td style="background:#ffffff;padding:20px 28px 8px;text-align:center;"
-    class="cpad">
-    <a href="${dashUrl}" class="btn"
-      style="display:block;background:linear-gradient(135deg,#1e3a5f,#1d4ed8);
-        color:#ffffff;padding:14px 40px;border-radius:10px;font-size:15px;
-        font-weight:700;text-decoration:none;letter-spacing:0.3px;">
-      View Live Dashboard &#8594;
-    </a>
+  <tr><td style="background:#ffffff;padding:20px 28px 24px;text-align:center;" class="cpad">
+    <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto;">
+      <tr><td style="background:linear-gradient(135deg,#1e3a5f,#1d4ed8);border-radius:10px;">
+        <a href="${dashUrl}"
+          style="display:inline-block;padding:14px 40px;font-size:15px;font-weight:700;
+            color:#ffffff !important;text-decoration:none;letter-spacing:0.3px;
+            font-family:'Segoe UI',Helvetica,Arial,sans-serif;white-space:nowrap;">
+          View Live Dashboard &#8594;
+        </a>
+      </td></tr>
+    </table>
     <p style="font-size:11px;color:#94a3b8;margin:10px 0 0 0;">
       Next alert for this device after 3 hour cooldown</p>
   </td></tr>
@@ -501,7 +459,6 @@ function buildAlertEmail({ deviceId, friendlyName, location, alertType, actualVa
 </html>`;
 }
 
-
 // ── Alert check ───────────────────────────────────────────────
 async function checkAndAlert(record) {
   try {
@@ -521,7 +478,26 @@ async function checkAndAlert(record) {
     try {
       const namesDoc = await DeviceNames.findOne({ key: 'global' });
       if (namesDoc && namesDoc.names && namesDoc.names[device]) friendlyName = namesDoc.names[device];
-    } catch (e) { /* fallback to deviceId */ }
+    } catch (e) {}
+
+    // ── Build merged recipient list (global + per-device, deduped) ──
+    const recipientStr = (settings && settings.recipients) || '';
+    const globalEmails = recipientStr.split(',').map(e => e.trim()).filter(Boolean);
+
+    let deviceEmails = [];
+    try {
+      const devRecipientsDoc = await DeviceRecipients.findOne({ key: 'global' });
+      if (devRecipientsDoc && devRecipientsDoc.recipients && devRecipientsDoc.recipients[device]) {
+        deviceEmails = devRecipientsDoc.recipients[device].split(',').map(e => e.trim()).filter(Boolean);
+      }
+    } catch (e) {}
+
+    const allRecipients = [...new Set([...globalEmails, ...deviceEmails])];
+
+    if (!allRecipients.length) {
+      console.warn(`⚠️ No recipients configured for ${device}`);
+      return;
+    }
 
     const tempBreached = temp != null && temp > settings.tempThreshold;
     const humBreached  = hum  != null && hum  > settings.humThreshold;
@@ -530,7 +506,7 @@ async function checkAndAlert(record) {
     const canTemp      = tempBreached && await canSendAlert(tempKey);
     const canHum       = humBreached  && await canSendAlert(humKey);
 
-    // ── Combined alert: both breached at same time ────────────
+    // ── Combined alert ────────────────────────────────────────
     if (canTemp && canHum) {
       await markAlertSent(tempKey);
       await markAlertSent(humKey);
@@ -542,11 +518,12 @@ async function checkAndAlert(record) {
         tempThreshold: settings.tempThreshold, humThreshold: settings.humThreshold,
         time, date
       });
-      await sendAlertEmail(
+      await sendEmail(
         `⚠️ Combined Alert — ${friendlyName} | Temp ${temp.toFixed(1)}°C & Humidity ${hum.toFixed(1)}% | ${location}`,
-        html
+        html,
+        allRecipients
       );
-      console.log(`📧 Combined alert sent for ${device}`);
+      console.log(`📧 Combined alert sent for ${device} → ${allRecipients.join(', ')}`);
       return;
     }
 
@@ -561,11 +538,12 @@ async function checkAndAlert(record) {
         tempThreshold: settings.tempThreshold, humThreshold: settings.humThreshold,
         time, date
       });
-      await sendAlertEmail(
+      await sendEmail(
         `⚠️ Temperature Alert — ${friendlyName} | ${temp.toFixed(1)}°C | ${location}`,
-        html
+        html,
+        allRecipients
       );
-      console.log(`📧 Temp alert sent for ${device}`);
+      console.log(`📧 Temp alert sent for ${device} → ${allRecipients.join(', ')}`);
     } else if (tempBreached) {
       console.log(`⏳ Temp cooldown active for ${device}`);
     } else if (temp != null) {
@@ -583,11 +561,12 @@ async function checkAndAlert(record) {
         tempThreshold: settings.tempThreshold, humThreshold: settings.humThreshold,
         time, date
       });
-      await sendAlertEmail(
+      await sendEmail(
         `⚠️ Humidity Alert — ${friendlyName} | ${hum.toFixed(1)}% | ${location}`,
-        html
+        html,
+        allRecipients
       );
-      console.log(`📧 Hum alert sent for ${device}`);
+      console.log(`📧 Hum alert sent for ${device} → ${allRecipients.join(', ')}`);
     } else if (humBreached) {
       console.log(`⏳ Hum cooldown active for ${device}`);
     } else if (hum != null) {
@@ -598,7 +577,6 @@ async function checkAndAlert(record) {
 }
 
 // ── Keep-alive ping ───────────────────────────────────────────
-
 cron.schedule('*/10 * * * *', async () => {
   try {
     await axios.get('https://rh-meter-bridge.onrender.com/api/ping');
@@ -607,18 +585,16 @@ cron.schedule('*/10 * * * *', async () => {
     console.error('Self-ping failed:', e.message);
   }
 });
+
 // ════════════════════════════════════════════════════════════
 //  ROUTES
 // ════════════════════════════════════════════════════════════
-
-
 
 // ── Latest sensor reading ─────────────────────────────────────
 app.get('/api/data', async (req, res) => {
   try {
     const deviceId = req.query.deviceId || 'Meter_02';
 
-    // ── Use in-memory cache first (always latest real-time value) ──
     if (latestReadings[deviceId]) {
       const r = latestReadings[deviceId];
       return res.json({
@@ -631,7 +607,6 @@ app.get('/api/data', async (req, res) => {
       });
     }
 
-    // ── Fallback to MongoDB if server just restarted ──
     const record = await SensorData.findOne({ deviceId }).sort({ timestamp: -1 });
     if (!record) return res.json({});
     res.json({
@@ -687,17 +662,7 @@ app.get('/api/history', async (req, res) => {
   } catch (err) { console.error('❌ /api/history error:', err); res.status(500).json({ error: err.message }); }
 });
 
-// ════════════════════════════════════════════════════════════
-//  NEW ENDPOINT — THRESHOLD BREACHES  (PRD 3.4)
-//  GET /api/historical/threshold-breaches
-//  Query params: from, to, tempThreshold, humThreshold
-//  Returns: { deviceIds: ["Meter_02", "Meter_05", ...] }
-//
-//  Logic:
-//  1. Query ALL devices in the date range
-//  2. For each device, check if ANY record exceeded either threshold
-//  3. Return only the deviceIds that had at least one breach
-// ════════════════════════════════════════════════════════════
+// ── Threshold breaches ────────────────────────────────────────
 app.get('/api/historical/threshold-breaches', async (req, res) => {
   try {
     const from          = req.query.from ? new Date(req.query.from + 'T00:00:00.000Z') : new Date();
@@ -707,8 +672,6 @@ app.get('/api/historical/threshold-breaches', async (req, res) => {
 
     console.log(`🔍 [ThresholdBreaches] from=${from.toISOString()} to=${to.toISOString()} tempT=${tempThreshold} humT=${humThreshold}`);
 
-    // Find all records in the date range where either threshold was breached
-    // Use MongoDB aggregation to get unique deviceIds efficiently
     const breachedDevices = await SensorData.aggregate([
       {
         $match: {
@@ -719,16 +682,12 @@ app.get('/api/historical/threshold-breaches', async (req, res) => {
           ]
         }
       },
-      {
-        $group: { _id: '$deviceId' }
-      },
-      {
-        $sort: { _id: 1 }
-      }
+      { $group: { _id: '$deviceId' } },
+      { $sort:  { _id: 1 } }
     ]);
 
     const deviceIds = breachedDevices.map(d => d._id).filter(Boolean);
-    console.log(`⚠️ [ThresholdBreaches] Found ${deviceIds.length} devices with breaches:`, deviceIds);
+    console.log(`⚠️ [ThresholdBreaches] Found ${deviceIds.length} devices:`, deviceIds);
 
     res.json({ deviceIds, from: from.toISOString(), to: to.toISOString(), tempThreshold, humThreshold });
   } catch (err) {
@@ -738,7 +697,6 @@ app.get('/api/historical/threshold-breaches', async (req, res) => {
 });
 
 // ── Device Names ──────────────────────────────────────────────
-// GET /api/device-names → returns global device name map
 app.get('/api/device-names', async (req, res) => {
   try {
     let doc = await DeviceNames.findOne({ key: 'global' });
@@ -747,7 +705,6 @@ app.get('/api/device-names', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// POST /api/device-names → saves updated name map to MongoDB
 app.post('/api/device-names', async (req, res) => {
   try {
     const { names } = req.body;
@@ -759,6 +716,30 @@ app.post('/api/device-names', async (req, res) => {
     );
     console.log('✅ Device names updated:', names);
     res.json({ ok: true, names: result.names });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── Per-Device Recipients ─────────────────────────────────────
+app.get('/api/device-recipients', async (req, res) => {
+  try {
+    let doc = await DeviceRecipients.findOne({ key: 'global' });
+    if (!doc) doc = await DeviceRecipients.create({ key: 'global', recipients: {} });
+    res.json({ recipients: doc.recipients });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/device-recipients', async (req, res) => {
+  try {
+    const { recipients } = req.body;
+    if (!recipients || typeof recipients !== 'object')
+      return res.status(400).json({ error: 'recipients object required' });
+    const result = await DeviceRecipients.findOneAndUpdate(
+      { key: 'global' },
+      { $set: { recipients } },
+      { upsert: true, new: true }
+    );
+    console.log('✅ Device recipients updated');
+    res.json({ ok: true, recipients: result.recipients });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -793,8 +774,8 @@ app.post('/api/test-email', async (req, res) => {
     if (!recipientStr) return res.status(400).json({ ok: false, error: 'No recipients configured' });
     const recipients = recipientStr.split(',').map(e => e.trim()).filter(Boolean);
     const time       = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
-    const html       = `<p>✅ Test email from Factory Monitor Pro. Server time: ${time}</p>`;
-    const result     = await sendEmail('✅ Factory Monitor Pro — Test Email', html, recipients);
+    const html       = `<p>✅ Test email from RH-Meter. Server time: ${time}</p>`;
+    const result     = await sendEmail('✅ RH-Meter — Test Email', html, recipients);
     if (!result.ok) return res.status(500).json({ ok: false, error: result.error });
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
