@@ -1100,7 +1100,6 @@ function populateNameEditor() {
   if (!list) return;
   list.innerHTML = '';
 
-  // ── Location recipient cards ──────────────────────────────
   const locationGroups = [
     {
       key: 'samudra',
@@ -1122,7 +1121,7 @@ function populateNameEditor() {
     }
   ];
 
-  // ── Location recipient section ────────────────────────────
+  // ── Location recipient section header ─────────────────────
   const locHeader = document.createElement('div');
   locHeader.innerHTML = `
     <div style="font-size:0.72rem;font-weight:700;color:var(--text-muted);
@@ -1130,11 +1129,12 @@ function populateNameEditor() {
       📧 Location-Based Alert Recipients
     </div>
     <p style="font-size:0.78rem;color:var(--text-muted);margin-bottom:16px;line-height:1.5;">
-      Alerts for devices in each location group will go to that group's recipients.
+      Alerts for devices in each location will go to that group's recipients.
     </p>
   `;
   list.appendChild(locHeader);
 
+  // ── One card per location group ───────────────────────────
   locationGroups.forEach(group => {
     const currentEmails = (DEVICE_RECIPIENTS_MAP[`loc_${group.key}`] || '');
     const chipsHtml = currentEmails
@@ -1144,7 +1144,7 @@ function populateNameEditor() {
             <button class="chip-remove" onclick="removeDeviceChip(this)">✕ Delete</button>
           </div>`
         ).join('')
-      : `<div style="font-size:0.78rem;color:var(--text-muted);padding:4px 0;">No recipients added yet</div>`;
+      : `<div class="no-chip-msg" style="font-size:0.78rem;color:var(--text-muted);padding:4px 0;">No recipients added yet</div>`;
 
     const card = document.createElement('div');
     card.style.cssText = `
@@ -1155,34 +1155,25 @@ function populateNameEditor() {
       margin-bottom: 12px;
     `;
     card.innerHTML = `
-      <!-- Location label + device list -->
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
-        <span style="
-          font-size:0.8rem;font-weight:800;padding:4px 12px;border-radius:8px;
-          color:${group.color};background:${group.color}18;
-          border:1px solid ${group.color}35;letter-spacing:0.5px;">
+        <span style="font-size:0.8rem;font-weight:800;padding:4px 12px;border-radius:8px;
+          color:${group.color};background:${group.color}18;border:1px solid ${group.color}35;letter-spacing:0.5px;">
           ${group.label}
         </span>
-        <span style="font-size:0.7rem;color:var(--text-muted);">
-          ${group.devices.join(', ')}
-        </span>
+        <span style="font-size:0.7rem;color:var(--text-muted);">${group.devices.join(', ')}</span>
       </div>
 
-      <!-- Divider -->
       <div style="height:1px;background:var(--border);margin-bottom:12px;"></div>
 
-      <!-- Recipients label -->
       <div style="font-size:0.7rem;font-weight:700;color:var(--text-muted);
         text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px;">
         📧 Recipients for ${group.label}
       </div>
 
-      <!-- Chips -->
       <div class="chips-container device-chips" id="chips-loc_${group.key}"
         style="margin-bottom:10px;">${chipsHtml}</div>
 
-      <!-- Add email row -->
-      <div style="display:flex;gap:8px;align-items:center;">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">
         <input
           type="email"
           class="threshold-input-wide device-email-input"
@@ -1192,11 +1183,20 @@ function populateNameEditor() {
           onkeydown="handleDeviceEmailKeydown(event,'loc_${group.key}')">
         <button class="btn-add-chip" onclick="addDeviceChip('loc_${group.key}')">+ Add</button>
       </div>
+
+      <!-- Individual Save Button -->
+      <button
+        onclick="saveLocationRecipients('loc_${group.key}', '${group.label}')"
+        style="width:100%;padding:10px;background:linear-gradient(135deg,${group.color},${group.color}cc);
+          color:#fff;border:none;border-radius:10px;font-size:0.85rem;font-weight:700;
+          cursor:pointer;transition:all 0.2s ease;">
+        💾 Save ${group.label} Recipients
+      </button>
     `;
     list.appendChild(card);
   });
 
-  // ── Divider before device name editor ────────────────────
+  // ── Divider ───────────────────────────────────────────────
   const divider = document.createElement('div');
   divider.innerHTML = `
     <div style="height:1px;background:var(--border);margin:20px 0 16px;"></div>
@@ -1207,7 +1207,7 @@ function populateNameEditor() {
   `;
   list.appendChild(divider);
 
-  // ── Device name editor (same as before) ──────────────────
+  // ── Device name editor — one card per device with Save ────
   Object.keys(DEVICE_NAME_MAP).forEach(deviceId => {
     const friendlyName = DEVICE_NAME_MAP[deviceId];
     const isSamudra = ['Meter_01','Meter_03','Meter_04','Meter_05','Meter_06','Meter_07','Meter_08','Meter_09'].includes(deviceId);
@@ -1224,9 +1224,8 @@ function populateNameEditor() {
       margin-bottom: 12px;
     `;
     card.innerHTML = `
-      <div style="display:flex;align-items:center;gap:10px;">
-        <span style="
-          font-size:0.7rem;font-family:'JetBrains Mono',monospace;font-weight:600;
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+        <span style="font-size:0.7rem;font-family:'JetBrains Mono',monospace;font-weight:600;
           color:var(--text-muted);background:var(--bg);border:1px solid var(--border);
           border-radius:6px;padding:3px 9px;white-space:nowrap;flex-shrink:0;">
           ${deviceId}
@@ -1234,6 +1233,7 @@ function populateNameEditor() {
         <input
           class="name-editor-input"
           type="text"
+          id="nameInput-${deviceId}"
           data-device="${deviceId}"
           value="${friendlyName}"
           placeholder="Enter area name"
@@ -1241,16 +1241,63 @@ function populateNameEditor() {
             border-radius:8px;background:var(--bg);color:var(--text);
             font-size:0.875rem;outline:none;"
         >
-        <span style="
-          font-size:0.65rem;font-weight:700;padding:3px 9px;border-radius:6px;
+        <span style="font-size:0.65rem;font-weight:700;padding:3px 9px;border-radius:6px;
           border:1px solid;white-space:nowrap;flex-shrink:0;
           color:${locColor};border-color:${locColor}30;background:${locColor}15;">
           ${locLabel}
         </span>
       </div>
+
+      <!-- Individual Save Button -->
+      <button
+        onclick="saveDeviceName('${deviceId}')"
+        style="width:100%;padding:9px;background:var(--bg);
+          color:var(--accent-blue);border:1.5px solid var(--accent-blue);
+          border-radius:10px;font-size:0.82rem;font-weight:700;
+          cursor:pointer;transition:all 0.2s ease;">
+        💾 Save Name
+      </button>
     `;
     list.appendChild(card);
   });
+}
+
+// ── Save a single location's recipients ───────────────────────
+async function saveLocationRecipients(locKey, label) {
+  const container = document.getElementById(`chips-${locKey}`);
+  if (!container) return;
+
+  const emails = Array.from(container.querySelectorAll('.recipient-chip'))
+    .map(c => c.dataset.email).filter(Boolean).join(',');
+
+  // Merge with existing map, only update this location key
+  DEVICE_RECIPIENTS_MAP[locKey] = emails;
+
+  try {
+    await saveDeviceRecipients(DEVICE_RECIPIENTS_MAP);
+    showToast(`✅ ${label} recipients saved!`, 'success');
+  } catch(e) {
+    showToast(`❌ Failed to save: ${e.message}`, 'error');
+  }
+}
+
+// ── Save a single device's friendly name ──────────────────────
+async function saveDeviceName(deviceId) {
+  const input = document.getElementById(`nameInput-${deviceId}`);
+  if (!input) return;
+
+  const newName = input.value.trim();
+  if (!newName) return showToast('Name cannot be empty', 'error');
+
+  DEVICE_NAME_MAP[deviceId] = newName;
+
+  try {
+    await saveDeviceNameMap(DEVICE_NAME_MAP);
+    showToast(`✅ "${newName}" saved!`, 'success');
+    if (typeof renderDeviceGrid === 'function') renderDeviceGrid();
+  } catch(e) {
+    showToast(`❌ Failed to save: ${e.message}`, 'error');
+  }
 }
 async function saveDeviceNames() {
   // Collect updated device names
