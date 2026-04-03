@@ -80,14 +80,15 @@ const AlertCooldown = mongoose.model('AlertCooldown', new mongoose.Schema({
 // ── Device Names Schema ───────────────────────────────────────
 const DeviceNames = mongoose.model('DeviceNames', new mongoose.Schema({
   key:   { type: String, default: 'global', unique: true },
-  names: { type: Object, default: {} }
+  names: { type: mongoose.Schema.Types.Mixed, default: {} }  // ← Mixed not Object
 }, { timestamps: true }));
 
 // ── Per-Location Recipients Schema ────────────────────────────
 // Keys: "loc_samudra", "loc_bng", "loc_rd"
+// Find this schema and replace:
 const DeviceRecipients = mongoose.model('DeviceRecipients', new mongoose.Schema({
   key:        { type: String, default: 'global', unique: true },
-  recipients: { type: Object, default: {} }
+  recipients: { type: mongoose.Schema.Types.Mixed, default: {} }  // ← Mixed not Object
 }, { timestamps: true }));
 
 const COOLDOWN_MS = 3 * 60 * 60 * 1000; // 3 hours
@@ -721,14 +722,23 @@ app.post('/api/device-recipients', async (req, res) => {
     const { recipients } = req.body;
     if (!recipients || typeof recipients !== 'object')
       return res.status(400).json({ error: 'recipients object required' });
+
     const result = await DeviceRecipients.findOneAndUpdate(
       { key: 'global' },
-      { $set: { recipients } },
-      { upsert: true, new: true }
+      { $set: { recipients: recipients } },
+      { upsert: true, new: true, strict: false }
     );
-    console.log('✅ Location recipients updated:', recipients);
+
+    // ── Force Mongoose to acknowledge the change ──
+    result.markModified('recipients');
+    await result.save();
+
+    console.log('✅ Location recipients updated:', JSON.stringify(recipients));
     res.json({ ok: true, recipients: result.recipients });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    console.error('❌ /api/device-recipients error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── Settings ──────────────────────────────────────────────────

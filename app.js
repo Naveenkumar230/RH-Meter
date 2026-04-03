@@ -84,14 +84,17 @@ async function loadDeviceRecipients() {
 
 async function saveDeviceRecipients(map) {
   try {
+    console.log('[DeviceRecipients] Saving:', JSON.stringify(map)); // ← add this
     const res = await fetch(`${SERVER_URL}/api/device-recipients`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ recipients: map })
     });
     if (!res.ok) throw new Error('Server returned ' + res.status);
+    const json = await res.json();
+    console.log('[DeviceRecipients] Server confirmed:', JSON.stringify(json.recipients)); // ← add this
     console.log('[DeviceRecipients] Saved ✅');
-  } catch(e) {
+  } catch (e) {
     console.error('[DeviceRecipients] Failed to save:', e.message);
     throw e;
   }
@@ -1091,6 +1094,7 @@ async function populateSettingsDrawer() {
     }
   }
 
+  // ── Always reload fresh from server before rendering ──
   await loadDeviceRecipients();
   populateNameEditor();
 }
@@ -1270,11 +1274,15 @@ async function saveLocationRecipients(locKey, label) {
   const emails = Array.from(container.querySelectorAll('.recipient-chip'))
     .map(c => c.dataset.email).filter(Boolean).join(',');
 
-  // Merge with existing map, only update this location key
+  // Update in-memory map
   DEVICE_RECIPIENTS_MAP[locKey] = emails;
 
   try {
     await saveDeviceRecipients(DEVICE_RECIPIENTS_MAP);
+
+    // ── Reload from server to confirm saved state ──
+    await loadDeviceRecipients();
+
     showToast(`✅ ${label} recipients saved!`, 'success');
   } catch(e) {
     showToast(`❌ Failed to save: ${e.message}`, 'error');
