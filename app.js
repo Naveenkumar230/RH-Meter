@@ -299,20 +299,35 @@ async function fetchRangeData(from, to) {
 async function fetchAllData() {
   try {
     const deviceId = getCurrentDeviceId();
-    const today = new Date().toISOString().slice(0, 10);
+
+    // IST midnight = previous UTC day at 18:30:00
+    // So fetch from yesterday to today (UTC) to cover full IST day
+    const now     = new Date();
+    const todayUTC = now.toISOString().slice(0, 10);
+
+    // Yesterday's date string
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const yesterdayUTC = yesterday.toISOString().slice(0, 10);
 
     const res = await fetch(
-      `${SERVER_URL}/api/history?deviceId=${deviceId}&from=${today}&to=${today}&_t=${Date.now()}`
+      `${SERVER_URL}/api/history?deviceId=${deviceId}&from=${yesterdayUTC}&to=${todayUTC}&_t=${Date.now()}`
     );
     if (!res.ok) throw new Error('History fetch failed: ' + res.status);
     const records = await res.json();
 
-    allData = records.map(r => ({
+    const allFetched = records.map(r => ({
       timestamp: r.timestamp,
       temp: r.temperature !== undefined ? r.temperature : r.temp,
       hum:  r.humidity    !== undefined ? r.humidity    : r.hum
     })).filter(r => r.temp != null && r.hum != null);
 
+    // ── Filter to only today's IST day (00:00 IST to now) ──
+    const istMidnightToday = new Date();
+    istMidnightToday.setUTCHours(0, 0, 0, 0);
+    // IST midnight = 18:30 UTC previous day
+    const istMidnightUTC = new Date(istMidnightToday.getTime() - (5.5 * 60 * 60 * 1000));
+
+    allData = allFetched.filter(r => new Date(r.timestamp) >= istMidnightUTC);
     allData.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 
     const countEl = document.getElementById('dataCount');
@@ -1083,11 +1098,116 @@ function populateNameEditor() {
   if (!list) return;
   list.innerHTML = '';
 
-  Object.keys(DEVICE_NAME_MAP).forEach(deviceId => {
-    const currentEmails = DEVICE_RECIPIENTS_MAP[deviceId] || '';
-    const friendlyName  = DEVICE_NAME_MAP[deviceId];
+  // ── Location recipient cards ──────────────────────────────
+  const locationGroups = [
+    {
+      key: 'samudra',
+      label: 'Samudra',
+      color: 'var(--accent-blue)',
+      devices: ['Meter_01','Meter_03','Meter_04','Meter_05','Meter_06','Meter_07','Meter_08','Meter_09']
+    },
+    {
+      key: 'bng',
+      label: 'BNG',
+      color: 'var(--accent-cyan)',
+      devices: ['Meter_10','Meter_11','Meter_12','Meter_13']
+    },
+    {
+      key: 'rd',
+      label: 'R&D',
+      color: '#a855f7',
+      devices: ['Meter_02']
+    }
+  ];
 
-    // location label
+  // ── Location recipient section ────────────────────────────
+  const locHeader = document.createElement('div');
+  locHeader.innerHTML = `
+    <div style="font-size:0.72rem;font-weight:700;color:var(--text-muted);
+      text-transform:uppercase;letter-spacing:0.8px;margin-bottom:12px;margin-top:4px;">
+      📧 Location-Based Alert Recipients
+    </div>
+    <p style="font-size:0.78rem;color:var(--text-muted);margin-bottom:16px;line-height:1.5;">
+      Alerts for devices in each location group will go to that group's recipients.
+    </p>
+  `;
+  list.appendChild(locHeader);
+
+  locationGroups.forEach(group => {
+    const currentEmails = (DEVICE_RECIPIENTS_MAP[`loc_${group.key}`] || '');
+    const chipsHtml = currentEmails
+      ? currentEmails.split(',').map(e => e.trim()).filter(Boolean).map(email =>
+          `<div class="recipient-chip" data-email="${email}">
+            <span class="chip-email">✉️ ${email}</span>
+            <button class="chip-remove" onclick="removeDeviceChip(this)">✕ Delete</button>
+          </div>`
+        ).join('')
+      : `<div style="font-size:0.78rem;color:var(--text-muted);padding:4px 0;">No recipients added yet</div>`;
+
+    const card = document.createElement('div');
+    card.style.cssText = `
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px 18px;
+      margin-bottom: 12px;
+    `;
+    card.innerHTML = `
+      <!-- Location label + device list -->
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+        <span style="
+          font-size:0.8rem;font-weight:800;padding:4px 12px;border-radius:8px;
+          color:${group.color};background:${group.color}18;
+          border:1px solid ${group.color}35;letter-spacing:0.5px;">
+          ${group.label}
+        </span>
+        <span style="font-size:0.7rem;color:var(--text-muted);">
+          ${group.devices.join(', ')}
+        </span>
+      </div>
+
+      <!-- Divider -->
+      <div style="height:1px;background:var(--border);margin-bottom:12px;"></div>
+
+      <!-- Recipients label -->
+      <div style="font-size:0.7rem;font-weight:700;color:var(--text-muted);
+        text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px;">
+        📧 Recipients for ${group.label}
+      </div>
+
+      <!-- Chips -->
+      <div class="chips-container device-chips" id="chips-loc_${group.key}"
+        style="margin-bottom:10px;">${chipsHtml}</div>
+
+      <!-- Add email row -->
+      <div style="display:flex;gap:8px;align-items:center;">
+        <input
+          type="email"
+          class="threshold-input-wide device-email-input"
+          id="emailInput-loc_${group.key}"
+          placeholder="Add email for ${group.label}"
+          style="flex:1;font-size:0.8rem;"
+          onkeydown="handleDeviceEmailKeydown(event,'loc_${group.key}')">
+        <button class="btn-add-chip" onclick="addDeviceChip('loc_${group.key}')">+ Add</button>
+      </div>
+    `;
+    list.appendChild(card);
+  });
+
+  // ── Divider before device name editor ────────────────────
+  const divider = document.createElement('div');
+  divider.innerHTML = `
+    <div style="height:1px;background:var(--border);margin:20px 0 16px;"></div>
+    <div style="font-size:0.72rem;font-weight:700;color:var(--text-muted);
+      text-transform:uppercase;letter-spacing:0.8px;margin-bottom:12px;">
+      🏭 Device Friendly Names
+    </div>
+  `;
+  list.appendChild(divider);
+
+  // ── Device name editor (same as before) ──────────────────
+  Object.keys(DEVICE_NAME_MAP).forEach(deviceId => {
+    const friendlyName = DEVICE_NAME_MAP[deviceId];
     const isSamudra = ['Meter_01','Meter_03','Meter_04','Meter_05','Meter_06','Meter_07','Meter_08','Meter_09'].includes(deviceId);
     const isRD      = ['Meter_02'].includes(deviceId);
     const locLabel  = isSamudra ? 'Samudra' : isRD ? 'R&D' : 'BNG';
@@ -1101,20 +1221,8 @@ function populateNameEditor() {
       padding: 16px 18px;
       margin-bottom: 12px;
     `;
-
-    // build existing email chips html
-    const chipsHtml = currentEmails
-      ? currentEmails.split(',').map(e => e.trim()).filter(Boolean).map(email =>
-          `<div class="recipient-chip" data-email="${email}">
-            <span class="chip-email">✉️ ${email}</span>
-            <button class="chip-remove" onclick="removeDeviceChip(this)">✕ Delete</button>
-          </div>`
-        ).join('')
-      : `<div style="font-size:0.78rem;color:var(--text-muted);padding:4px 0;">No recipients added yet</div>`;
-
     card.innerHTML = `
-      <!-- Top row: ID badge + name + location -->
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+      <div style="display:flex;align-items:center;gap:10px;">
         <span style="
           font-size:0.7rem;font-family:'JetBrains Mono',monospace;font-weight:600;
           color:var(--text-muted);background:var(--bg);border:1px solid var(--border);
@@ -1134,38 +1242,11 @@ function populateNameEditor() {
         <span style="
           font-size:0.65rem;font-weight:700;padding:3px 9px;border-radius:6px;
           border:1px solid;white-space:nowrap;flex-shrink:0;
-          color:${locColor};border-color:${locColor}30;
-          background:${locColor}15;">
+          color:${locColor};border-color:${locColor}30;background:${locColor}15;">
           ${locLabel}
         </span>
       </div>
-
-      <!-- Divider -->
-      <div style="height:1px;background:var(--border);margin-bottom:12px;"></div>
-
-      <!-- Recipients label -->
-      <div style="font-size:0.7rem;font-weight:700;color:var(--text-muted);
-        text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px;">
-        📧 Device-specific recipients
-      </div>
-
-      <!-- Chips -->
-      <div class="chips-container device-chips" id="chips-${deviceId}"
-        style="margin-bottom:10px;">${chipsHtml}</div>
-
-      <!-- Add email row -->
-      <div style="display:flex;gap:8px;align-items:center;">
-        <input
-          type="email"
-          class="threshold-input-wide device-email-input"
-          id="emailInput-${deviceId}"
-          placeholder="Add email for ${deviceId}"
-          style="flex:1;font-size:0.8rem;"
-          onkeydown="handleDeviceEmailKeydown(event,'${deviceId}')">
-        <button class="btn-add-chip" onclick="addDeviceChip('${deviceId}')">+ Add</button>
-      </div>
     `;
-
     list.appendChild(card);
   });
 }
@@ -1178,14 +1259,14 @@ async function saveDeviceNames() {
     if (deviceId && newName) DEVICE_NAME_MAP[deviceId] = newName;
   });
 
-  // Collect per-device recipients
+  // Collect location-based recipients (loc_samudra, loc_bng, loc_rd)
   const newRecipientsMap = {};
-  Object.keys(DEVICE_NAME_MAP).forEach(deviceId => {
-    const container = document.getElementById(`chips-${deviceId}`);
+  ['loc_samudra', 'loc_bng', 'loc_rd'].forEach(key => {
+    const container = document.getElementById(`chips-${key}`);
     if (container) {
       const emails = Array.from(container.querySelectorAll('.recipient-chip'))
         .map(c => c.dataset.email).filter(Boolean).join(',');
-      if (emails) newRecipientsMap[deviceId] = emails;
+      if (emails) newRecipientsMap[key] = emails;
     }
   });
   DEVICE_RECIPIENTS_MAP = newRecipientsMap;

@@ -17,6 +17,24 @@ const app = express();
 const lastSaveTime   = {};
 const latestReadings = {};
 
+// ── Location group map (used for per-location email routing) ──
+const LOCATION_GROUP_MAP = {
+  Meter_01: 'samudra', Meter_03: 'samudra', Meter_04: 'samudra',
+  Meter_05: 'samudra', Meter_06: 'samudra', Meter_07: 'samudra',
+  Meter_08: 'samudra', Meter_09: 'samudra',
+  Meter_10: 'bng',     Meter_11: 'bng',     Meter_12: 'bng',     Meter_13: 'bng',
+  Meter_02: 'rd'
+};
+
+// ── Server-side location label map ────────────────────────────
+const LOCATION_MAP_SERVER = {
+  Meter_01: 'Samudra', Meter_02: 'R&D',     Meter_03: 'Samudra',
+  Meter_04: 'Samudra', Meter_05: 'Samudra', Meter_06: 'Samudra',
+  Meter_07: 'Samudra', Meter_08: 'Samudra', Meter_09: 'Samudra',
+  Meter_10: 'BNG',     Meter_11: 'BNG',     Meter_12: 'BNG',
+  Meter_13: 'BNG'
+};
+
 // ── CORS ──────────────────────────────────────────────────────
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
@@ -65,10 +83,11 @@ const DeviceNames = mongoose.model('DeviceNames', new mongoose.Schema({
   names: { type: Object, default: {} }
 }, { timestamps: true }));
 
-// ── Per-Device Recipients Schema ──────────────────────────────
+// ── Per-Location Recipients Schema ────────────────────────────
+// Keys: "loc_samudra", "loc_bng", "loc_rd"
 const DeviceRecipients = mongoose.model('DeviceRecipients', new mongoose.Schema({
   key:        { type: String, default: 'global', unique: true },
-  recipients: { type: Object, default: {} }  // { "Meter_01": "a@b.com,c@d.com", ... }
+  recipients: { type: Object, default: {} }
 }, { timestamps: true }));
 
 const COOLDOWN_MS = 3 * 60 * 60 * 1000; // 3 hours
@@ -240,15 +259,6 @@ async function sendEmail(subject, htmlBody, recipients) {
   });
 }
 
-// ── Location map (server-side) ────────────────────────────────
-const LOCATION_MAP_SERVER = {
-  Meter_01:'Samudra', Meter_02:'R&D',     Meter_03:'Samudra',
-  Meter_04:'Samudra', Meter_05:'Samudra', Meter_06:'Samudra',
-  Meter_07:'Samudra', Meter_08:'Samudra', Meter_09:'Samudra',
-  Meter_10:'BNG',     Meter_11:'BNG',     Meter_12:'BNG',
-  Meter_13:'BNG'
-};
-
 // ── Email Template ────────────────────────────────────────────
 function buildAlertEmail({ deviceId, friendlyName, location, alertType, actualValue, threshold, unit, otherTemp, otherHum, tempThreshold, humThreshold, time, date, combined }) {
   const dashUrl = `https://rh-meter-bridge.onrender.com/detail.html?id=${deviceId}`;
@@ -315,41 +325,32 @@ function buildAlertEmail({ deviceId, friendlyName, location, alertType, actualVa
     .eb{padding:10px !important;}
     .hpad{padding:20px 16px 0 !important;}
     .cpad{padding:14px 16px 0 !important;}
-    .devrow td{display:block !important;width:100% !important;
-      border-right:none !important;}
-    .rc{display:block !important;width:100% !important;
-      padding:0 0 10px 0 !important;}
+    .devrow td{display:block !important;width:100% !important;border-right:none !important;}
+    .rc{display:block !important;width:100% !important;padding:0 0 10px 0 !important;}
     .rsp{display:none !important;}
     .btn{padding:13px 16px !important;font-size:14px !important;}
     .fp{padding:14px 16px !important;}
   }
 </style>
 </head>
-<body style="margin:0;padding:0;background:#e8edf5;
-  font-family:'Segoe UI',Helvetica,Arial,sans-serif;">
-
+<body style="margin:0;padding:0;background:#e8edf5;font-family:'Segoe UI',Helvetica,Arial,sans-serif;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
   class="eb" style="background:#e8edf5;padding:24px 12px;">
 <tr><td align="center">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
-  style="max-width:580px;background:#ffffff;border-radius:18px;
-    overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,0.12);">
+  style="max-width:580px;background:#ffffff;border-radius:18px;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,0.12);">
 
   <!-- HEADER -->
-  <tr><td style="background:linear-gradient(135deg,#1e3a5f,#1d4ed8);
-    padding:24px 28px 20px;" class="hpad">
+  <tr><td style="background:linear-gradient(135deg,#1e3a5f,#1d4ed8);padding:24px 28px 20px;" class="hpad">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
     <tr>
       <td valign="top">
-        <div style="font-size:10px;color:rgba(255,255,255,0.5);
-          text-transform:uppercase;letter-spacing:1.5px;margin-bottom:6px;">
+        <div style="font-size:10px;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:6px;">
           Relative Humidity Monitoring System</div>
-        <div style="font-size:18px;font-weight:800;color:#ffffff;">
-          RH-Meter Alert System</div>
+        <div style="font-size:18px;font-weight:800;color:#ffffff;">RH-Meter Alert System</div>
       </td>
       <td align="right" valign="top">
-        <div style="background:#ef4444;color:#fff;padding:8px 16px;
-          border-radius:20px;font-size:11px;font-weight:800;white-space:nowrap;">
+        <div style="background:#ef4444;color:#fff;padding:8px 16px;border-radius:20px;font-size:11px;font-weight:800;white-space:nowrap;">
           &#9888;&#65039; THRESHOLD EXCEEDED</div>
       </td>
     </tr>
@@ -358,10 +359,8 @@ function buildAlertEmail({ deviceId, friendlyName, location, alertType, actualVa
 
   <!-- ALERT HEADLINE -->
   <tr><td style="background:#ffffff;padding:18px 28px 0;" class="cpad">
-    <div style="background:#fef2f2;border-left:5px solid #ef4444;
-      border-radius:0 8px 8px 0;padding:13px 16px;">
-      <div style="font-size:10px;color:#ef4444;font-weight:700;
-        text-transform:uppercase;letter-spacing:1.2px;margin-bottom:5px;">
+    <div style="background:#fef2f2;border-left:5px solid #ef4444;border-radius:0 8px 8px 0;padding:13px 16px;">
+      <div style="font-size:10px;color:#ef4444;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;margin-bottom:5px;">
         &#9888;&#65039; Threshold Exceeded</div>
       <div style="font-size:16px;font-weight:800;color:#1e293b;">
         ${alertLabel} at <span style="color:#1d4ed8;">${friendlyName}</span>
@@ -372,44 +371,32 @@ function buildAlertEmail({ deviceId, friendlyName, location, alertType, actualVa
   <!-- DEVICE INFO -->
   <tr><td style="background:#ffffff;padding:14px 28px 0;" class="cpad">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
-      style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;
-        border-collapse:separate;border-spacing:0;">
+      style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;border-collapse:separate;border-spacing:0;">
       <tr style="background:#eff6ff;">
-        <td colspan="4" style="padding:8px 14px;font-size:10px;font-weight:700;
-          text-transform:uppercase;letter-spacing:1.2px;color:#1d4ed8;">
+        <td colspan="4" style="padding:8px 14px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:#1d4ed8;">
           Device Information</td>
       </tr>
       <tr class="devrow" style="border-top:1px solid #e2e8f0;">
-        <td style="padding:10px 14px;font-size:12px;color:#64748b;
-          font-weight:600;background:#f8fafc;width:22%;">Device ID</td>
-        <td style="padding:10px 14px;font-size:13px;font-weight:700;
-          font-family:monospace;color:#1e293b;width:28%;
-          border-right:1px solid #e2e8f0;">${deviceId}</td>
-        <td style="padding:10px 14px;font-size:12px;color:#64748b;
-          font-weight:600;background:#f8fafc;width:22%;">Location</td>
-        <td style="padding:10px 14px;font-size:13px;font-weight:700;
-          color:#1e293b;">${friendlyName}</td>
+        <td style="padding:10px 14px;font-size:12px;color:#64748b;font-weight:600;background:#f8fafc;width:22%;">Device ID</td>
+        <td style="padding:10px 14px;font-size:13px;font-weight:700;font-family:monospace;color:#1e293b;width:28%;border-right:1px solid #e2e8f0;">${deviceId}</td>
+        <td style="padding:10px 14px;font-size:12px;color:#64748b;font-weight:600;background:#f8fafc;width:22%;">Location</td>
+        <td style="padding:10px 14px;font-size:13px;font-weight:700;color:#1e293b;">${friendlyName}</td>
       </tr>
       <tr class="devrow" style="border-top:1px solid #e2e8f0;">
-        <td style="padding:10px 14px;font-size:12px;color:#64748b;
-          font-weight:600;background:#f8fafc;">Unit</td>
+        <td style="padding:10px 14px;font-size:12px;color:#64748b;font-weight:600;background:#f8fafc;">Unit</td>
         <td style="padding:10px 14px;border-right:1px solid #e2e8f0;">
-          <span style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;
-            padding:3px 10px;border-radius:6px;font-size:12px;font-weight:700;">
+          <span style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;padding:3px 10px;border-radius:6px;font-size:12px;font-weight:700;">
             ${location}</span>
         </td>
-        <td style="padding:10px 14px;font-size:12px;color:#64748b;
-          font-weight:600;background:#f8fafc;">Alert Time</td>
-        <td style="padding:10px 14px;font-size:12px;font-weight:700;
-          color:#1e293b;">${time} IST</td>
+        <td style="padding:10px 14px;font-size:12px;color:#64748b;font-weight:600;background:#f8fafc;">Alert Time</td>
+        <td style="padding:10px 14px;font-size:12px;font-weight:700;color:#1e293b;">${time} IST</td>
       </tr>
     </table>
   </td></tr>
 
   <!-- SENSOR READINGS -->
   <tr><td style="background:#ffffff;padding:14px 28px 0;" class="cpad">
-    <div style="font-size:10px;font-weight:700;text-transform:uppercase;
-      letter-spacing:1.2px;color:#1d4ed8;margin-bottom:12px;">
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:#1d4ed8;margin-bottom:12px;">
       Sensor Readings</div>
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
     <tr>
@@ -425,29 +412,22 @@ function buildAlertEmail({ deviceId, friendlyName, location, alertType, actualVa
     <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto;">
       <tr><td style="background:linear-gradient(135deg,#1e3a5f,#1d4ed8);border-radius:10px;">
         <a href="${dashUrl}"
-          style="display:inline-block;padding:14px 40px;font-size:15px;font-weight:700;
-            color:#ffffff !important;text-decoration:none;letter-spacing:0.3px;
-            font-family:'Segoe UI',Helvetica,Arial,sans-serif;white-space:nowrap;">
+          style="display:inline-block;padding:14px 40px;font-size:15px;font-weight:700;color:#ffffff !important;text-decoration:none;letter-spacing:0.3px;font-family:'Segoe UI',Helvetica,Arial,sans-serif;white-space:nowrap;">
           View Live Dashboard &#8594;
         </a>
       </td></tr>
     </table>
-    <p style="font-size:11px;color:#94a3b8;margin:10px 0 0 0;">
-      Next alert for this device after 3 hour cooldown</p>
+    <p style="font-size:11px;color:#94a3b8;margin:10px 0 0 0;">Next alert for this device after 3 hour cooldown</p>
   </td></tr>
 
   <!-- FOOTER -->
-  <tr><td style="background:#f8fafc;border-top:1px solid #e2e8f0;
-    padding:16px 28px;border-radius:0 0 18px 18px;" class="fp">
+  <tr><td style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:16px 28px;border-radius:0 0 18px 18px;" class="fp">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
     <tr>
       <td valign="middle">
-        <span style="font-size:14px;font-weight:800;color:#1e3a5f;">
-          Aquarelle India Pvt. Ltd.</span>
+        <span style="font-size:14px;font-weight:800;color:#1e3a5f;">Aquarelle India Pvt. Ltd.</span>
       </td>
-      <td align="right" valign="middle"
-        style="font-size:11px;color:#94a3b8;">
-        Automated Monitoring System</td>
+      <td align="right" valign="middle" style="font-size:11px;color:#94a3b8;">Automated Monitoring System</td>
     </tr>
     </table>
   </td></tr>
@@ -459,7 +439,9 @@ function buildAlertEmail({ deviceId, friendlyName, location, alertType, actualVa
 </html>`;
 }
 
-// ── Alert check ───────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════
+//  ALERT CHECK  (with location-based recipient routing)
+// ════════════════════════════════════════════════════════════
 async function checkAndAlert(record) {
   try {
     const settings = await Settings.findOne({ key: 'global' });
@@ -470,34 +452,40 @@ async function checkAndAlert(record) {
     const hum      = record.humidity;
     const location = LOCATION_MAP_SERVER[device] || 'Unknown';
     const now      = new Date();
-    const time     = now.toLocaleTimeString('en-IN',  { timeZone:'Asia/Kolkata', hour:'2-digit', minute:'2-digit', hour12:true });
-    const date     = now.toLocaleDateString('en-IN',  { timeZone:'Asia/Kolkata', day:'numeric', month:'long', year:'numeric' });
+    const time     = now.toLocaleTimeString('en-IN',  { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true });
+    const date     = now.toLocaleDateString('en-IN',  { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'long', year: 'numeric' });
 
-    // Get friendly name from MongoDB
+    // ── Get friendly name from MongoDB ────────────────────────
     let friendlyName = device;
     try {
       const namesDoc = await DeviceNames.findOne({ key: 'global' });
       if (namesDoc && namesDoc.names && namesDoc.names[device]) friendlyName = namesDoc.names[device];
     } catch (e) {}
 
-    // ── Build merged recipient list (global + per-device, deduped) ──
+    // ── Build recipient list: global + location-based ─────────
     const recipientStr = (settings && settings.recipients) || '';
     const globalEmails = recipientStr.split(',').map(e => e.trim()).filter(Boolean);
 
-    let deviceEmails = [];
+    let locationEmails = [];
     try {
       const devRecipientsDoc = await DeviceRecipients.findOne({ key: 'global' });
-      if (devRecipientsDoc && devRecipientsDoc.recipients && devRecipientsDoc.recipients[device]) {
-        deviceEmails = devRecipientsDoc.recipients[device].split(',').map(e => e.trim()).filter(Boolean);
+      if (devRecipientsDoc && devRecipientsDoc.recipients) {
+        const locKey = `loc_${LOCATION_GROUP_MAP[device] || 'samudra'}`;
+        const locStr = devRecipientsDoc.recipients[locKey] || '';
+        locationEmails = locStr.split(',').map(e => e.trim()).filter(Boolean);
       }
-    } catch (e) {}
+    } catch (e) {
+      console.warn('[Recipients] Failed to load location recipients:', e.message);
+    }
 
-    const allRecipients = [...new Set([...globalEmails, ...deviceEmails])];
+    const allRecipients = [...new Set([...globalEmails, ...locationEmails])];
 
     if (!allRecipients.length) {
-      console.warn(`⚠️ No recipients configured for ${device}`);
+      console.warn(`⚠️ No recipients configured for ${device} (location: ${LOCATION_GROUP_MAP[device]})`);
       return;
     }
+
+    console.log(`📋 Recipients for ${device} [${LOCATION_GROUP_MAP[device]}]: ${allRecipients.join(', ')}`);
 
     const tempBreached = temp != null && temp > settings.tempThreshold;
     const humBreached  = hum  != null && hum  > settings.humThreshold;
@@ -594,7 +582,6 @@ cron.schedule('*/10 * * * *', async () => {
 app.get('/api/data', async (req, res) => {
   try {
     const deviceId = req.query.deviceId || 'Meter_02';
-
     if (latestReadings[deviceId]) {
       const r = latestReadings[deviceId];
       return res.json({
@@ -606,7 +593,6 @@ app.get('/api/data', async (req, res) => {
         deviceId:    r.deviceId
       });
     }
-
     const record = await SensorData.findOne({ deviceId }).sort({ timestamp: -1 });
     if (!record) return res.json({});
     res.json({
@@ -631,18 +617,19 @@ app.post('/save-data', async (req, res) => {
   } catch (err) { console.error('❌ Save Error:', err); res.status(500).send('Error'); }
 });
 
-// ── History ───────────────────────────────────────────────────
+// ── History (IST-aware date parsing) ─────────────────────────
 app.get('/api/history', async (req, res) => {
   try {
     const deviceId = req.query.deviceId || 'Meter_02';
 
+    // Parse dates as IST boundaries (UTC+5:30)
     const from = req.query.from
-      ? new Date(req.query.from + 'T00:00:00.000Z')
-      : new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00.000Z');
+      ? new Date(req.query.from + 'T00:00:00.000+05:30')
+      : new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00.000+05:30');
 
     const to = req.query.to
-      ? new Date(req.query.to + 'T23:59:59.999Z')
-      : new Date(new Date().toISOString().slice(0, 10) + 'T23:59:59.999Z');
+      ? new Date(req.query.to + 'T23:59:59.999+05:30')
+      : new Date(new Date().toISOString().slice(0, 10) + 'T23:59:59.999+05:30');
 
     console.log(`📅 [History] deviceId=${deviceId} from=${from.toISOString()} to=${to.toISOString()}`);
 
@@ -665,8 +652,8 @@ app.get('/api/history', async (req, res) => {
 // ── Threshold breaches ────────────────────────────────────────
 app.get('/api/historical/threshold-breaches', async (req, res) => {
   try {
-    const from          = req.query.from ? new Date(req.query.from + 'T00:00:00.000Z') : new Date();
-    const to            = req.query.to   ? new Date(req.query.to   + 'T23:59:59.999Z') : new Date();
+    const from          = req.query.from ? new Date(req.query.from + 'T00:00:00.000+05:30') : new Date();
+    const to            = req.query.to   ? new Date(req.query.to   + 'T23:59:59.999+05:30') : new Date();
     const tempThreshold = parseFloat(req.query.tempThreshold) || 35;
     const humThreshold  = parseFloat(req.query.humThreshold)  || 70;
 
@@ -719,7 +706,8 @@ app.post('/api/device-names', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ── Per-Device Recipients ─────────────────────────────────────
+// ── Per-Location Recipients ───────────────────────────────────
+// Keys stored: "loc_samudra", "loc_bng", "loc_rd"
 app.get('/api/device-recipients', async (req, res) => {
   try {
     let doc = await DeviceRecipients.findOne({ key: 'global' });
@@ -738,7 +726,7 @@ app.post('/api/device-recipients', async (req, res) => {
       { $set: { recipients } },
       { upsert: true, new: true }
     );
-    console.log('✅ Device recipients updated');
+    console.log('✅ Location recipients updated:', recipients);
     res.json({ ok: true, recipients: result.recipients });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -795,8 +783,8 @@ app.post('/api/test-alert-email', async (req, res) => {
     const recipients   = recipientStr.split(',').map(e => e.trim()).filter(Boolean);
     const location     = LOCATION_MAP_SERVER[deviceId] || 'Unknown';
     const now          = new Date();
-    const time         = now.toLocaleTimeString('en-IN', { timeZone:'Asia/Kolkata', hour:'2-digit', minute:'2-digit', hour12:true });
-    const date         = now.toLocaleDateString('en-IN', { timeZone:'Asia/Kolkata', day:'numeric', month:'long', year:'numeric' });
+    const time         = now.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true });
+    const date         = now.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'long', year: 'numeric' });
 
     let friendlyName = deviceId;
     try {
@@ -835,14 +823,21 @@ app.post('/api/reset-cooldown', async (req, res) => {
 
 // ── Debug ─────────────────────────────────────────────────────
 app.get('/api/debug', async (req, res) => {
-  const s         = await Settings.findOne({ key: 'global' });
-  const cooldowns = await AlertCooldown.find({});
-  res.json({
-    broker: HIVEMQ_URL, topic: HIVEMQ_TOPIC,
-    recipients: s?.recipients, tempThreshold: s?.tempThreshold, humThreshold: s?.humThreshold,
-    brevoKeySet: !!(process.env.BREVO_API_KEY || BREVO_API_KEY),
-    cooldowns,
-  });
+  try {
+    const s         = await Settings.findOne({ key: 'global' });
+    const cooldowns = await AlertCooldown.find({});
+    const recDoc    = await DeviceRecipients.findOne({ key: 'global' });
+    res.json({
+      broker:           HIVEMQ_URL,
+      topic:            HIVEMQ_TOPIC,
+      recipients:       s?.recipients,
+      tempThreshold:    s?.tempThreshold,
+      humThreshold:     s?.humThreshold,
+      brevoKeySet:      !!(process.env.BREVO_API_KEY || BREVO_API_KEY),
+      locationRecipients: recDoc?.recipients || {},
+      cooldowns,
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.post('/api/send-raw-email', async (req, res) => {
