@@ -184,7 +184,7 @@ function startHiveMQSubscriber() {
 
       const now        = Date.now();
       const lastSaved  = lastSaveTime[deviceId] || 0;
-      const THIRTY_MIN = 30 * 60 * 1000;
+      const THIRTY_MIN = 10 * 60 * 1000;
 
       if (now - lastSaved >= THIRTY_MIN) {
         lastSaveTime[deviceId] = now;
