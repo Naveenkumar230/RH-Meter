@@ -46,7 +46,8 @@ app.use((req, res, next) => {
 app.use(cors());
 app.use(express.json());
 
-app.get('/', (req, res) => res.sendFile(__dirname + '/home.html'));
+// app.get('/', (req, res) => res.sendFile(__dirname + '/home.html'));
+app.get('/', (req, res) => res.sendFile(__dirname + '/hub.html'));
 app.get('/api/ping', (req, res) => res.json({ ok: true, ts: Date.now() }));
 app.use(express.static('.'));
 
