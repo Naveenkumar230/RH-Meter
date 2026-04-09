@@ -159,13 +159,19 @@
     @keyframes pulse  { 0%,100%{opacity:1} 50%{opacity:.35} }
     @keyframes fadeUp { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
 
-    @media (max-width: 600px) {
-      .hub-topbar   { padding: 0 16px; height: 60px; }
-      .hub-launcher { padding: 20px 16px; }
-      .hub-grid     { grid-template-columns: 1fr; }
-      .hub-footer   { padding: 10px 16px; }
-      .hub-topbar-title { font-size: 1.1rem; }
-    }
+  @media (max-width: 600px) {
+  .hub-topbar        { padding: 0 14px; height: auto; min-height: 60px; }
+  .hub-topbar-left   { flex: 1; min-width: 0; overflow: hidden; }
+  .hub-topbar-logo   { height: 36px; flex-shrink: 0; }
+  .hub-topbar-title  { font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hub-topbar-sub    { font-size: 0.65rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hub-topbar-right  { display: none; }   /* hides the clock on mobile */
+  .hub-launcher      { padding: 16px 12px; }
+  .hub-grid          { grid-template-columns: 1fr; gap: 12px; }
+  .hub-footer        { padding: 10px 14px; font-size: 0.65rem; }
+  .hub-card-top      { padding: 14px 14px 12px; }
+  .hub-card-bottom   { padding: 10px 14px; }
+}
   </style>
 </head>
 <body>
@@ -176,8 +182,8 @@
     <div class="hub-topbar-left">
       <img src="logo.png" alt="Logo" class="hub-topbar-logo">
       <div>
-        <div class="hub-topbar-title">Control Hub</div>
-        <div class="hub-topbar-sub">Aquarelle Monitoring Suite</div>
+        <div class="hub-topbar-title">IOT Nexus</div>
+        <div class="hub-topbar-sub">Aquarelle India PVT.LTD</div>
       </div>
     </div>
     <div class="hub-topbar-right">
@@ -192,11 +198,11 @@
   </div>
 
   <!-- FOOTER -->
-  <div class="hub-footer" id="hubFooter">
+  <!-- <div class="hub-footer" id="hubFooter">
     <div class="hub-footer-dot"></div>
-    <span>Aquarelle Control Hub &nbsp;·&nbsp; All times in IST</span>
+    <!-- <span>Aquarelle Control Hub &nbsp;·&nbsp; All times in IST</span> -->
     <span style="margin-left:auto" id="footerClock"></span>
-  </div>
+  </div> -->
 
 </div>
 <script>
