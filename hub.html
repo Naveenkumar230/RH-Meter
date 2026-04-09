@@ -13,6 +13,7 @@
       display: flex;
       flex-direction: column;
       height: 100vh;
+height: -webkit-fill-available;
     }
 
     /* ── Topbar ── */
@@ -43,10 +44,10 @@
 
     /* ── Launcher ── */
     .hub-launcher {
-      flex: 1; overflow-y: auto;
-      padding: 32px 28px;
-      background: var(--bg);
-    }
+  flex: 1; overflow-y: auto;
+  -webkit-overflow-scrolling: touch;  /* smooth scroll on iOS */
+  overscroll-behavior: contain;       /* prevents page bounce */
+}
     .hub-launcher::-webkit-scrollbar { width: 4px; }
     .hub-launcher::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 
