@@ -2,10 +2,10 @@
   "name": "rh-meter-backend",
   "version": "2.0.0",
   "description": "Factory Monitor Pro — Bridge Server",
-  "main": "server.js",
+  "main": "server.cjs",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js"
+    "start": "node server.cjs",
+    "dev": "nodemon server.cjs"
   },
   "dependencies": {
     "axios": "^1.13.6",
