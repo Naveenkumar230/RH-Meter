@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Device Architecture — RH-Meter</title>
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .img-page-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 32px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 24px;
+      box-shadow: var(--shadow);
+    }
+    .img-page-header-left {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .img-page-title {
+      font-size: 1.2rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, #3b82f6, #06b6d4);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .img-page-subtitle {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      font-family: 'JetBrains Mono', monospace;
+      margin-top: 2px;
+    }
+
+    /* Gallery grid */
+    .gallery-grid {
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .gallery-main {
+      grid-row: 1 / 3;
+    }
+    .gallery-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: var(--shadow);
+      cursor: pointer;
+      transition: all 0.25s ease;
+    }
+    .gallery-card:hover {
+      transform: translateY(-3px);
+      border-color: var(--accent-blue);
+      box-shadow: 0 8px 28px rgba(59,130,246,0.18);
+    }
+    .gallery-card img {
+      width: 100%;
+      display: block;
+      object-fit: cover;
+    }
+    .gallery-main img   { height: 380px; }
+    .gallery-thumb img  { height: 160px; }
+    .gallery-caption {
+      padding: 10px 16px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--text-dim);
+      background: var(--bg);
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .gallery-caption-zoom {
+      font-size: 0.7rem;
+      color: var(--accent-blue);
+      font-weight: 700;
+    }
+
+    /* Spec cards */
+    .spec-section {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px 28px;
+      box-shadow: var(--shadow);
+      margin-bottom: 24px;
+    }
+    .spec-section-title {
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-muted);
+      margin-bottom: 18px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .spec-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+    }
+    .spec-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 18px;
+      transition: border-color 0.2s ease;
+    }
+    .spec-card:hover { border-color: var(--accent-blue); }
+    .spec-icon {
+      font-size: 1.6rem;
+      margin-bottom: 10px;
+      display: block;
+    }
+    .spec-label {
+      font-size: 0.65rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+    .spec-value {
+      font-size: 1rem;
+      font-weight: 800;
+      color: var(--text);
+      font-family: 'JetBrains Mono', monospace;
+      margin-bottom: 3px;
+    }
+    .spec-sub {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+    }
+
+    /* Lightbox */
+    .lightbox-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(10, 15, 30, 0.92);
+      z-index: 9999;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      padding: 20px;
+    }
+    .lightbox-overlay.open {
+      display: flex;
+    }
+    .lightbox-img-wrap {
+      position: relative;
+      max-width: 90vw;
+      max-height: 80vh;
+    }
+    .lightbox-img-wrap img {
+      max-width: 90vw;
+      max-height: 78vh;
+      object-fit: contain;
+      border-radius: 12px;
+      display: block;
+    }
+    .lightbox-caption {
+      margin-top: 14px;
+      font-size: 0.85rem;
+      color: rgba(255,255,255,0.75);
+      font-family: 'JetBrains Mono', monospace;
+      text-align: center;
+    }
+    .lightbox-close {
+      position: fixed;
+      top: 20px;
+      right: 24px;
+      width: 40px;
+      height: 40px;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 10px;
+      color: white;
+      font-size: 1.2rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s ease;
+      z-index: 10000;
+    }
+    .lightbox-close:hover {
+      background: rgba(239,68,68,0.3);
+      border-color: rgba(239,68,68,0.5);
+    }
+    .lightbox-nav {
+      position: fixed;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 44px;
+      height: 44px;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 10px;
+      color: white;
+      font-size: 1.2rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s ease;
+      z-index: 10000;
+    }
+    .lightbox-nav:hover { background: rgba(255,255,255,0.2); }
+    .lightbox-prev { left: 16px; }
+    .lightbox-next { right: 16px; }
+    .lightbox-counter {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 0.8rem;
+      color: rgba(255,255,255,0.5);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Flow diagram */
+    .flow-section {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px 28px;
+      box-shadow: var(--shadow);
+      margin-bottom: 24px;
+    }
+    .flow-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0;
+      flex-wrap: wrap;
+      margin-top: 20px;
+    }
+    .flow-node {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      padding: 16px 20px;
+      background: var(--bg);
+      border: 1.5px solid var(--border);
+      border-radius: 12px;
+      min-width: 110px;
+      text-align: center;
+      transition: all 0.2s ease;
+    }
+    .flow-node:hover { border-color: var(--accent-blue); transform: translateY(-2px); }
+    .flow-node-icon { font-size: 1.8rem; }
+    .flow-node-label {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: var(--text-muted);
+    }
+    .flow-node-value {
+      font-size: 0.82rem;
+      font-weight: 800;
+      color: var(--text);
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .flow-arrow {
+      font-size: 1.2rem;
+      color: var(--accent-blue);
+      padding: 0 8px;
+      font-weight: 700;
+    }
+
+    @media (max-width: 768px) {
+      .gallery-grid { grid-template-columns: 1fr; }
+      .gallery-main { grid-row: auto; }
+      .gallery-main img { height: 240px; }
+      .gallery-thumb img { height: 160px; }
+      .img-page-header { flex-direction: column; gap: 12px; padding: 16px 20px; }
+      .flow-row { gap: 8px; }
+      .flow-arrow { display: none; }
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <div class="img-page-header">
+    <div class="img-page-header-left">
+      <img src="logo.png" alt="Logo" style="height:46px;width:auto;object-fit:contain;">
+      <div>
+        <div class="img-page-title">Device Architecture &amp; Components</div>
+        <div class="img-page-subtitle">RH-Meter — Hardware &amp; Platform Overview</div>
+      </div>
+    </div>
+    <a href="javascript:history.back()" class="back-button" style="margin-bottom:0;">
+      ← Back
+    </a>
+  </div>
+
+  <!-- Image Gallery -->
+  <div class="gallery-grid">
+    <div class="gallery-card gallery-main" onclick="openLightbox(0)">
+      <img src="Detail.png" alt="Complete device overview">
+      <div class="gallery-caption">
+        <span>📷 Complete device overview</span>
+        <span class="gallery-caption-zoom">Click to enlarge ↗</span>
+      </div>
+    </div>
+    <div class="gallery-card gallery-thumb" onclick="openLightbox(1)">
+      <img src="Detail2.png" alt="Sensor module close-up">
+      <div class="gallery-caption">
+        <span>🔬 Sensor module</span>
+        <span class="gallery-caption-zoom">↗</span>
+      </div>
+    </div>
+    <div class="gallery-card gallery-thumb" onclick="openLightbox(2)">
+      <img src="Detail3.png" alt="LCD display and board">
+      <div class="gallery-caption">
+        <span>🖥️ LCD &amp; board</span>
+        <span class="gallery-caption-zoom">↗</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Spec Cards -->
+  <div class="spec-section">
+    <div class="spec-section-title">⚙️ Hardware Specifications</div>
+    <div class="spec-grid">
+      <div class="spec-card">
+        <span class="spec-icon">🧠</span>
+        <div class="spec-label">Microcontroller</div>
+        <div class="spec-value">ESP32</div>
+        <div class="spec-sub">Dual-core · Wi-Fi + Bluetooth</div>
+      </div>
+      <div class="spec-card">
+        <span class="spec-icon">🌡️</span>
+        <div class="spec-label">Sensor</div>
+        <div class="spec-value">DHT22</div>
+        <div class="spec-sub">Temperature &amp; Humidity</div>
+      </div>
+      <div class="spec-card">
+        <span class="spec-icon">🖥️</span>
+        <div class="spec-label">Display</div>
+        <div class="spec-value">16×2 LCD</div>
+        <div class="spec-sub">I2C Interface</div>
+      </div>
+      <div class="spec-card">
+        <span class="spec-icon">📡</span>
+        <div class="spec-label">Protocol</div>
+        <div class="spec-value">MQTT</div>
+        <div class="spec-sub">HiveMQ Cloud Broker</div>
+      </div>
+      <div class="spec-card">
+        <span class="spec-icon">☁️</span>
+        <div class="spec-label">Database</div>
+        <div class="spec-value">MongoDB</div>
+        <div class="spec-sub">Atlas Cloud</div>
+      </div>
+      <div class="spec-card">
+        <span class="spec-icon">🔋</span>
+        <div class="spec-label">Power</div>
+        <div class="spec-value">5V DC</div>
+        <div class="spec-sub">USB / Adapter</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Data Flow Diagram -->
+  <div class="flow-section">
+    <div class="spec-section-title">🔄 Data Flow</div>
+    <div class="flow-row">
+      <div class="flow-node">
+        <span class="flow-node-icon">🌡️</span>
+        <div class="flow-node-label">Sensor</div>
+        <div class="flow-node-value">DHT22</div>
+      </div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-node">
+        <span class="flow-node-icon">🧠</span>
+        <div class="flow-node-label">MCU</div>
+        <div class="flow-node-value">ESP32</div>
+      </div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-node">
+        <span class="flow-node-icon">🖥️</span>
+        <div class="flow-node-label">Display</div>
+        <div class="flow-node-value">LCD 16×2</div>
+      </div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-node">
+        <span class="flow-node-icon">📡</span>
+        <div class="flow-node-label">Publish</div>
+        <div class="flow-node-value">MQTT</div>
+      </div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-node">
+        <span class="flow-node-icon">☁️</span>
+        <div class="flow-node-label">Cloud</div>
+        <div class="flow-node-value">HiveMQ</div>
+      </div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-node">
+        <span class="flow-node-icon">🗄️</span>
+        <div class="flow-node-label">Database</div>
+        <div class="flow-node-value">MongoDB</div>
+      </div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-node">
+        <span class="flow-node-icon">📊</span>
+        <div class="flow-node-label">Dashboard</div>
+        <div class="flow-node-value">RH-Meter</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="home-footer">
+    RH-Meter &nbsp;·&nbsp; All times in IST &nbsp;·&nbsp;
+    &copy; 2025 Aquarelle India Pvt. Ltd. All rights reserved.
+  </div>
+
+</div>
+
+<!-- Lightbox -->
+<div class="lightbox-overlay" id="lightbox" onclick="handleLightboxClick(event)">
+  <button class="lightbox-close" onclick="closeLightbox()">✕</button>
+  <button class="lightbox-nav lightbox-prev" onclick="navLightbox(-1)">&#8249;</button>
+  <button class="lightbox-nav lightbox-next" onclick="navLightbox(1)">&#8250;</button>
+  <div class="lightbox-img-wrap">
+    <img id="lightboxImg" src="" alt="">
+  </div>
+  <div class="lightbox-caption" id="lightboxCaption"></div>
+  <div class="lightbox-counter" id="lightboxCounter"></div>
+</div>
+
+<script>
+const images = [
+  { src: 'Detail.png',  caption: 'Complete device overview' },
+  { src: 'Detail2.png', caption: 'Sensor module close-up' },
+  { src: 'Detail3.png', caption: 'LCD display and board' }
+];
+let currentIndex = 0;
+
+function openLightbox(index) {
+  currentIndex = index;
+  updateLightbox();
+  document.getElementById('lightbox').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+function navLightbox(dir) {
+  currentIndex = (currentIndex + dir + images.length) % images.length;
+  updateLightbox();
+}
+
+function updateLightbox() {
+  const img = images[currentIndex];
+  document.getElementById('lightboxImg').src        = img.src;
+  document.getElementById('lightboxImg').alt        = img.caption;
+  document.getElementById('lightboxCaption').textContent = img.caption;
+  document.getElementById('lightboxCounter').textContent = (currentIndex + 1) + ' / ' + images.length;
+}
+
+function handleLightboxClick(e) {
+  if (e.target === document.getElementById('lightbox')) closeLightbox();
+}
+
+document.addEventListener('keydown', function(e) {
+  const lb = document.getElementById('lightbox');
+  if (!lb.classList.contains('open')) return;
+  if (e.key === 'Escape')     closeLightbox();
+  if (e.key === 'ArrowRight') navLightbox(1);
+  if (e.key === 'ArrowLeft')  navLightbox(-1);
+});
+</script>
+</body>
+</html>

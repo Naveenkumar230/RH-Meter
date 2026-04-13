@@ -33,6 +33,9 @@ const DEFAULT_DEVICE_NAME_MAP = {
   "Meter_13": "Dispatch Area"
 };
 
+let lastKnownTimestamp = null;
+
+
 // ── Load names from MongoDB (globally shared across all users) ──
 async function loadDeviceNameMap() {
   try {
@@ -237,17 +240,50 @@ function getHumLevel(h)  { return h < 40  ? 'critical' : (h <= 70 ? 'normal'  : 
 // ════════════════════════════════════════════════════════════
 //  STATUS BADGE  (detail page)
 // ════════════════════════════════════════════════════════════
-function updateStatusBadge(isOnline) {
-  const badge = document.getElementById('statusBadge');
-  const text  = document.getElementById('statusText');
+// ════════════════════════════════════════════════════════════
+//  STATUS BADGE  (detail page)
+// ════════════════════════════════════════════════════════════
+function updateStatusBadge(isOnline, lastTimestamp) {
+  const badge  = document.getElementById('statusBadge');
+  const text   = document.getElementById('statusText');
+  const lastEl = document.getElementById('statusLastSeen');
   if (!badge || !text) return;
-  badge.classList.toggle('offline', !isOnline);
-  text.textContent = isOnline ? 'Online' : 'Offline';
-}
 
+  if (isOnline) {
+    badge.classList.remove('offline');
+    text.textContent = 'Live';
+    if (lastEl) lastEl.textContent = '';
+  } else {
+    badge.classList.add('offline');
+    text.textContent = 'Offline';
+
+    if (lastEl && lastTimestamp) {
+      const d       = new Date(lastTimestamp);
+      const dateStr = d.toLocaleDateString('en-IN', {
+        day:      '2-digit',
+        month:    'short',
+        timeZone: 'Asia/Kolkata'
+      });
+      const timeStr = d.toLocaleTimeString('en-IN', {
+        hour:     '2-digit',
+        minute:   '2-digit',
+        hour12:   true,
+        timeZone: 'Asia/Kolkata'
+      });
+      lastEl.textContent = `Last: ${dateStr}, ${timeStr}`;
+    } else if (lastEl) {
+      lastEl.textContent = '';
+    }
+  }
+}
 // ════════════════════════════════════════════════════════════
 //  FETCH CURRENT READING  (detail page — uses URL device ID)
 // ════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════
+//  FETCH CURRENT READING  (detail page — uses URL device ID)
+// ════════════════════════════════════════════════════════════
+// let lastKnownTimestamp = null; // ← add this once near top of state variables
+
 async function fetchCurrent() {
   try {
     const deviceId = getCurrentDeviceId();
@@ -258,10 +294,16 @@ async function fetchCurrent() {
     const t = d.temperature !== undefined ? parseFloat(d.temperature) : (d.temp !== undefined ? parseFloat(d.temp) : null);
     const h = d.humidity    !== undefined ? parseFloat(d.humidity)    : (d.hum  !== undefined ? parseFloat(d.hum)  : null);
 
-    if (t === null || h === null) { updateStatusBadge(false); return; }
+    if (t === null || h === null) {
+      failCount++;
+      if (failCount >= 3) updateStatusBadge(false, lastKnownTimestamp);
+      return;
+    }
 
+    // ── Success ───────────────────────────────────────────────
     failCount = 0;
-    updateStatusBadge(true);
+    lastKnownTimestamp = d.timestamp || new Date().toISOString();
+    updateStatusBadge(true, lastKnownTimestamp);
 
     document.getElementById('tempValue').textContent = t.toFixed(1);
     document.getElementById('humValue').textContent  = h.toFixed(1);
@@ -272,9 +314,10 @@ async function fetchCurrent() {
     }
     lastTemp = t;
     lastHum  = h;
+
   } catch (err) {
     failCount++;
-    if (failCount >= 3) updateStatusBadge(false);
+    if (failCount >= 3) updateStatusBadge(false, lastKnownTimestamp);
     console.warn('[fetchCurrent] Error:', err.message);
   }
 }
@@ -304,15 +347,23 @@ async function fetchRangeData(from, to) {
 async function fetchAllData() {
   try {
     const deviceId = getCurrentDeviceId();
+    const now      = new Date();
 
-    // IST midnight = previous UTC day at 18:30:00
-    // So fetch from yesterday to today (UTC) to cover full IST day
-    const now     = new Date();
-    const todayUTC = now.toISOString().slice(0, 10);
+    // ── Get today's date in IST ──────────────────────────────
+    const istNow   = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
+    const istYear  = istNow.getUTCFullYear();
+    const istMonth = istNow.getUTCMonth();
+    const istDate  = istNow.getUTCDate();
 
-    // Yesterday's date string
-    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    const yesterdayUTC = yesterday.toISOString().slice(0, 10);
+    // IST today as YYYY-MM-DD string (for API call)
+    const todayIST = istYear + '-' +
+      String(istMonth + 1).padStart(2, '0') + '-' +
+      String(istDate).padStart(2, '0');
+
+    // We also need previous UTC date to cover IST 00:00 (= UTC 18:30 prev day)
+    const prevUTC = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const yesterdayUTC = prevUTC.toISOString().slice(0, 10);
+    const todayUTC     = now.toISOString().slice(0, 10);
 
     const res = await fetch(
       `${SERVER_URL}/api/history?deviceId=${deviceId}&from=${yesterdayUTC}&to=${todayUTC}&_t=${Date.now()}`
@@ -326,13 +377,23 @@ async function fetchAllData() {
       hum:  r.humidity    !== undefined ? r.humidity    : r.hum
     })).filter(r => r.temp != null && r.hum != null);
 
-    // ── Filter to only today's IST day (00:00 IST to now) ──
-    const istMidnightToday = new Date();
-    istMidnightToday.setUTCHours(0, 0, 0, 0);
-    // IST midnight = 18:30 UTC previous day
-    const istMidnightUTC = new Date(istMidnightToday.getTime() - (5.5 * 60 * 60 * 1000));
+    // ── IST midnight of today (exact UTC equivalent) ─────────
+    // Today 00:00:00 IST  =  (today UTC date at 00:00) minus 5h30m
+    const istMidnightUTC = new Date(
+      Date.UTC(istYear, istMonth, istDate, 0, 0, 0) - (5.5 * 60 * 60 * 1000)
+    );
 
-    allData = allFetched.filter(r => new Date(r.timestamp) >= istMidnightUTC);
+    // ── IST end-of-day 23:59:59 ──────────────────────────────
+    const istEndOfDayUTC = new Date(
+      Date.UTC(istYear, istMonth, istDate, 23, 59, 59) - (5.5 * 60 * 60 * 1000)
+    );
+
+    // Filter: only records within today's IST day (00:00 to 23:59:59)
+    allData = allFetched.filter(r => {
+      const ts = new Date(r.timestamp);
+      return ts >= istMidnightUTC && ts <= istEndOfDayUTC;
+    });
+
     allData.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 
     const countEl = document.getElementById('dataCount');
@@ -622,21 +683,23 @@ function initCharts() {
 // ════════════════════════════════════════════════════════════
 //  RENDER TODAY CHARTS
 // ════════════════════════════════════════════════════════════
+
 function renderTodayCharts() {
   if (!chartTempToday || !chartHumToday) return;
 
-  // Build full 24-hour skeleton: 00:00, 00:30, 01:00 ... 23:30
+  // ── Build full-day 30-min skeleton: 00:00 … 23:30 ────────
+  // 48 slots total
   const allSlots = [];
   for (let h = 0; h < 24; h++) {
     allSlots.push(pad(h) + ':00');
     allSlots.push(pad(h) + ':30');
   }
 
-  // Bucket today's data into 30-min IST slots
-  const todayData = filterDate(dateStr(new Date()));
+  // ── Bucket today's IST data into 30-min slots ─────────────
   const bucketMap = {};
-  todayData.forEach(r => {
-    const ist = new Date(new Date(r.timestamp).getTime() + 5.5 * 60 * 60 * 1000);
+  allData.forEach(r => {
+    const utc = new Date(r.timestamp);
+    const ist = new Date(utc.getTime() + (5.5 * 60 * 60 * 1000));
     const m   = ist.getUTCMinutes() < 30 ? '00' : '30';
     const key = pad(ist.getUTCHours()) + ':' + m;
     if (!bucketMap[key]) bucketMap[key] = { temps: [], hums: [] };
@@ -644,21 +707,46 @@ function renderTodayCharts() {
     bucketMap[key].hums.push(r.hum);
   });
 
+  // ── Map each slot → averaged value or null (= gap) ────────
   const tempData = allSlots.map(slot =>
-    bucketMap[slot] ? +(bucketMap[slot].temps.reduce((a,v)=>a+v,0)/bucketMap[slot].temps.length).toFixed(1) : null
+    bucketMap[slot]
+      ? +(bucketMap[slot].temps.reduce((a, v) => a + v, 0) / bucketMap[slot].temps.length).toFixed(1)
+      : null
   );
   const humData = allSlots.map(slot =>
-    bucketMap[slot] ? +(bucketMap[slot].hums.reduce((a,v)=>a+v,0)/bucketMap[slot].hums.length).toFixed(1) : null
+    bucketMap[slot]
+      ? +(bucketMap[slot].hums.reduce((a, v) => a + v, 0) / bucketMap[slot].hums.length).toFixed(1)
+      : null
   );
 
-  chartTempToday.data.labels           = allSlots;
-  chartTempToday.data.datasets[0].data = tempData;
-  chartTempToday.data.datasets[0].spanGaps = false;
+  // ── X-axis tick callback: show every 30-min label ─────────
+  // allSlots already has exactly the labels we want (00:00, 00:30, 01:00...)
+  // We pass allSlots directly as labels so every tick = one slot
+  const tickCallback = (val, idx) => allSlots[idx] || '';
+
+  // ── Shared axis options patch ──────────────────────────────
+  const applyXAxis = (chart) => {
+    chart.options.scales.x.ticks = {
+      color:        '#64748b',
+      maxRotation:  45,      // angle labels so they don't overlap at 30-min density
+      minRotation:  45,
+      autoSkip:     false,   // never auto-skip — we want ALL 48 labels visible
+      callback:     tickCallback
+    };
+  };
+
+  // ── Temperature chart ──────────────────────────────────────
+  chartTempToday.data.labels             = allSlots;
+  chartTempToday.data.datasets[0].data   = tempData;
+  chartTempToday.data.datasets[0].spanGaps = false;   // null = gap in line
+  applyXAxis(chartTempToday);
   chartTempToday.update();
 
-  chartHumToday.data.labels            = allSlots;
-  chartHumToday.data.datasets[0].data  = humData;
-  chartHumToday.data.datasets[0].spanGaps = false;
+  // ── Humidity chart ─────────────────────────────────────────
+  chartHumToday.data.labels             = allSlots;
+  chartHumToday.data.datasets[0].data   = humData;
+  chartHumToday.data.datasets[0].spanGaps = false;    // null = gap in line
+  applyXAxis(chartHumToday);
   chartHumToday.update();
 }
 

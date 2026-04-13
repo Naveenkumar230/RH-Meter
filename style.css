@@ -103,9 +103,13 @@ body {
 }
 
 .status-badge.offline .status-dot {
-  background: var(--accent-red);
-  box-shadow: 0 0 12px var(--accent-red);
-  animation: none;
+  background: #ef4444 !important;
+  box-shadow: 0 0 8px #ef4444 !important;
+  animation: blink 1s step-start infinite !important;
+}
+
+.status-badge.offline #statusText {
+  color: #ef4444 !important;
 }
 
 @keyframes pulse {
@@ -1299,7 +1303,7 @@ body {
 }
 
 .dc-status-bar.online  { background: rgba(16,185,129,0.08); }
-.dc-status-bar.offline { background: rgba(148,163,184,0.1); }
+.dc-status-bar.offline { background: rgba(239,68,68,0.06); }
 .dc-status-bar.checking { background: rgba(245,158,11,0.08); }
 
 .dc-status-dot {
@@ -1309,14 +1313,18 @@ body {
   flex-shrink: 0;
 }
 .dc-status-dot.online   { background: var(--accent-green); box-shadow: 0 0 8px var(--accent-green); animation: pulse 2s ease-in-out infinite; }
-.dc-status-dot.offline  { background: #94a3b8; }
+.dc-status-dot.offline {
+  background: #ef4444 !important;
+  box-shadow: 0 0 8px #ef4444 !important;
+  animation: blink 1s step-start infinite !important;
+}
 .dc-status-dot.checking { background: var(--accent-orange); box-shadow: 0 0 8px var(--accent-orange); animation: pulse 1s ease-in-out infinite; }
 
 .dc-status-text {
   font-weight: 700;
 }
 .dc-status-bar.online  .dc-status-text { color: var(--accent-green); }
-.dc-status-bar.offline .dc-status-text { color: #94a3b8; }
+.dc-status-bar.offline .dc-status-text { color: #ef4444 !important; }
 .dc-status-bar.checking .dc-status-text { color: var(--accent-orange); }
 
 .dc-last-seen {
@@ -1454,4 +1462,9 @@ body {
   .home-header { padding: 14px 16px; }
   .device-grid { gap: 12px; }
   .device-card { padding: 18px 20px; }
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
 }

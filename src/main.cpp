@@ -71,7 +71,7 @@ namespace Config {
 
     // constexpr const char* DEVICE_ID    = "Meter_01";  // new code
     // constexpr const char* DEVICE_ID    = "Meter_02";  // old code
-    constexpr const char* DEVICE_ID    = "Meter_03";  // new code 
+    // constexpr const char* DEVICE_ID    = "Meter_03";  // new code 
     //    constexpr const char* DEVICE_ID    = "Meter_04";  // new code
     // constexpr const char* DEVICE_ID    = "Meter_05"; //old code
     // constexpr const char* DEVICE_ID    = "Meter_06"; //new code 
@@ -81,8 +81,8 @@ namespace Config {
     // constexpr const char* DEVICE_ID    = "Meter_10"; //completed
     // constexpr const char* DEVICE_ID    = "Meter_11";   //completed
     // constexpr const char* DEVICE_ID    = "Meter_12"; // completed
-    // constexpr const char* DEVICE_ID    = "Meter_13"; // completed
-    // constexpr const char* DEVICE_ID    = "Meter_14";
+    constexpr const char* DEVICE_ID    = "Meter_13"; // completed
+    // constexpr const char* DEVICE_ID    = "Meter_14";  
 
     // ── HiveMQ Broker ────────────────────────────────────────
     constexpr const char* MQTT_HOST    = "d034db44805b4258a6c72c3efe0f9019.s1.eu.hivemq.cloud";
@@ -92,17 +92,17 @@ namespace Config {
 
     // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_01/telemetry";  
     // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_02/telemetry";
-    constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_03/telemetry";
+    // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_03/telemetry";
     //    constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_04/telemetry";
     // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_05/telemetry";
     // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_06/telemetry";
     // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_07/telemetry";
     // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_08/telemetry";
     // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_09/telemetry";
-    // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_10/telemetry";
-    // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_11/telemetry";
-    // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_12/telemetry";
-    // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_13/telemetry";
+    // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_10/telemetry";  //Recalibration done
+    // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_11/telemetry";    //Reclaribation done
+    // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_12/telemetry";  // Reclaribation done
+    constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_13/telemetry";     //ReCalibration Done 
     // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_14/telemetry";
 
     // OTA
@@ -115,8 +115,8 @@ namespace Config {
     constexpr int          DST_OFFSET_SEC  = 0;
 
     // Calibration
-    constexpr float TEMP_OFFSET           = -0.8f;
-    constexpr float HUM_OFFSET            = +2.0f;
+    constexpr float TEMP_OFFSET           = 0.4f;
+    constexpr float HUM_OFFSET            = +7.0f;
 
     // Thresholds
     constexpr float TEMP_NORMAL           = 27.0f;

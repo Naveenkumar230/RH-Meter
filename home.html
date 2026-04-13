@@ -136,11 +136,11 @@
     .device-status-indicator { display:flex; align-items:center; gap:8px; }
     .device-status-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
     .device-status-dot.online   { background:var(--accent-green); box-shadow:0 0 8px var(--accent-green); animation:pulse 2s ease-in-out infinite; }
-    .device-status-dot.offline  { background:#94a3b8; }
+.device-status-dot.offline  { background:#ef4444 !important; box-shadow:0 0 8px #ef4444 !important; animation:blink 1s step-start infinite !important; }
     .device-status-dot.checking { background:var(--accent-orange); box-shadow:0 0 8px var(--accent-orange); animation:pulse 1s ease-in-out infinite; }
     .device-status-text { font-size:0.8rem; font-weight:700; }
     .device-status-text.online   { color:var(--accent-green); }
-    .device-status-text.offline  { color:#94a3b8; }
+.device-status-text.offline  { color:#ef4444 !important; }
     .device-status-text.checking { color:var(--accent-orange); }
     .device-last-seen { font-size:0.72rem; color:var(--text-muted); font-family:'JetBrains Mono',monospace; }
     .device-arrow { font-size:0.9rem; color:var(--accent-blue); opacity:0; transition:all 0.3s ease; transform:translateX(-4px); }
@@ -210,6 +210,10 @@
     .filter-active-chip button { background:none; border:none; cursor:pointer; color:var(--accent-red); font-size:0.85rem; padding:0; line-height:1; }
     @media (max-width:768px) { .device-grid { grid-template-columns:1fr; } .action-dropdown { max-width:100%; } }
     @media (max-width:480px) { .device-card-data { padding:14px 16px; } .device-card-top { padding:16px 16px 12px; } .device-card-bottom { padding:10px 16px; } .device-data-value { font-size:1.4rem; } }
+  @keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
   </style>
 </head>
 <body>
@@ -225,7 +229,10 @@
       </div>
     </div>
     <div class="home-header-right" style="gap:10px;">
-      <div class="records-badge" id="onlineCountBadge">🟢 Checking...</div>
+  <div class="records-badge" id="onlineCountBadge">🟢 Checking...</div>
+  <a href="images.html" class="header-action-btn" style="text-decoration:none;">
+    🔧 Device Info
+  </a>
 
       <!-- Filter Button -->
       <div>
@@ -277,7 +284,10 @@
     <p>No devices exceeded the set thresholds during the selected date range.</p>
   </div>
 
-  <div class="home-footer">RH-Meter &nbsp;·&nbsp; All times in IST</div>
+<div class="home-footer">
+  RH-Meter &nbsp;·&nbsp; All times in IST &nbsp;·&nbsp; 
+  &copy; 2026 Aquarelle India Pvt. Ltd. All rights reserved.
+</div>
 </div>
 
 <!-- Dropdown backdrop -->
@@ -538,7 +548,12 @@ function renderDeviceGrid(filterIds) {
     const dotClass  = isCheck?'checking':(isOnline?'online':'offline');
     const cardClass = isCheck?'':(isOnline?'online-card':'offline-card');
     const labelText = isCheck?'Checking...':(isOnline?'Online':'Offline');
-    const lastStr   = lastSeen ? new Date(lastSeen).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true}) : '';
+const lastStr = lastSeen ? (() => {
+  const d = new Date(lastSeen);
+  const date = d.toLocaleDateString('en-IN', { day:'2-digit', month:'short', timeZone:'Asia/Kolkata' });
+  const time = d.toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit', hour12:true, timeZone:'Asia/Kolkata' });
+  return `${date}, ${time}`;
+})() : '';
     const hasData   = temp!=null && hum!=null;
     const tempDisp  = hasData ? parseFloat(temp).toFixed(1) : '--';
     const humDisp   = hasData ? parseFloat(hum).toFixed(1)  : '--';
