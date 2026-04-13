@@ -4,7 +4,9 @@
 // ============================================================
 // const SERVER_URL = 'https://rh-meter-production.up.railway.app';
 // const SERVER_URL = 'http://localhost:3000';
-const SERVER_URL = 'https://rh-meter-bridge.onrender.com';
+// const SERVER_URL = 'https://rh-meter-bridge.onrender.com';
+
+const SERVER_URL = 'https://rh-meter-production.onrender.com';
 
 
 // ════════════════════════════════════════════════════════════
