@@ -7,7 +7,7 @@ const https    = require('https');
 const mqtt     = require('mqtt');
 
 // ── Constants ─────────────────────────────────────────────────
-const DASHBOARD_URL = 'https://rh-meter-bridge.onrender.com';
+const DASHBOARD_URL = 'https://rh-meter-production.onrender.com';
 const LOCATION_NAME = 'CT-PAT Area';
 const SENDER_EMAIL  = 'naveenkumarak2002@gmail.com';
 const BREVO_API_KEY = process.env.BREVO_API_KEY;
@@ -267,7 +267,7 @@ async function sendEmail(subject, htmlBody, recipients) {
 
 // ── Email Template ────────────────────────────────────────────
 function buildAlertEmail({ deviceId, friendlyName, location, alertType, actualValue, threshold, unit, otherTemp, otherHum, tempThreshold, humThreshold, time, date, combined }) {
-  const dashUrl = `https://rh-meter-bridge.onrender.com/detail.html?id=${deviceId}`;
+const dashUrl = `https://rh-meter-production.onrender.com/detail.html?id=${deviceId}`;
 
   const tempIsAlert = otherTemp != null && tempThreshold != null && otherTemp > tempThreshold;
   const humIsAlert  = otherHum  != null && humThreshold  != null && otherHum  > humThreshold;
@@ -573,7 +573,7 @@ async function checkAndAlert(record) {
 // ── Keep-alive ping ───────────────────────────────────────────
 cron.schedule('*/10 * * * *', async () => {
   try {
-    await axios.get('https://rh-meter-bridge.onrender.com/api/ping');
+await axios.get('https://rh-meter-production.onrender.com/api/ping');
     console.log('⚡ Self-ping OK');
   } catch (e) {
     console.error('Self-ping failed:', e.message);

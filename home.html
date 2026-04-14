@@ -214,6 +214,188 @@
   0%, 100% { opacity: 1; }
   50%       { opacity: 0; }
 }
+
+/* ── Team Footer ─────────────────────────────────────── */
+.team-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  padding: 32px 24px;
+  background: var(--bg-card);
+  border-top: 1px solid var(--border);
+  margin-top: 32px;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  justify-content: center;
+}
+.team-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 260px;
+  flex: 1;
+}
+.team-section-title {
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.team-cards-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.team-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 16px;
+  flex: 1;
+  min-width: 200px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.team-card:hover {
+  border-color: var(--accent-blue);
+  box-shadow: 0 4px 16px rgba(59,130,246,0.12);
+}
+.owner-card {
+  border-color: rgba(245,158,11,0.3);
+  background: rgba(245,158,11,0.04);
+}
+.owner-card:hover {
+  border-color: var(--accent-orange);
+  box-shadow: 0 4px 16px rgba(245,158,11,0.15);
+}
+.team-avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--border);
+  flex-shrink: 0;
+}
+.team-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.team-name {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text);
+}
+.team-position {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--accent-blue);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.team-email {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+}
+@media (max-width: 768px) {
+  .team-footer { flex-direction: column; }
+  .team-cards-row { flex-direction: column; }
+}
+
+/* ── Responsive Header Fix ───────────────────────────── */
+.home-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 16px 20px;
+}
+
+.home-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.home-header-right {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Shrink logo on mobile */
+@media (max-width: 600px) {
+  .home-header {
+    padding: 12px 14px;
+    gap: 10px;
+  }
+
+  .home-header-left img {
+    height: 36px !important;
+  }
+
+  .home-header-left h4 {
+    font-size: 1.1rem !important;
+  }
+
+  .home-header-left div {
+    font-size: 0.7rem !important;
+  }
+
+  /* Make all header buttons smaller on mobile */
+  .header-action-btn {
+    padding: 7px 10px;
+    font-size: 0.75rem;
+  }
+
+  .records-badge {
+    font-size: 0.72rem;
+    padding: 5px 10px;
+  }
+
+  .settings-icon-btn {
+    font-size: 0.85rem;
+    padding: 6px 8px;
+  }
+
+  /* Location buttons wrap nicely */
+  .location-toggle-bar {
+    gap: 6px;
+  }
+
+  .loc-btn {
+    padding: 7px 12px;
+    font-size: 0.78rem;
+  }
+}
+
+@media (max-width: 400px) {
+  .home-header-right {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .header-action-btn {
+    padding: 6px 9px;
+    font-size: 0.7rem;
+    gap: 4px;
+  }
+
+  .loc-btn {
+    padding: 6px 10px;
+    font-size: 0.72rem;
+  }
+}
+
   </style>
 </head>
 <body>
@@ -228,7 +410,7 @@
         <div style="font-size:0.8rem;color:var(--text-muted);font-family:'JetBrains Mono',monospace;">Relative Humidity &amp; Temperature — All Devices</div>
       </div>
     </div>
-    <div class="home-header-right" style="gap:10px;">
+<div class="home-header-right" style="gap:8px; flex-wrap:wrap; justify-content:flex-end;">
   <div class="records-badge" id="onlineCountBadge">🟢 Checking...</div>
   <a href="images.html" class="header-action-btn" style="text-decoration:none;">
     🔧 Device Info
@@ -284,10 +466,72 @@
     <p>No devices exceeded the set thresholds during the selected date range.</p>
   </div>
 
-<div class="home-footer">
+<!-- TEAM FOOTER -->
+<div class="team-footer">
+
+  <!-- OWNER -->
+  <div class="team-section">
+    <div class="team-section-title">👑 Owner</div>
+    <div class="team-card owner-card">
+      <img src="down.png" alt="Owner" class="team-avatar">
+      <div class="team-info">
+        <div class="team-name">Naveen Kumar A k </div>
+        <div class="team-position">Executive-R&D</div>
+        <div class="team-email">📧 naveenkumarak@aquarelle.com</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BNG CHAMPIONS -->
+  <div class="team-section">
+    <div class="team-section-title">🏆 BNG Champion</div>
+    <div class="team-cards-row">
+      <div class="team-card">
+        <img src="download.png" alt="BNG Champion 1" class="team-avatar">
+        <div class="team-info">
+          <div class="team-name">YOUR BNG NAME 1</div>
+          <div class="team-position">YOUR BNG POSITION 1</div>
+          <div class="team-email">📧 YOUR_BNG1_EMAIL@company.com</div>
+        </div>
+      </div>
+      <div class="team-card">
+        <img src="download.png" alt="BNG Champion 2" class="team-avatar">
+        <div class="team-info">
+          <div class="team-name">YOUR BNG NAME 2</div>
+          <div class="team-position">YOUR BNG POSITION 2</div>
+          <div class="team-email">📧 YOUR_BNG2_EMAIL@company.com</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SAMUDRA CHAMPIONS -->
+  <div class="team-section">
+    <div class="team-section-title">🏆 Samudra Champion</div>
+    <div class="team-cards-row">
+      <div class="team-card">
+        <img src="download.png" alt="Samudra Champion 1" class="team-avatar">
+        <div class="team-info">
+          <div class="team-name">YOUR SAMUDRA NAME 1</div>
+          <div class="team-position">YOUR SAMUDRA POSITION 1</div>
+          <div class="team-email">📧 YOUR_SAMUDRA1_EMAIL@company.com</div>
+        </div>
+      </div>
+      <div class="team-card">
+        <img src="download.png" alt="Samudra Champion 2" class="team-avatar">
+        <div class="team-info">
+          <div class="team-name">YOUR SAMUDRA NAME 2</div>
+          <div class="team-position">YOUR SAMUDRA POSITION 2</div>
+          <div class="team-email">📧 YOUR_SAMUDRA2_EMAIL@company.com</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="home-footer">
   RH-Meter &nbsp;·&nbsp; All times in IST &nbsp;·&nbsp; 
   &copy; 2026 Aquarelle India Pvt. Ltd. All rights reserved.
 </div>
+
 </div>
 
 <!-- Dropdown backdrop -->
@@ -393,7 +637,7 @@
       <div class="settings-section-title">ℹ️ About</div>
       <div style="font-size:0.8rem;color:var(--text-muted);line-height:1.8;">
         <div>📦 <b>Version:</b> Factory Monitor Pro v3.0</div>
-        <div>🌐 <b>Server:</b> rh-meter-bridge.onrender.com</div>
+        <div>🌐 <b>Server:</b> https://rh-meter-production.onrender.com/home.html</div>
         <div>📡 <b>Broker:</b> HiveMQ Cloud</div>
         <div>🗄️ <b>Database:</b> MongoDB Atlas</div>
       </div>

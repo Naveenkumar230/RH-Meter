@@ -1280,12 +1280,13 @@ function populateNameEditor() {
 
       <!-- Individual Save Button -->
       <button
-        onclick="saveLocationRecipients('loc_${group.key}', '${group.label}')"
-        style="width:100%;padding:10px;background:linear-gradient(135deg,${group.color},${group.color}cc);
-          color:#fff;border:none;border-radius:10px;font-size:0.85rem;font-weight:700;
-          cursor:pointer;transition:all 0.2s ease;">
-        💾 Save ${group.label} Recipients
-      </button>
+       <button
+  onclick="saveLocationRecipients('loc_${group.key}', '${group.label}')"
+  style="width:100%;padding:10px;background:#2563eb;
+    color:#ffffff !important;border:none;border-radius:10px;font-size:0.85rem;font-weight:700;
+    cursor:pointer;transition:all 0.2s ease;-webkit-text-fill-color:#ffffff;">
+  Save ${group.label} Recipients
+</button>
     `;
     list.appendChild(card);
   });
@@ -1343,14 +1344,14 @@ function populateNameEditor() {
       </div>
 
       <!-- Individual Save Button -->
-      <button
-        onclick="saveDeviceName('${deviceId}')"
-        style="width:100%;padding:9px;background:var(--bg);
-          color:var(--accent-blue);border:1.5px solid var(--accent-blue);
-          border-radius:10px;font-size:0.82rem;font-weight:700;
-          cursor:pointer;transition:all 0.2s ease;">
-        💾 Save Name
-      </button>
+     <button
+  onclick="saveDeviceName('${deviceId}')"
+  style="width:100%;padding:9px;background:#2563eb;
+    color:#ffffff !important;border:none;
+    border-radius:10px;font-size:0.82rem;font-weight:700;
+    cursor:pointer;transition:all 0.2s ease;-webkit-text-fill-color:#ffffff;">
+  Save Name
+</button>
     `;
     list.appendChild(card);
   });
@@ -1700,9 +1701,84 @@ async function checkDeviceStatus(deviceId) {
 
 async function refreshAllDeviceStatuses() {
   const keys = Object.keys(DEVICE_NAME_MAP);
-  // Check all in parallel
   await Promise.all(keys.map(id => checkDeviceStatus(id)));
-  renderDeviceGrid(filterActive ? filteredDeviceIds : null);
+
+  // ── Soft update: if grid already has cards, just patch values ──
+  const grid = document.getElementById('deviceGrid');
+  const existingCards = grid ? grid.querySelectorAll('.device-card') : [];
+
+  if (existingCards.length > 0) {
+    // Just patch each existing card's values without rebuilding
+    keys.forEach(deviceId => {
+      const card = grid.querySelector(`a[href*="id=${deviceId}"]`);
+      if (!card) return;
+
+      const status   = deviceStatusCache[deviceId] || {};
+      const isOnline = status.online === true;
+      const isCheck  = status.online === undefined;
+      const temp     = status.temp;
+      const hum      = status.hum;
+      const lastSeen = status.lastSeen;
+
+      // Update status dot + text
+      const dot  = card.querySelector('.device-status-dot');
+      const text = card.querySelector('.device-status-text');
+      if (dot && text) {
+        dot.className  = `device-status-dot ${isCheck ? 'checking' : isOnline ? 'online' : 'offline'}`;
+        text.className = `device-status-text ${isCheck ? 'checking' : isOnline ? 'online' : 'offline'}`;
+        text.textContent = isCheck ? 'Checking...' : isOnline ? 'Online' : 'Offline';
+      }
+
+      // Update last seen
+      const lastEl = card.querySelector('.device-last-seen');
+      if (lastEl && lastSeen) {
+        const d    = new Date(lastSeen);
+        const date = d.toLocaleDateString('en-IN', { day:'2-digit', month:'short', timeZone:'Asia/Kolkata' });
+        const time = d.toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit', hour12:true, timeZone:'Asia/Kolkata' });
+        lastEl.textContent = `Last: ${date}, ${time}`;
+      }
+
+      // Update temperature
+      const tempEl = card.querySelector('.device-data-value.temp-value, .device-data-value.no-data');
+      const humEl  = card.querySelectorAll('.device-data-value')[1];
+
+      const hasData  = isOnline && temp != null && hum != null;
+      const tempDisp = hasData ? parseFloat(temp).toFixed(1) : '--';
+      const humDisp  = hasData ? parseFloat(hum).toFixed(1)  : '--';
+      const tempAlert = hasData && parseFloat(temp) > thresholds.temp;
+      const humAlert  = hasData && parseFloat(hum)  > thresholds.hum;
+
+      const tempValueEl = card.querySelectorAll('.device-data-value')[0];
+      const humValueEl  = card.querySelectorAll('.device-data-value')[1];
+
+      if (tempValueEl) {
+        tempValueEl.textContent = tempDisp;
+        tempValueEl.className   = hasData
+          ? (tempAlert ? 'device-data-value temp-value temp-alert' : 'device-data-value temp-value')
+          : 'device-data-value no-data';
+      }
+      if (humValueEl) {
+        humValueEl.textContent = humDisp;
+        humValueEl.className   = hasData
+          ? (humAlert ? 'device-data-value hum-value hum-alert' : 'device-data-value hum-value')
+          : 'device-data-value no-data';
+      }
+
+      // Update card alert border class (without touching other classes)
+      const alertCard = (tempAlert || humAlert);
+      card.classList.remove('alert-card', 'online-card', 'offline-card');
+      if (alertCard)     card.classList.add('alert-card');
+      else if (isOnline) card.classList.add('online-card');
+      else if (!isCheck) card.classList.add('offline-card');
+    });
+
+    // Still update the summary badge
+    updateSummaryBar();
+
+  } else {
+    // Grid is empty — do full render (first load)
+    renderDeviceGrid(activeThresholdIds);
+  }
 }
 
 // ════════════════════════════════════════════════════════════
