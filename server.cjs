@@ -772,18 +772,50 @@ app.post('/api/settings', async (req, res) => {
 // ── Test email ────────────────────────────────────────────────
 app.post('/api/test-email', async (req, res) => {
   try {
+    console.log('[TestEmail] Request body:', req.body);
+
     const settings   = await Settings.findOne({ key: 'global' });
     let recipientStr = (req.body.recipients || (settings && settings.recipients) || '').trim();
-    if (!recipientStr) return res.status(400).json({ ok: false, error: 'No recipients configured' });
+
+    console.log('[TestEmail] Recipients:', recipientStr);
+    console.log('[TestEmail] BREVO_API_KEY set:', !!process.env.BREVO_API_KEY);
+
+    if (!recipientStr) {
+      return res.status(400).json({ ok: false, error: 'No recipients configured. Add recipients in Settings first.' });
+    }
+
     const recipients = recipientStr.split(',').map(e => e.trim()).filter(Boolean);
     const time       = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
-    const html       = `<p>✅ Test email from RH-Meter. Server time: ${time}</p>`;
-    const result     = await sendEmail('✅ RH-Meter — Test Email', html, recipients);
+    const html       = `
+      <div style="font-family:Arial,sans-serif;padding:24px;max-width:480px;margin:0 auto;
+        border:1px solid #e2e8f0;border-radius:12px;">
+        <h2 style="color:#1e3a5f;margin-bottom:8px;">✅ RH-Meter Test Email</h2>
+        <p style="color:#64748b;font-size:14px;">
+          This is a test email from your RH-Meter monitoring system.
+        </p>
+        <p style="color:#64748b;font-size:13px;margin-top:16px;">
+          🕐 Sent at: <strong>${time} IST</strong>
+        </p>
+        <p style="color:#64748b;font-size:13px;">
+          If you received this, your email alerts are working correctly.
+        </p>
+        <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0;">
+        <p style="color:#94a3b8;font-size:12px;">
+          Aquarelle India Pvt. Ltd. — RH-Meter Alert System
+        </p>
+      </div>`;
+
+    const result = await sendEmail('✅ RH-Meter — Test Email', html, recipients);
+
+    console.log('[TestEmail] Send result:', result);
+
     if (!result.ok) return res.status(500).json({ ok: false, error: result.error });
     res.json({ ok: true });
-  } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
+  } catch (err) {
+    console.error('[TestEmail] Error:', err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
 });
-
 // ── Test alert email ──────────────────────────────────────────
 app.post('/api/test-alert-email', async (req, res) => {
   try {
