@@ -166,8 +166,9 @@ height: -webkit-fill-available;
   .hub-topbar-logo   { height: 36px; flex-shrink: 0; }
   .hub-topbar-title  { font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .hub-topbar-sub    { font-size: 0.65rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .hub-topbar-right  { display: none; }   /* hides the clock on mobile */
+.hub-topbar-right  { display: flex; align-items: center; }
   .hub-launcher      { padding: 16px 12px; }
+  #analogClock { width: 40px; height: 40px; }
   .hub-grid          { grid-template-columns: 1fr; gap: 12px; }
   .hub-footer        { padding: 10px 14px; font-size: 0.65rem; }
   .hub-card-top      { padding: 14px 14px 12px; }
@@ -185,13 +186,21 @@ height: -webkit-fill-available;
       <div>
         <div class="hub-topbar-title">IOT Nexus</div>
         <div class="hub-topbar-sub">Aquarelle India PVT.LTD</div>
-            <span style="margin-left:auto" id="footerClock"></span>
-
+      </div>
+    </div>
+    <!-- TOPBAR -->
+  <div class="hub-topbar">
+    <div class="hub-topbar-left">
+      <!-- <img src="logo.png" alt="Logo" class="hub-topbar-logo"> -->
+      <div>
+        <!-- <div class="hub-topbar-title">IOT Nexus</div> -->
+        <!-- <div class="hub-topbar-sub">Aquarelle India PVT.LTD</div> -->
       </div>
     </div>
     <div class="hub-topbar-right">
-  <span style="font-size:0.65rem;color:var(--text-muted);font-family:'JetBrains Mono',monospace;" id="topClock"></span>
-</div>
+      <canvas id="analogClock" width="52" height="52"></canvas>
+    </div>
+  </div>
   </div>
 
   <!-- LAUNCHER -->
@@ -285,15 +294,82 @@ function buildGrid() {
   });
 }
 
-function updateClock() {
-  const t = new Date().toLocaleTimeString('en-IN', {
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true
-  });
-  document.getElementById('footerClock').textContent = t;
-  document.getElementById('topClock').textContent = t;
+function drawClock() {
+  const canvas = document.getElementById('analogClock');
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  const cx = w/2, cy = h/2, r = w/2 - 2;
+  const now = new Date();
+  const hr = now.getHours() % 12, mn = now.getMinutes(), sc = now.getSeconds();
+
+  ctx.clearRect(0, 0, w, h);
+
+  // Face
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI*2);
+  ctx.fillStyle = '#1e293b';
+  ctx.fill();
+  ctx.strokeStyle = '#334155';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // Tick marks
+  for (let i = 0; i < 60; i++) {
+    const ang = (i * Math.PI * 2) / 60 - Math.PI/2;
+    const isMaj = i % 5 === 0;
+    const outer = r - 1;
+    const inner = isMaj ? r - 6 : r - 3.5;
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(ang)*inner, cy + Math.sin(ang)*inner);
+    ctx.lineTo(cx + Math.cos(ang)*outer, cy + Math.sin(ang)*outer);
+    ctx.strokeStyle = '#475569';
+    ctx.lineWidth = isMaj ? 1.5 : 0.8;
+    ctx.stroke();
+  }
+
+  // Hour hand
+  const hAng = ((hr + mn/60) / 12) * Math.PI * 2 - Math.PI/2;
+  ctx.beginPath();
+  ctx.moveTo(cx - Math.cos(hAng)*3, cy - Math.sin(hAng)*3);
+  ctx.lineTo(cx + Math.cos(hAng)*(r*0.5), cy + Math.sin(hAng)*(r*0.5));
+  ctx.strokeStyle = '#f8fafc';
+  ctx.lineWidth = 2.5;
+  ctx.lineCap = 'round';
+  ctx.stroke();
+
+  // Minute hand
+  const mAng = ((mn + sc/60) / 60) * Math.PI * 2 - Math.PI/2;
+  ctx.beginPath();
+  ctx.moveTo(cx - Math.cos(mAng)*3, cy - Math.sin(mAng)*3);
+  ctx.lineTo(cx + Math.cos(mAng)*(r*0.72), cy + Math.sin(mAng)*(r*0.72));
+  ctx.strokeStyle = '#f8fafc';
+  ctx.lineWidth = 1.8;
+  ctx.lineCap = 'round';
+  ctx.stroke();
+
+  // Second hand
+  const sAng = (sc / 60) * Math.PI * 2 - Math.PI/2;
+  ctx.beginPath();
+  ctx.moveTo(cx - Math.cos(sAng)*5, cy - Math.sin(sAng)*5);
+  ctx.lineTo(cx + Math.cos(sAng)*(r*0.82), cy + Math.sin(sAng)*(r*0.82));
+  ctx.strokeStyle = '#38bdf8';
+  ctx.lineWidth = 1;
+  ctx.lineCap = 'round';
+  ctx.stroke();
+
+  // Center dot
+  ctx.beginPath();
+  ctx.arc(cx, cy, 3, 0, Math.PI*2);
+  ctx.fillStyle = '#38bdf8';
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(cx, cy, 1.2, 0, Math.PI*2);
+  ctx.fillStyle = '#0f172a';
+  ctx.fill();
+
+  requestAnimationFrame(drawClock);
 }
-updateClock();
-setInterval(updateClock, 1000);
+drawClock();
 buildGrid();
 </script>
 </body>
