@@ -797,7 +797,7 @@
   }
 
   // ── Live reading ──────────────────────────────────────────
-  async function fetchLive(id) {
+async function fetchLive(id) {
     addUser('⚡ Live reading');
     const t  = addTyping();
     const SV = getServerUrl();
@@ -822,7 +822,7 @@
       const sum = await gemini(
         `Device: ${nm} (${id}). Live reading: Temp=${temp}°C (threshold ${th.temp}°C), Hum=${hum}% (threshold ${th.hum}%). ${tA?'Temperature ABOVE threshold!':''} ${hA?'Humidity ABOVE threshold!':''} Give a 2-sentence status summary.`
       );
-      addBot(`📡 <b>Live — ${nm}</b>\n${sum}`, null,
+      addBot(`📡 <b>Live — ${nm}</b>${sum ? '<br><br>' + sum : ''}`, null,
         dataCard([
           { label:'🌡️ Temperature', val:`${parseFloat(temp).toFixed(1)} °C`, alert:tA },
           { label:'💧 Humidity',    val:`${parseFloat(hum).toFixed(1)} %`,   alert:hA },
@@ -918,7 +918,7 @@
   }
 
   // ── Fetch data for a date range ───────────────────────────
-  async function fetchDateRange(id, from, to, existingTyping, isToday) {
+async function fetchDateRange(id, from, to, existingTyping, isToday) {
     if (!existingTyping) addUser(`📅 ${from === to ? from : from + ' → ' + to}`);
     const t  = existingTyping || addTyping();
     const SV = getServerUrl();
@@ -938,7 +938,6 @@
       const avg = arr => (arr.reduce((a,b)=>a+b,0)/arr.length).toFixed(1);
 
       if (isSingleDay || isToday) {
-        // ── Single day: show summary card ──────────────────
         const temps = records.map(r => r.temperature ?? r.temp).filter(v => v != null);
         const hums  = records.map(r => r.humidity    ?? r.hum ).filter(v => v != null);
         const minT  = Math.min(...temps).toFixed(1), maxT = Math.max(...temps).toFixed(1), avgT = avg(temps);
@@ -946,7 +945,7 @@
         const tB    = temps.filter(v => v > th.temp).length;
         const hB    = hums.filter(v  => v > th.hum ).length;
         const sum   = await gemini(`Device: ${nm}. ${isToday?'Today':'Date '+from} stats (${records.length} readings): Temp min=${minT} avg=${avgT} max=${maxT}°C. Hum min=${minH} avg=${avgH} max=${maxH}%. Thresholds temp=${th.temp}°C hum=${th.hum}%. 2-sentence summary.`);
-        addBot(`${isToday?'📊 Today':'📅 '+from} — <b>${nm}</b>\n${sum}`, null,
+        addBot(`${isToday?'📊 Today':'📅 '+from} — <b>${nm}</b>${sum ? '<br><br>' + sum : ''}`, null,
           dataCard([
             { label:'🌡️ Min / Avg / Max Temp', val:`${minT} / ${avgT} / ${maxT} °C`, alert: parseFloat(maxT) > th.temp },
             { label:'💧 Min / Avg / Max Hum',  val:`${minH} / ${avgH} / ${maxH} %`,  alert: parseFloat(maxH) > th.hum  },
@@ -956,7 +955,6 @@
           ])
         );
       } else {
-        // ── Multi-day range: group by day → one card per day ──
         const dayMap = {};
         records.forEach(r => {
           const d   = new Date(r.timestamp);
@@ -977,11 +975,9 @@
         const totalTB = allT.filter(v => v > th.temp).length;
         const totalHB = allH.filter(v => v > th.hum ).length;
 
-        // Summary header
         const sum = await gemini(`Device: ${nm}. Range ${from} to ${to} (${days.length} days, ${records.length} readings). Overall temp avg=${avg(allT)}°C max=${Math.max(...allT).toFixed(1)}°C. Hum avg=${avg(allH)}% max=${Math.max(...allH).toFixed(1)}%. ${totalTB} temp breaches, ${totalHB} hum breaches. 2-sentence overview.`);
-        addBot(`📅 <b>${nm}</b> · ${from} → ${to} · ${days.length} days\n${sum}`);
+        addBot(`📅 <b>${nm}</b> · ${from} → ${to} · ${days.length} days${sum ? '<br><br>' + sum : ''}`);
 
-        // One card per day
         days.forEach(day => {
           const d    = dayMap[day];
           if (!d.temps.length) return;
@@ -1022,7 +1018,7 @@
   }
 
   // ── Fetch breach data ─────────────────────────────────────
-  async function fetchBreaches(id, from, to) {
+async function fetchBreaches(id, from, to) {
     addUser(`⚠️ Breaches ${from === to ? from : from+' → '+to}`);
     const t  = addTyping();
     const SV = getServerUrl();
@@ -1052,7 +1048,7 @@
         `Device: ${nm}. ${from} to ${to}: ${records.length} total readings, ${breaches.length} breached thresholds (temp>${th.temp}°C or hum>${th.hum}%). Breach rate: ${bRate}%. Give a 2-sentence alert summary.`
       );
 
-      addBot(`⚠️ <b>Breach Report — ${nm}</b>\n${sum}`, null,
+      addBot(`⚠️ <b>Breach Report — ${nm}</b>${sum ? '<br><br>' + sum : ''}`, null,
         dataCard([
           { label:'📦 Total Readings',  val:records.length,  alert:false },
           { label:'⚠️ Breached',        val:breaches.length, alert:true  },
@@ -1067,20 +1063,103 @@
     }
   }
 
-  // ── Gemini API call ───────────────────────────────────────
-  async function gemini(prompt) {
+  // ── Gemini API call — via server proxy ───────────────────
+
+const geminiQueue = {
+  lastCall:    0,
+  minGap:      4500,          // max ~13 calls/min, well under the 15/min free limit
+  blocked:     false,         // true when we know we're rate-limited
+  blockedUntil: 0,
+};
+
+async function gemini(prompt) {
+  if (geminiQueue.blocked && Date.now() < geminiQueue.blockedUntil) {
+    return '';
+  }
+  geminiQueue.blocked = false;
+
+  const now  = Date.now();
+  const wait = geminiQueue.minGap - (now - geminiQueue.lastCall);
+  if (wait > 0) await new Promise(r => setTimeout(r, wait));
+  geminiQueue.lastCall = Date.now();
+
+  try {
+    const res = await fetch(`${getServerUrl()}/api/gemini`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ prompt })
+    });
+
+    if (!res.ok) {
+      if (res.status === 429) {
+        geminiQueue.blocked      = true;
+        geminiQueue.blockedUntil = Date.now() + 60000;
+      }
+      return '';
+    }
+
+    const data = await res.json();
+    return data?.text || '';
+
+  } catch {
+    return '';
+  }
+}
+
+  // ── Voice transcription — Gemini audio via server proxy ───
+  async function transcribeWithWhisper(audioBlob) {
     try {
-      const res  = await fetch(GEMINI_URL, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents:         [{ parts:[{ text: prompt }] }],
-          generationConfig: { maxOutputTokens: 130, temperature: 0.4 }
-        })
-      });
-      const data = await res.json();
-      return data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    } catch { return ''; }
+      const arrayBuffer = await audioBlob.arrayBuffer();
+      const uint8Array  = new Uint8Array(arrayBuffer);
+      let binary = '';
+      uint8Array.forEach(b => binary += String.fromCharCode(b));
+      const base64Audio = btoa(binary);
+
+      const now  = Date.now();
+      const wait = geminiQueue.minGap - (now - geminiQueue.lastCall);
+      if (wait > 0) await new Promise(r => setTimeout(r, wait));
+      geminiQueue.lastCall = Date.now();
+
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        const res = await fetch(`${getServerUrl()}/api/gemini`, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            parts: [
+              {
+                inline_data: {
+                  mime_type: 'audio/webm',
+                  data:      base64Audio
+                }
+              },
+              {
+                text: `Transcribe exactly what is spoken in this audio.
+This is a factory monitoring voice assistant.
+Possible words: Samudra, BNG, R&D, Meter 01 to Meter 13,
+live reading, today, yesterday, last 7 days, last 30 days,
+threshold breaches, date range, bye.
+Return ONLY the transcribed text, nothing else.`
+              }
+            ]
+          })
+        });
+
+        if (res.status === 429) {
+          await new Promise(r => setTimeout(r, attempt * 4000));
+          continue;
+        }
+
+        const data  = await res.json();
+        if (data.error) throw new Error(data.error);
+        const clean = (data.text || '').trim().replace(/^["']|["']$/g, '');
+        console.log('🎙️ [Gemini STT]:', clean);
+        return clean;
+      }
+      return '';
+    } catch (err) {
+      console.error('Transcribe error:', err);
+      return '';
+    }
   }
 
   // ── Date helpers ──────────────────────────────────────────

@@ -907,6 +907,38 @@ app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
 });
 
 
+// ── Gemini Proxy (keeps API key server-side) ──────────────────
+app.post('/api/gemini', async (req, res) => {
+  try {
+    const { prompt, parts } = req.body;
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) return res.status(500).json({ error: 'GEMINI_API_KEY not set' });
+
+    const contents = parts
+      ? [{ parts }]
+      : [{ parts: [{ text: prompt }] }];
+
+    const response = await axios.post(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      { contents, generationConfig: { maxOutputTokens: 130, temperature: 0.4 } },
+      { headers: { 'Content-Type': 'application/json' } }
+    );
+
+    const text = response.data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    res.json({ text });
+
+  } catch (err) {
+    const status = err.response?.status;
+    const msg    = err.response?.data?.error?.message || err.message;
+    if (status === 429) {
+      // Return empty text silently — client will skip the summary gracefully
+      return res.status(200).json({ text: '' });
+    }
+    console.error(`❌ [Gemini] ${status} — ${msg}`);
+    res.status(status || 500).json({ error: msg });
+  }
+});
+
 // ── Reset cooldowns ───────────────────────────────────────────
 app.post('/api/reset-cooldown', async (req, res) => {
   try {
