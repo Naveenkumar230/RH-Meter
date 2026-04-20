@@ -5,6 +5,9 @@ const axios    = require('axios');
 const cors     = require('cors');
 const https    = require('https');
 const mqtt     = require('mqtt');
+const multer   = require('multer');
+const FormData = require('form-data');
+const upload   = multer({ storage: multer.memoryStorage() });
 
 // ── Constants ─────────────────────────────────────────────────
 const DASHBOARD_URL = 'https://rh-meter-production.onrender.com';
@@ -859,6 +862,50 @@ app.post('/api/test-alert-email', async (req, res) => {
     res.json({ ok: true, usedData: { temp, hum, deviceId, friendlyName, location } });
   } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
 });
+// ── Whisper Transcription Proxy ───────────────────────────────
+app.post('/api/transcribe', upload.single('audio'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No audio file received' });
+
+    const openaiKey = process.env.OPENAI_API_KEY;
+    if (!openaiKey) return res.status(500).json({ error: 'OPENAI_API_KEY not set on server' });
+
+    const form = new FormData();
+    form.append('file', req.file.buffer, {
+      filename:    'audio.webm',
+      contentType: req.file.mimetype || 'audio/webm',
+    });
+    form.append('model',    'whisper-1');
+    form.append('language', 'en');
+    form.append('prompt',
+      'Factory monitoring. Locations: Samudra, BNG, R and D. ' +
+      'Devices: Meter 01 through Meter 13. ' +
+      'Commands: live reading, today stats, threshold breaches, last 7 days, yesterday, last 30 days.'
+    );
+
+    const response = await axios.post(
+      'https://api.openai.com/v1/audio/transcriptions',
+      form,
+      {
+        headers: {
+          'Authorization': `Bearer ${openaiKey}`,
+          ...form.getHeaders()
+        },
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity,
+      }
+    );
+
+    console.log(`🎙️ [Whisper] Transcribed: "${response.data.text}"`);
+    res.json({ text: response.data.text });
+
+  } catch (err) {
+    const msg = err.response?.data?.error?.message || err.message;
+    console.error('❌ [Whisper] Transcription error:', msg);
+    res.status(500).json({ error: msg });
+  }
+});
+
 
 // ── Reset cooldowns ───────────────────────────────────────────
 app.post('/api/reset-cooldown', async (req, res) => {
@@ -867,6 +914,8 @@ app.post('/api/reset-cooldown', async (req, res) => {
     res.json({ ok: true, message: 'All cooldowns cleared.' });
   } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
 });
+
+
 
 // ── Debug ─────────────────────────────────────────────────────
 app.get('/api/debug', async (req, res) => {

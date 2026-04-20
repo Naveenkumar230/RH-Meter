@@ -11,9 +11,12 @@
     "axios": "^1.13.6",
     "cors": "^2.8.6",
     "express": "^4.22.1",
+    "form-data": "^4.0.5",
     "mongoose": "^7.8.9",
+    "mqtt": "^5.10.1",
+    "multer": "^2.1.1",
     "node-cron": "^4.2.1",
-    "mqtt": "^5.10.1"
+    "node-fetch": "^3.3.2"
   },
   "devDependencies": {
     "nodemon": "^3.0.0"

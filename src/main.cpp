@@ -93,7 +93,7 @@ namespace Config {
     // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_01/telemetry";  
     // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_02/telemetry";
     // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_03/telemetry";
-    //    constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_04/telemetry";
+    // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_04/telemetry";
     // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_05/telemetry";
     // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_06/telemetry";
     // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_07/telemetry";
@@ -102,7 +102,7 @@ namespace Config {
     // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_10/telemetry";  //Recalibration done
     // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_11/telemetry";    //Reclaribation done
     // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_12/telemetry";  // Reclaribation done
-    constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_13/telemetry";     //ReCalibration Done 
+       constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_13/telemetry";     //ReCalibration Done 
     // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_14/telemetry";
 
     // OTA
