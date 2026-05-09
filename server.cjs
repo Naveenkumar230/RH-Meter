@@ -1,3 +1,7 @@
+process.on('uncaughtException', (err) => { console.error('CRASH:', err.message, err.stack); });
+process.on('unhandledRejection', (err) => { console.error('REJECTION:', err.message, err.stack); });
+console.log('🚀 Server starting...');
+
 const express  = require('express');
 const mongoose = require('mongoose');
 const cron     = require('node-cron');
@@ -22,7 +26,7 @@ const latestReadings = {};
 
 // ── Location group map (used for per-location email routing) ──
 const LOCATION_GROUP_MAP = {
-  Meter_01: 'samudra', Meter_03: 'samudra', Meter_04: 'samudra',
+  Meter_01: 'samudra', Meter_04: 'samudra',
   Meter_05: 'samudra', Meter_06: 'samudra', Meter_07: 'samudra',
   Meter_08: 'samudra', Meter_09: 'samudra',
   Meter_10: 'bng',     Meter_11: 'bng',     Meter_12: 'bng',     Meter_13: 'bng',
@@ -31,7 +35,7 @@ const LOCATION_GROUP_MAP = {
 
 // ── Server-side location label map ────────────────────────────
 const LOCATION_MAP_SERVER = {
-  Meter_01: 'Samudra', Meter_02: 'R&D',     Meter_03: 'Samudra',
+  Meter_01: 'Samudra', Meter_02: 'R&D',
   Meter_04: 'Samudra', Meter_05: 'Samudra', Meter_06: 'Samudra',
   Meter_07: 'Samudra', Meter_08: 'Samudra', Meter_09: 'Samudra',
   Meter_10: 'BNG',     Meter_11: 'BNG',     Meter_12: 'BNG',
@@ -105,7 +109,7 @@ const COOLDOWN_MS = 3 * 60 * 60 * 1000; // 3 hours
 const DEFAULT_NAMES = {
   "Meter_01": "Production Floor - A",
   "Meter_02": "CT-PAT Area",
-  "Meter_03": "Quality Control Lab",
+  // "Meter_03": "Quality Control Lab",
   "Meter_04": "Warehouse - North",
   "Meter_05": "Warehouse - South",
   "Meter_06": "Packaging Unit - 1",

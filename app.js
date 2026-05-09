@@ -22,7 +22,6 @@ const SERVER_URL = 'https://rh-meter-production.onrender.com';
 const DEFAULT_DEVICE_NAME_MAP = {
   "Meter_01": "Production Floor - A",
   "Meter_02": "CT-PAT Area",
-  "Meter_03": "Quality Control Lab",
   "Meter_04": "Warehouse - North",
   "Meter_05": "Warehouse - South",
   "Meter_06": "Packaging Unit - 1",
@@ -1199,7 +1198,7 @@ function populateNameEditor() {
       key: 'samudra',
       label: 'Samudra',
       color: 'var(--accent-blue)',
-      devices: ['Meter_01','Meter_03','Meter_04','Meter_05','Meter_06','Meter_07','Meter_08','Meter_09']
+      devices: ['Meter_01','Meter_04','Meter_05','Meter_06','Meter_07','Meter_08','Meter_09']
     },
     {
       key: 'bng',
@@ -1305,7 +1304,7 @@ function populateNameEditor() {
   // ── Device name editor — one card per device with Save ────
   Object.keys(DEVICE_NAME_MAP).forEach(deviceId => {
     const friendlyName = DEVICE_NAME_MAP[deviceId];
-    const isSamudra = ['Meter_01','Meter_03','Meter_04','Meter_05','Meter_06','Meter_07','Meter_08','Meter_09'].includes(deviceId);
+    const isSamudra = ['Meter_01','Meter_04','Meter_05','Meter_06','Meter_07','Meter_08','Meter_09'].includes(deviceId);
     const isRD      = ['Meter_02'].includes(deviceId);
     const locLabel  = isSamudra ? 'Samudra' : isRD ? 'R&D' : 'BNG';
     const locColor  = isSamudra ? 'var(--accent-blue)' : isRD ? '#a855f7' : 'var(--accent-cyan)';
