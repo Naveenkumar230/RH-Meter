@@ -16,7 +16,7 @@ const upload   = multer({ storage: multer.memoryStorage() });
 // ── Constants ─────────────────────────────────────────────────
 const DASHBOARD_URL = 'https://rh-meter-production.onrender.com';
 const LOCATION_NAME = 'CT-PAT Area';
-const SENDER_EMAIL  = 'naveenkumarak2002@gmail.com';
+const SENDER_EMAIL = 'naveenkumarak@aquarelleindia.com';
 const BREVO_API_KEY = process.env.BREVO_API_KEY || '';
 const app = express();
 
