@@ -17,7 +17,7 @@ const upload   = multer({ storage: multer.memoryStorage() });
 const DASHBOARD_URL = 'https://rh-meter-production.onrender.com';
 const LOCATION_NAME = 'CT-PAT Area';
 const SENDER_EMAIL = 'naveenkumarak@aquarelleindia.com';
-const BREVO_API_KEY = process.env.BREVO_API_KEY || '';
+const RESEND_API_KEY = 're_KYu6QadV_LdhmotuY4tVN5CRAkvxmLEDP';
 const app = express();
 
 // ── In-memory stores ──────────────────────────────────────────
@@ -241,37 +241,53 @@ async function markAlertSent(key) {
 
 // ── Brevo email sender ────────────────────────────────────────
 async function sendEmail(subject, htmlBody, recipients) {
-  const apiKey = process.env.BREVO_API_KEY || BREVO_API_KEY;
-  if (!apiKey) { console.error('❌ BREVO_API_KEY not set'); return { ok: false, error: 'BREVO_API_KEY not configured' }; }
+  const apiKey = process.env.RESEND_API_KEY || RESEND_API_KEY;
+  if (!apiKey) {
+    console.error('❌ RESEND_API_KEY not set');
+    return { ok: false, error: 'RESEND_API_KEY not configured' };
+  }
 
   const payload = JSON.stringify({
-    sender:      { name: 'RH-Meter Alert System', email: SENDER_EMAIL },
-    to:          recipients.map(email => ({ email })),
+    from: 'RH-Meter Alert System <naveenkumarak@aquarelleindia.com>',
+    to: recipients,
     subject,
-    htmlContent: htmlBody
+    html: htmlBody
   });
 
   return new Promise((resolve) => {
     const req = https.request({
-      hostname: 'api.brevo.com', path: '/v3/smtp/email', method: 'POST',
+      hostname: 'api.resend.com',
+      path: '/emails',
+      method: 'POST',
       headers: {
-        'accept': 'application/json', 'api-key': apiKey,
-        'content-type': 'application/json', 'content-length': Buffer.byteLength(payload)
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(payload)
       }
     }, (res) => {
       let data = '';
       res.on('data', chunk => data += chunk);
       res.on('end', () => {
-        console.log(`[Brevo] Status: ${res.statusCode}, Response: ${data}`);
-        if (res.statusCode >= 400) { console.error('❌ Brevo error:', data); resolve({ ok: false, error: data }); }
-        else { console.log('✅ Email sent via Brevo'); resolve({ ok: true }); }
+        console.log(`[Resend] Status: ${res.statusCode}, Response: ${data}`);
+        if (res.statusCode >= 400) {
+          console.error('❌ Resend error:', data);
+          resolve({ ok: false, error: data });
+        } else {
+          console.log('✅ Email sent via Resend');
+          resolve({ ok: true });
+        }
       });
     });
-    req.on('error', (err) => { console.error('❌ Brevo request error:', err.message); resolve({ ok: false, error: err.message }); });
+    req.on('error', (err) => {
+      console.error('❌ Resend request error:', err.message);
+      resolve({ ok: false, error: err.message });
+    });
     req.write(payload);
     req.end();
   });
 }
+
+
 // ── Email Template ────────────────────────────────────────────
 function buildAlertEmail({ deviceId, friendlyName, location, alertType, actualValue, threshold, unit, otherTemp, otherHum, tempThreshold, humThreshold, time, date, combined }) {
 const dashUrl = `https://rh-meter-production.onrender.com/detail.html?id=${deviceId}`;
@@ -785,7 +801,7 @@ app.post('/api/test-email', async (req, res) => {
     let recipientStr = (req.body.recipients || (settings && settings.recipients) || '').trim();
 
     console.log('[TestEmail] Recipients:', recipientStr);
-console.log('[TestEmail] BREVO_API_KEY set:', !!BREVO_API_KEY);
+console.log('[TestEmail] RESEND_API_KEY set:', !!RESEND_API_KEY);
     if (!recipientStr) {
       return res.status(400).json({ ok: false, error: 'No recipients configured. Add recipients in Settings first.' });
     }
@@ -964,7 +980,7 @@ app.get('/api/debug', async (req, res) => {
       recipients:       s?.recipients,
       tempThreshold:    s?.tempThreshold,
       humThreshold:     s?.humThreshold,
-brevoKeySet: !!BREVO_API_KEY,
+resendKeySet: !!RESEND_API_KEY,
       locationRecipients: recDoc?.recipients || {},
       cooldowns,
     });
