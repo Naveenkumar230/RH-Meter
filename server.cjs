@@ -17,7 +17,7 @@ const upload   = multer({ storage: multer.memoryStorage() });
 const DASHBOARD_URL = 'https://rh-meter-production.onrender.com';
 const LOCATION_NAME = 'CT-PAT Area';
 const SENDER_EMAIL  = 'naveenkumarak2002@gmail.com';
-const BREVO_API_KEY = process.env.BREVO_API_KEY;
+const MAILTRAP_API_KEY   = 'df63629c45d64b94da97c57e91855139';
 const app = express();
 
 // ── In-memory stores ──────────────────────────────────────────
@@ -241,32 +241,47 @@ async function markAlertSent(key) {
 
 // ── Brevo email sender ────────────────────────────────────────
 async function sendEmail(subject, htmlBody, recipients) {
-  const apiKey = process.env.BREVO_API_KEY || BREVO_API_KEY;
-  if (!apiKey) { console.error('❌ BREVO_API_KEY not set'); return { ok: false, error: 'BREVO_API_KEY not configured' }; }
+  const apiKey = process.env.MAILTRAP_API_KEY || MAILTRAP_API_KEY;
+  if (!apiKey) { 
+    console.error('❌ MAILTRAP_API_KEY not set'); 
+    return { ok: false, error: 'MAILTRAP_API_KEY not configured' }; 
+  }
 
   const payload = JSON.stringify({
-    sender:      { name: 'RH-Meter Alert System', email: SENDER_EMAIL },
-    to:          recipients.map(email => ({ email })),
+    from: { email: SENDER_EMAIL, name: 'RH-Meter Alert System' },
+    to: recipients.map(email => ({ email })),
     subject,
-    htmlContent: htmlBody
+    html: htmlBody
   });
 
   return new Promise((resolve) => {
     const req = https.request({
-      hostname: 'api.brevo.com', path: '/v3/smtp/email', method: 'POST',
+      hostname: 'send.api.mailtrap.io',
+      path: '/api/send',
+      method: 'POST',
       headers: {
-        'accept': 'application/json', 'api-key': apiKey,
-        'content-type': 'application/json', 'content-length': Buffer.byteLength(payload)
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(payload)
       }
     }, (res) => {
       let data = '';
       res.on('data', chunk => data += chunk);
       res.on('end', () => {
-        if (res.statusCode >= 400) { console.error('❌ Brevo error:', data); resolve({ ok: false, error: data }); }
-        else { console.log('✅ Email sent via Brevo'); resolve({ ok: true }); }
+        console.log(`[Mailtrap] Status: ${res.statusCode}, Response: ${data}`);
+        if (res.statusCode >= 400) {
+          console.error('❌ Mailtrap error:', data);
+          resolve({ ok: false, error: data });
+        } else {
+          console.log('✅ Email sent via Mailtrap');
+          resolve({ ok: true });
+        }
       });
     });
-    req.on('error', (err) => { console.error('❌ Brevo request error:', err.message); resolve({ ok: false, error: err.message }); });
+    req.on('error', (err) => { 
+      console.error('❌ Mailtrap request error:', err.message); 
+      resolve({ ok: false, error: err.message }); 
+    });
     req.write(payload);
     req.end();
   });
