@@ -785,8 +785,7 @@ app.post('/api/test-email', async (req, res) => {
     let recipientStr = (req.body.recipients || (settings && settings.recipients) || '').trim();
 
     console.log('[TestEmail] Recipients:', recipientStr);
-    console.log('[TestEmail] MAILTRAP_API_KEY set:', !!process.env.MAILTRAP_API_KEY);
-
+console.log('[TestEmail] BREVO_API_KEY set:', !!BREVO_API_KEY);
     if (!recipientStr) {
       return res.status(400).json({ ok: false, error: 'No recipients configured. Add recipients in Settings first.' });
     }
@@ -965,7 +964,7 @@ app.get('/api/debug', async (req, res) => {
       recipients:       s?.recipients,
       tempThreshold:    s?.tempThreshold,
       humThreshold:     s?.humThreshold,
-      mailtrapKeySet:   !!(process.env.MAILTRAP_API_KEY || MAILTRAP_API_KEY),
+brevoKeySet: !!BREVO_API_KEY,
       locationRecipients: recDoc?.recipients || {},
       cooldowns,
     });
