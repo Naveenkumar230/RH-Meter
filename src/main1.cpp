@@ -1,8 +1,23 @@
 // ============================================================
-//  Dehumidifier Power Monitor — main1.cpp
-//  ESP32 + ZMPT101B AC Voltage Sensor + Relay + Button
-//  MQTT → HiveMQ Cloud
+//  Dehumidifier Power Monitor — main.cpp
+//  ESP32 + ZMPT101B AC Voltage Sensor
+//  MQTT → HiveMQ Cloud (TLS)
 //  Topic: AIPL/Power_Monitor/<DEVICE_ID>/telemetry
+//
+//  Wiring:
+//    ZMPT101B VCC  → ESP32 3.3V  (NOT 5V)
+//    ZMPT101B GND  → ESP32 GND
+//    ZMPT101B OUT  → ESP32 GPIO34 (ADC1 — safe with WiFi)
+//
+//  Flow:
+//    1. Boot → WiFiManager AP mode (SSID: Dehum-Setup-<ID>)
+//    2. User connects to AP, enters home WiFi credentials
+//    3. ESP32 connects to WiFi + HiveMQ MQTT
+//    4. Reads ZMPT101B every 10s, publishes vrms + online/offline
+//    5. online = true  if vrms > VOLTAGE_THRESHOLD (100V)
+//       online = false if vrms ≤ VOLTAGE_THRESHOLD
+//
+//  Payload: {"id":"Dehum_01","vrms":228.5,"online":true}
 // ============================================================
 
 #include <Arduino.h>
@@ -15,49 +30,45 @@
 
 // ════════════════════════════════════════════════════════════
 //  DEVICE CONFIGURATION — Change DEVICE_ID per unit
-//  Valid IDs: Dehum_01 … Dehum_10
+//  e.g. "Dehum_01", "Dehum_02" ... "Dehum_10"
 // ════════════════════════════════════════════════════════════
-constexpr const char* DEVICE_ID    = "Dehum_01";   // ← CHANGE THIS PER DEVICE
+constexpr const char* DEVICE_ID = "Dehum_01";   // ← CHANGE THIS PER DEVICE
 
 // ════════════════════════════════════════════════════════════
 //  MQTT CREDENTIALS
 // ════════════════════════════════════════════════════════════
-constexpr const char* MQTT_HOST    = "d034db44805b4258a6c72c3efe0f9019.s1.eu.hivemq.cloud";
-constexpr int         MQTT_PORT    = 8883;
-constexpr const char* MQTT_USER    = "RH-METER";
-constexpr const char* MQTT_PASS    = "RH-METEr1234";
+constexpr const char* MQTT_HOST = "d034db44805b4258a6c72c3efe0f9019.s1.eu.hivemq.cloud";
+constexpr int         MQTT_PORT = 8883;
+constexpr const char* MQTT_USER = "RH-METER";
+constexpr const char* MQTT_PASS = "RH-METEr1234";
 
 // ════════════════════════════════════════════════════════════
-//  PIN DEFINITIONS
+//  PIN — ZMPT101B OUT → GPIO34 (ADC1, input-only, WiFi safe)
+//  DO NOT use GPIO 0,2,4,12–15,25–27 (ADC2 — blocked by WiFi)
 // ════════════════════════════════════════════════════════════
-constexpr int PIN_ZMPT        = 34;   // ZMPT101B analog out → ADC1_CH6
-constexpr int PIN_RELAY       = 26;   // Relay control (HIGH = ON)
-constexpr int PIN_BUTTON      = 27;   // Physical toggle button (INPUT_PULLUP)
-constexpr int PIN_LED_GREEN   = 25;   // Green LED  = relay ON / voltage present
-constexpr int PIN_LED_RED     = 33;   // Red LED    = relay OFF / no voltage
+constexpr int PIN_VOLTAGE = 34;
 
 // ════════════════════════════════════════════════════════════
-//  ZMPT101B CALIBRATION (230V India)
-//  Run calibration sketch once and set VRMS_CALIBRATION so
-//  reading matches a known reference meter.
-//  Default offset: ADC midpoint ~1862 for 3.3V / 12-bit ADC
+//  VOLTAGE SENSING CONFIGURATION
+//  India mains: 230V AC, 50Hz
 // ════════════════════════════════════════════════════════════
-constexpr float VRMS_CALIBRATION = 0.5f;   // ← tune until LCD shows ~230V
-constexpr int   ADC_SAMPLES      = 500;    // samples per RMS calculation
-constexpr float VOLTAGE_THRESHOLD = 50.0f; // Vrms above this = "ONLINE"
+constexpr float     AC_FREQ_HZ        = 50.0f;
+constexpr int       SAMPLES_PER_CYCLE = 100;          // ADC samples per RMS window
+constexpr int       NUM_CYCLES        = 5;            // average over 5 full cycles
+constexpr float     ADC_VREF          = 3.3f;         // ESP32 ADC reference voltage
+constexpr int       ADC_RESOLUTION    = 4095;         // 12-bit ADC
+constexpr float     CALIBRATION       = 520.0f;       // ← TUNE THIS with a multimeter
+                                                       //   Formula: actual_V / raw_rms_reading
+                                                       //   Default 520 is a safe starting point
+
+// Online threshold: if vrms > this → dehumidifier has power → ONLINE
+constexpr float VOLTAGE_THRESHOLD = 100.0f;           // Volts RMS
 
 // ════════════════════════════════════════════════════════════
 //  TIMING
 // ════════════════════════════════════════════════════════════
-constexpr unsigned long PUBLISH_INTERVAL_MS  = 10000UL;  // 10 s live publish
-constexpr unsigned long DEBOUNCE_MS          = 200UL;
-constexpr unsigned long LCD_REFRESH_MS       = 1000UL;
-
-// ════════════════════════════════════════════════════════════
-//  MQTT TOPIC  (matches server.js AIPL/RH_Meter/+/telemetry pattern)
-//  Power monitor uses its own root: AIPL/Power_Monitor/+/telemetry
-// ════════════════════════════════════════════════════════════
-char mqttTopic[80];   // built in setup()
+constexpr unsigned long PUBLISH_INTERVAL_MS = 10000UL;   // publish every 10s
+constexpr unsigned long LCD_REFRESH_MS      = 1000UL;    // LCD update every 1s
 
 // ════════════════════════════════════════════════════════════
 //  GLOBALS
@@ -66,96 +77,78 @@ WiFiClientSecure  wifiClientSecure;
 PubSubClient      mqttClient(wifiClientSecure);
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 
-bool  relayState     = false;   // true = relay energised
-bool  lastButtonRead = HIGH;
-unsigned long lastDebounce   = 0;
-unsigned long lastPublish    = 0;
-unsigned long lastLcdRefresh = 0;
+char mqttTopic[80];
+
+float         vrms         = 0.0f;
+bool          isOnline     = false;
+unsigned long lastPublish  = 0;
+unsigned long lastLcd      = 0;
 
 // ════════════════════════════════════════════════════════════
-//  ZMPT101B — RMS voltage measurement
+//  VOLTAGE MEASUREMENT — True RMS via oversampling
+//
+//  The ZMPT101B outputs a sine wave centered around VCC/2.
+//  On 3.3V ESP32, the midpoint is ~1.65V (ADC ~2048).
+//  We subtract the DC offset, square, average, then sqrt.
+//  Multiply by CALIBRATION to get real-world Vrms.
 // ════════════════════════════════════════════════════════════
 float measureVrms() {
-  long   sumSq  = 0;
-  int    offset = 0;
+  const int totalSamples = SAMPLES_PER_CYCLE * NUM_CYCLES;
+  // Sample period in microseconds: 1 cycle = 1/50Hz = 20ms → each sample every 20ms/100 = 200µs
+  const unsigned long samplePeriodUs = (unsigned long)(1000000.0f / (AC_FREQ_HZ * SAMPLES_PER_CYCLE));
 
-  // First pass: estimate DC offset (mid-rail)
-  long   dcSum  = 0;
-  for (int i = 0; i < ADC_SAMPLES; i++) {
-    dcSum += analogRead(PIN_ZMPT);
-    delayMicroseconds(100);
+  // --- Step 1: Find DC offset (midpoint) ---
+  // Take a quick burst to measure the ADC zero point
+  long dcSum = 0;
+  for (int i = 0; i < 50; i++) {
+    dcSum += analogRead(PIN_VOLTAGE);
+    delayMicroseconds(samplePeriodUs / 2);
   }
-  offset = dcSum / ADC_SAMPLES;
+  float dcOffset = (float)dcSum / 50.0f;
 
-  // Second pass: compute RMS around offset
-  for (int i = 0; i < ADC_SAMPLES; i++) {
-    int raw   = analogRead(PIN_ZMPT) - offset;
-    sumSq    += (long)raw * raw;
-    delayMicroseconds(100);
+  // --- Step 2: Collect samples and compute sum of squares ---
+  double sumSquares = 0.0;
+  unsigned long tStart = micros();
+
+  for (int i = 0; i < totalSamples; i++) {
+    // Wait for the right sample moment
+    while (micros() - tStart < (unsigned long)(i * samplePeriodUs)) { /* spin */ }
+
+    int raw = analogRead(PIN_VOLTAGE);
+    float centered = (float)raw - dcOffset;               // remove DC offset
+    float voltage  = centered * (ADC_VREF / ADC_RESOLUTION); // convert to volts
+    sumSquares += (double)(voltage * voltage);
   }
 
-  float rms = sqrt((float)sumSq / ADC_SAMPLES);
-  return rms * VRMS_CALIBRATION;
-}
+  // --- Step 3: RMS + calibration ---
+  float rmsRaw = sqrt((float)(sumSquares / totalSamples));
+  float result = rmsRaw * CALIBRATION;
 
-// ════════════════════════════════════════════════════════════
-//  RELAY CONTROL
-// ════════════════════════════════════════════════════════════
-void setRelay(bool on) {
-  relayState = on;
-  digitalWrite(PIN_RELAY,     on ? HIGH : LOW);
-  digitalWrite(PIN_LED_GREEN, on ? HIGH : LOW);
-  digitalWrite(PIN_LED_RED,   on ? LOW  : HIGH);
-  Serial.printf("[Relay] %s\n", on ? "ON" : "OFF");
+  // Clamp noise floor — anything under 5V is treated as 0
+  if (result < 5.0f) result = 0.0f;
+
+  return result;
 }
 
 // ════════════════════════════════════════════════════════════
 //  MQTT — PUBLISH TELEMETRY
-//  Payload (JSON):
-//  {
-//    "id"      : "Dehum_01",
-//    "vrms"    : 228.4,
-//    "online"  : true,        ← true if voltage present AND relay ON
-//    "relay"   : true,        ← relay state (could be ON but no voltage if dehumidifier off)
-//    "ts"      : 1717000000   ← Unix epoch (seconds)
-//  }
+//  Payload matches what powermonitor.js expects:
+//  { "id": "Dehum_01", "vrms": 228.5, "online": true }
 // ════════════════════════════════════════════════════════════
-void publishTelemetry(float vrms) {
-  bool  voltagePresent = (vrms >= VOLTAGE_THRESHOLD);
-  bool  online         = voltagePresent && relayState;
-
-  char payload[180];
+void publishTelemetry() {
+  char payload[120];
   snprintf(payload, sizeof(payload),
-    "{\"id\":\"%s\",\"vrms\":%.1f,\"online\":%s,\"relay\":%s}",
+    "{\"id\":\"%s\",\"vrms\":%.1f,\"online\":%s}",
     DEVICE_ID,
     vrms,
-    online   ? "true" : "false",
-    relayState ? "true" : "false"
+    isOnline ? "true" : "false"
   );
 
   if (mqttClient.publish(mqttTopic, payload, true)) {
-    Serial.printf("[MQTT] Published → %s\n", payload);
+    Serial.printf("[MQTT] ✅ Published → %s\n", payload);
   } else {
-    Serial.println("[MQTT] Publish FAILED");
+    Serial.println("[MQTT] ❌ Publish FAILED");
   }
-}
-
-// ════════════════════════════════════════════════════════════
-//  MQTT — SUBSCRIBE CALLBACK
-//  Accepts remote relay commands:
-//  Topic : AIPL/Power_Monitor/<ID>/cmd
-//  Payload: "ON" or "OFF"
-// ════════════════════════════════════════════════════════════
-char cmdTopic[80];
-
-void mqttCallback(char* topic, byte* payload, unsigned int len) {
-  char msg[32] = {0};
-  len = min(len, (unsigned int)31);
-  memcpy(msg, payload, len);
-  Serial.printf("[MQTT] Cmd received: %s\n", msg);
-
-  if (strcmp(msg, "ON")  == 0) setRelay(true);
-  if (strcmp(msg, "OFF") == 0) setRelay(false);
 }
 
 // ════════════════════════════════════════════════════════════
@@ -171,37 +164,31 @@ void mqttReconnect() {
 
   if (mqttClient.connect(clientId, MQTT_USER, MQTT_PASS)) {
     Serial.println(" connected ✅");
-    mqttClient.subscribe(cmdTopic);
-    Serial.printf("[MQTT] Subscribed to %s\n", cmdTopic);
   } else {
-    Serial.printf(" failed, rc=%d\n", mqttClient.state());
+    Serial.printf(" failed, rc=%d (will retry)\n", mqttClient.state());
   }
 }
 
 // ════════════════════════════════════════════════════════════
 //  LCD DISPLAY
+//  Line 0: Device ID + V reading
+//  Line 1: ONLINE / OFFLINE status
 // ════════════════════════════════════════════════════════════
-void updateLCD(float vrms) {
-  bool voltagePresent = (vrms >= VOLTAGE_THRESHOLD);
-
+void updateLCD() {
   lcd.clear();
 
-  // Line 0 — Device ID + voltage
+  // Line 0 — Device ID and voltage
   lcd.setCursor(0, 0);
-  lcd.print(DEVICE_ID);
-  lcd.setCursor(9, 0);
-  char vbuf[7];
-  snprintf(vbuf, sizeof(vbuf), "%5.1fV", vrms);
-  lcd.print(vbuf);
+  char line0[17];
+  snprintf(line0, sizeof(line0), "%-8s%6.1fV", DEVICE_ID, vrms);
+  lcd.print(line0);
 
   // Line 1 — Status
   lcd.setCursor(0, 1);
-  if (!relayState) {
-    lcd.print("Relay: OFF      ");
-  } else if (voltagePresent) {
-    lcd.print("ONLINE  RUNNING ");
+  if (isOnline) {
+    lcd.print("Status:  ONLINE ");
   } else {
-    lcd.print("Relay ON NO VOLT");
+    lcd.print("Status: OFFLINE ");
   }
 }
 
@@ -212,58 +199,75 @@ void setup() {
   Serial.begin(115200);
   Serial.printf("\n🚀 Booting %s\n", DEVICE_ID);
 
-  // ── Build topics ─────────────────────────────────────────
-  snprintf(mqttTopic, sizeof(mqttTopic),  "AIPL/Power_Monitor/%s/telemetry", DEVICE_ID);
-  snprintf(cmdTopic,  sizeof(cmdTopic),   "AIPL/Power_Monitor/%s/cmd",       DEVICE_ID);
+  // ── ADC configuration for GPIO34 ──────────────────────────
+  analogReadResolution(12);                   // 12-bit: 0–4095
+  analogSetAttenuation(ADC_11db);             // full 0–3.3V range
+  pinMode(PIN_VOLTAGE, INPUT);
 
-  // ── GPIO ──────────────────────────────────────────────────
-  analogReadResolution(12);           // 12-bit ADC (0-4095)
-  analogSetAttenuation(ADC_11db);     // full-scale ≈ 3.3V
+  // ── Build MQTT topic ──────────────────────────────────────
+  snprintf(mqttTopic, sizeof(mqttTopic),
+           "AIPL/Power_Monitor/%s/telemetry", DEVICE_ID);
 
-  pinMode(PIN_RELAY,     OUTPUT);
-  pinMode(PIN_LED_GREEN, OUTPUT);
-  pinMode(PIN_LED_RED,   OUTPUT);
-  pinMode(PIN_BUTTON,    INPUT_PULLUP);
-
-  setRelay(false);                    // start with relay OFF
-
-  // ── LCD ──────────────────────────────────────────────────
+  // ── LCD init ──────────────────────────────────────────────
   Wire.begin();
   lcd.init();
   lcd.backlight();
   lcd.setCursor(0, 0);
   lcd.print("  Dehumidifier  ");
   lcd.setCursor(0, 1);
-  lcd.print("   Monitor v1   ");
+  lcd.print("   Monitor v2   ");
   delay(1500);
 
-  // ── WiFi (WiFiManager AP if no saved credentials) ────────
+  // ── WiFiManager — AP mode on first boot ───────────────────
+  // After flashing: ESP32 creates AP "Dehum-Setup-Dehum_01"
+  // User connects to that AP, opens 192.168.4.1
+  // Enters home WiFi SSID + password → saved to flash
   lcd.clear();
   lcd.setCursor(0, 0);
-  lcd.print("Connecting WiFi ");
-  WiFiManager wm;
-  wm.setConfigPortalTimeout(120);
+  lcd.print("Connect to AP:  ");
+  lcd.setCursor(0, 1);
+
   char apName[32];
-  snprintf(apName, sizeof(apName), "Dehum-Setup-%s", DEVICE_ID);
+  snprintf(apName, sizeof(apName), "Dehum-%s", DEVICE_ID);
+  lcd.print(apName);
+
+  WiFiManager wm;
+  wm.setConfigPortalTimeout(180);   // AP portal stays open 3 minutes
+
+  // Custom AP portal title
+  wm.setTitle("Dehumidifier Power Monitor");
+
   if (!wm.autoConnect(apName)) {
-    Serial.println("[WiFi] Connect failed — restarting");
+    Serial.println("[WiFi] Connect failed — restarting in 5s");
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("WiFi Failed!    ");
+    lcd.setCursor(0, 1);
+    lcd.print("Restarting...   ");
+    delay(5000);
     ESP.restart();
   }
-  Serial.printf("[WiFi] Connected: %s\n", WiFi.localIP().toString().c_str());
+
+  Serial.printf("[WiFi] ✅ Connected: %s\n", WiFi.localIP().toString().c_str());
+
   lcd.clear();
   lcd.setCursor(0, 0);
-  lcd.print("WiFi OK");
+  lcd.print("WiFi Connected! ");
   lcd.setCursor(0, 1);
   lcd.print(WiFi.localIP().toString());
-  delay(1000);
+  delay(1500);
 
-  // ── MQTT (TLS, no cert verification for HiveMQ cloud) ────
-  wifiClientSecure.setInsecure();   // trust all — use setCACert() for prod
+  // ── MQTT over TLS ─────────────────────────────────────────
+  wifiClientSecure.setInsecure();           // skip cert validation
   mqttClient.setServer(MQTT_HOST, MQTT_PORT);
-  mqttClient.setCallback(mqttCallback);
   mqttClient.setKeepAlive(60);
   mqttClient.setSocketTimeout(10);
   mqttReconnect();
+
+  // ── Initial LCD ───────────────────────────────────────────
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Reading sensor..");
 }
 
 // ════════════════════════════════════════════════════════════
@@ -276,30 +280,50 @@ void loop() {
   if (!mqttClient.connected()) mqttReconnect();
   mqttClient.loop();
 
-  // ── Physical button — debounced toggle ───────────────────
-  bool buttonNow = digitalRead(PIN_BUTTON);
-  if (buttonNow == LOW && lastButtonRead == HIGH) {
-    // falling edge = button pressed
-    if (now - lastDebounce > DEBOUNCE_MS) {
-      lastDebounce = now;
-      setRelay(!relayState);
-      Serial.printf("[Button] Toggled relay → %s\n", relayState ? "ON" : "OFF");
-    }
-  }
-  lastButtonRead = buttonNow;
-
-  // ── Measure voltage ───────────────────────────────────────
-  float vrms = measureVrms();
-
-  // ── Publish on interval ───────────────────────────────────
+  // ── Read voltage sensor + publish every 10s ───────────────
   if (now - lastPublish >= PUBLISH_INTERVAL_MS) {
     lastPublish = now;
-    if (mqttClient.connected()) publishTelemetry(vrms);
+
+    // Measure RMS voltage
+    vrms     = measureVrms();
+    isOnline = (vrms > VOLTAGE_THRESHOLD);
+
+    Serial.printf("[Sensor] Vrms=%.1fV → %s\n",
+                  vrms, isOnline ? "ONLINE" : "OFFLINE");
+
+    // Publish to MQTT if connected
+    if (mqttClient.connected()) {
+      publishTelemetry();
+    } else {
+      Serial.println("[MQTT] Not connected — skipping publish");
+    }
   }
 
-  // ── LCD refresh ───────────────────────────────────────────
-  if (now - lastLcdRefresh >= LCD_REFRESH_MS) {
-    lastLcdRefresh = now;
-    updateLCD(vrms);
+  // ── LCD refresh every 1s ──────────────────────────────────
+  if (now - lastLcd >= LCD_REFRESH_MS) {
+    lastLcd = now;
+    updateLCD();
   }
 }
+
+// ════════════════════════════════════════════════════════════
+//  CALIBRATION GUIDE
+//  ─────────────────
+//  1. Connect ZMPT101B to your AC mains (dehumidifier socket)
+//  2. Open Serial Monitor at 115200 baud
+//  3. Read the "Vrms" printed every 10 seconds
+//  4. Measure the same socket with a multimeter
+//  5. New CALIBRATION = (multimeter_reading / serial_vrms) * current_CALIBRATION
+//  6. Update CALIBRATION constant above and reflash
+//
+//  Example:
+//    Multimeter reads: 232V
+//    Serial prints:    0.447 (raw rms before calibration)
+//    CALIBRATION = 232 / 0.447 = 519 ← that confirms ~520 is correct
+//
+//  Wiring Reminder:
+//    ZMPT101B VCC → ESP32 3.3V  ⚠️ NOT 5V (protects ADC)
+//    ZMPT101B GND → ESP32 GND
+//    ZMPT101B OUT → GPIO34
+//    AC input     → ZMPT101B AC terminals (mains socket)
+// ════════════════════════════════════════════════════════════

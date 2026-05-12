@@ -954,6 +954,7 @@ app.post('/api/reset-cooldown', async (req, res) => {
 
 require('./powermonitor')(app, mongoose, mqtt);
 
+
 // ── Debug ─────────────────────────────────────────────────────
 app.get('/api/debug', async (req, res) => {
   try {

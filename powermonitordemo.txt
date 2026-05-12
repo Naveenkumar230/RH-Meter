@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Dehumidifier Power Monitor</title>
+<title>Dehumidifier Power Monitor — Demo</title>
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
@@ -38,90 +39,55 @@
   --font:         'Plus Jakarta Sans', sans-serif;
   --mono:         'JetBrains Mono', monospace;
 }
+*, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+html { scroll-behavior:smooth; }
+body { font-family:var(--font); background:var(--bg); color:var(--text); min-height:100vh; line-height:1.5; }
 
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html { scroll-behavior: smooth; }
-
-body {
-  font-family: var(--font);
-  background:  var(--bg);
-  color:       var(--text);
-  min-height:  100vh;
-  line-height: 1.5;
-}
-
-/* ── HEADER ── */
 .pm-header {
-  background:    var(--bg-white);
-  border-bottom: 1px solid var(--border);
-  padding:       0 28px;
-  height:        64px;
-  display:       flex;
-  align-items:   center;
-  justify-content: space-between;
-  position:      sticky;
-  top:           0;
-  z-index:       200;
-  box-shadow:    var(--shadow-sm);
-  gap:           16px;
+  background:var(--bg-white); border-bottom:1px solid var(--border);
+  padding:0 28px; height:64px; display:flex; align-items:center;
+  justify-content:space-between; position:sticky; top:0; z-index:200;
+  box-shadow:var(--shadow-sm); gap:16px;
 }
 .pm-header-left { display:flex; align-items:center; gap:14px; }
 .pm-header-icon {
   width:40px; height:40px; border-radius:11px;
-  background:linear-gradient(135deg, #1d4ed8, #3b82f6);
+  background:linear-gradient(135deg,#1d4ed8,#3b82f6);
   display:flex; align-items:center; justify-content:center;
   font-size:20px; box-shadow:0 4px 12px rgba(37,99,235,0.3);
 }
-.pm-header-title  { font-size:1rem; font-weight:800; color:var(--text); letter-spacing:-0.3px; }
-.pm-header-sub    { font-size:0.72rem; color:var(--text-muted); font-weight:500; margin-top:1px; }
-.pm-header-right  { display:flex; align-items:center; gap:10px; }
-.pm-back-btn {
-  display:flex; align-items:center; gap:6px;
-  background:var(--bg-soft); border:1px solid var(--border);
-  color:var(--text-mid); text-decoration:none;
-  padding:7px 14px; border-radius:var(--radius-sm);
-  font-size:0.8rem; font-weight:600; transition:all 0.2s; cursor:pointer;
-}
-.pm-back-btn:hover { color:var(--blue); border-color:var(--blue-border); background:var(--blue-light); }
-.pm-chip {
-  display:flex; align-items:center; gap:5px;
-  padding:5px 12px; border-radius:20px;
-  font-size:0.72rem; font-weight:700; border:1px solid;
-}
+.pm-header-title { font-size:1rem; font-weight:800; color:var(--text); letter-spacing:-0.3px; }
+.pm-header-sub   { font-size:0.72rem; color:var(--text-muted); font-weight:500; margin-top:1px; }
+.pm-header-right { display:flex; align-items:center; gap:10px; }
+.pm-chip { display:flex; align-items:center; gap:5px; padding:5px 12px; border-radius:20px; font-size:0.72rem; font-weight:700; border:1px solid; }
 .pm-chip.online  { color:var(--green); border-color:var(--green-border); background:var(--green-light); }
 .pm-chip.offline { color:var(--red);   border-color:var(--red-border);   background:var(--red-light); }
 .pm-chip-dot { width:7px; height:7px; border-radius:50%; background:currentColor; }
 .pm-chip.online .pm-chip-dot { animation:pulse-dot 2s infinite; }
 @keyframes pulse-dot { 0%,100%{opacity:1;transform:scale(1);} 50%{opacity:.4;transform:scale(1.4);} }
 
-/* ── MAIN ── */
+.demo-banner {
+  background:linear-gradient(135deg,#1d4ed8,#6366f1);
+  color:#fff; text-align:center; padding:10px 20px;
+  font-size:0.8rem; font-weight:600; letter-spacing:0.3px;
+}
+.demo-banner span { opacity:0.8; margin-left:8px; font-weight:400; }
+
 .pm-main { max-width:1400px; margin:0 auto; padding:28px 24px; }
 .pm-section-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; gap:12px; }
-.pm-section-title { font-size:1.05rem; font-weight:800; color:var(--text); letter-spacing:-0.3px; }
+.pm-section-title  { font-size:1.05rem; font-weight:800; color:var(--text); letter-spacing:-0.3px; }
 
-/* ── GRID ── */
-.dehum-grid {
-  display:grid;
-  grid-template-columns:repeat(4, 1fr);
-  gap:16px;
-  margin-bottom:32px;
-}
+.dehum-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:32px; }
 
-/* ── DEVICE CARD ── */
 .dehum-card {
-  background:var(--bg-white); border:1px solid var(--border);
-  border-radius:var(--radius); padding:18px 18px 14px;
-  cursor:pointer; transition:all 0.22s ease;
-  position:relative; overflow:hidden;
-  display:flex; flex-direction:column;
+  background:var(--bg-white); border:1px solid var(--border); border-radius:var(--radius);
+  padding:18px 18px 14px; cursor:pointer; transition:all 0.22s ease;
+  position:relative; overflow:hidden; display:flex; flex-direction:column;
   user-select:none; box-shadow:var(--shadow-sm);
 }
-.dehum-card::before {
-  content:''; position:absolute; top:0; left:0; right:0; height:3px; transition:background 0.3s;
-}
+.dehum-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; transition:background 0.3s; }
 .dehum-card.is-online::before  { background:var(--green); }
 .dehum-card.is-offline::before { background:var(--red); }
-.dehum-card.is-checking::before{ background:var(--amber); }
 .dehum-card:hover { transform:translateY(-3px); box-shadow:var(--shadow-lg); border-color:#cbd5e1; }
 
 .dehum-card-top { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:12px; gap:8px; }
@@ -132,30 +98,22 @@ body {
   border-radius:4px; padding:1px 5px; display:inline-block;
 }
 .dehum-status-badge {
-  display:flex; align-items:center; gap:5px; padding:4px 10px;
-  border-radius:20px; font-size:0.7rem; font-weight:700;
-  flex-shrink:0; border:1px solid; white-space:nowrap;
+  display:flex; align-items:center; gap:5px; padding:4px 10px; border-radius:20px;
+  font-size:0.7rem; font-weight:700; flex-shrink:0; border:1px solid; white-space:nowrap;
 }
-.dehum-status-badge.online   { color:var(--green); border-color:var(--green-border); background:var(--green-light); }
-.dehum-status-badge.offline  { color:var(--red);   border-color:var(--red-border);   background:var(--red-light); }
-.dehum-status-badge.checking { color:var(--amber); border-color:#fde68a;             background:var(--amber-light); }
+.dehum-status-badge.online  { color:var(--green); border-color:var(--green-border); background:var(--green-light); }
+.dehum-status-badge.offline { color:var(--red);   border-color:var(--red-border);   background:var(--red-light); }
 .dehum-dot { width:7px; height:7px; border-radius:50%; background:currentColor; flex-shrink:0; }
 .dehum-status-badge.online  .dehum-dot { animation:pulse-dot 2s infinite; }
 .dehum-status-badge.offline .dehum-dot { animation:blink-red 1.2s infinite; }
 @keyframes blink-red { 0%,100%{opacity:1;} 50%{opacity:0.2;} }
 
-/* ── VOLTAGE BOX (card) ── */
-.dehum-voltage {
-  text-align:center; margin:0 0 10px; padding:12px 0;
-  background:var(--bg-soft); border:1px solid var(--border-light); border-radius:10px;
-}
+.dehum-voltage { text-align:center; margin:0 0 10px; padding:12px 0; background:var(--bg-soft); border:1px solid var(--border-light); border-radius:10px; }
 .dehum-voltage-val { font-family:var(--mono); font-size:1.8rem; font-weight:700; line-height:1; }
 .dehum-voltage-val.online  { color:var(--green); }
 .dehum-voltage-val.offline { color:var(--red); }
-.dehum-voltage-val.nodata  { color:var(--text-muted); }
 .dehum-voltage-unit { font-size:0.72rem; color:var(--text-muted); margin-top:3px; }
 
-/* ── SPARKLINE (ON/OFF bar per hour) ── */
 .dehum-sparkline { width:100%; height:44px !important; max-height:44px; flex-shrink:0; margin-bottom:8px; display:block; }
 
 .dehum-card-footer {
@@ -165,103 +123,82 @@ body {
 .dehum-last-seen { font-size:0.68rem; color:var(--text-muted); }
 .dehum-view-link { font-size:0.72rem; font-weight:700; color:var(--blue); }
 
-/* ── DETAIL VIEW ── */
 .pm-detail-view { display:none; }
 .pm-detail-view.active { display:block; }
+
 .pm-detail-header {
-  display:flex; align-items:center; gap:12px; margin-bottom:24px;
-  flex-wrap:wrap; padding:20px 24px;
-  background:var(--bg-white); border:1px solid var(--border);
+  display:flex; align-items:center; gap:12px; margin-bottom:24px; flex-wrap:wrap;
+  padding:20px 24px; background:var(--bg-white); border:1px solid var(--border);
   border-radius:var(--radius); box-shadow:var(--shadow-sm);
 }
 .pm-detail-name { font-size:1.25rem; font-weight:800; color:var(--text); letter-spacing:-0.4px; }
 .pm-detail-id {
   font-family:var(--mono); font-size:0.75rem; color:var(--text-mid);
-  background:var(--bg-soft); border:1px solid var(--border);
-  border-radius:var(--radius-sm); padding:3px 9px;
+  background:var(--bg-soft); border:1px solid var(--border); border-radius:var(--radius-sm); padding:3px 9px;
 }
 
-.pm-stats-row { display:grid; grid-template-columns:repeat(auto-fill, minmax(160px,1fr)); gap:12px; margin-bottom:20px; }
+.pm-stats-row { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:12px; margin-bottom:20px; }
 .pm-stat-card {
-  background:var(--bg-white); border:1px solid var(--border);
-  border-radius:var(--radius); padding:18px; box-shadow:var(--shadow-sm); transition:box-shadow 0.2s;
+  background:var(--bg-white); border:1px solid var(--border); border-radius:var(--radius);
+  padding:18px; box-shadow:var(--shadow-sm); transition:box-shadow 0.2s;
 }
 .pm-stat-card:hover { box-shadow:var(--shadow); }
 .pm-stat-label { font-size:0.7rem; color:var(--text-muted); font-weight:700; text-transform:uppercase; letter-spacing:0.6px; margin-bottom:8px; }
 .pm-stat-val   { font-size:1.6rem; font-weight:800; font-family:var(--mono); color:var(--text); line-height:1; }
 .pm-stat-unit  { font-size:0.72rem; color:var(--text-muted); margin-top:4px; }
 
-.pm-chart-card {
-  background:var(--bg-white); border:1px solid var(--border);
-  border-radius:var(--radius); padding:22px; margin-bottom:16px; box-shadow:var(--shadow-sm);
-}
-.pm-chart-title { font-size:0.88rem; font-weight:700; color:var(--text); margin-bottom:18px; display:flex; align-items:center; gap:8px; letter-spacing:-0.2px; }
+.pm-chart-card { background:var(--bg-white); border:1px solid var(--border); border-radius:var(--radius); padding:22px; margin-bottom:16px; box-shadow:var(--shadow-sm); }
+.pm-chart-title { font-size:0.88rem; font-weight:700; color:var(--text); margin-bottom:18px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 .pm-chart-wrap { position:relative; height:260px; }
 
 .pm-filter-bar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:20px; }
 .pm-filter-bar label { font-size:0.78rem; color:var(--text-mid); font-weight:600; }
 .pm-date-input {
   background:var(--bg-soft); border:1px solid var(--border); border-radius:var(--radius-sm);
-  color:var(--text); padding:8px 10px; font-size:0.8rem; font-family:var(--font); outline:none; transition:border-color 0.2s;
+  color:var(--text); padding:8px 10px; font-size:0.8rem; font-family:var(--font); outline:none;
 }
 .pm-date-input:focus { border-color:var(--blue); box-shadow:0 0 0 3px rgba(37,99,235,0.08); }
 .pm-btn { padding:8px 16px; border-radius:var(--radius-sm); border:none; font-family:var(--font); font-size:0.8rem; font-weight:700; cursor:pointer; transition:all 0.2s; }
-.pm-btn-primary { background:var(--blue); color:#fff; box-shadow:0 2px 8px rgba(37,99,235,0.25); }
+.pm-btn-primary { background:var(--blue); color:#fff; }
 .pm-btn-primary:hover { background:#1d4ed8; }
 .pm-btn-ghost   { background:var(--bg-white); border:1px solid var(--border); color:var(--text-mid); }
 .pm-btn-ghost:hover { color:var(--blue); border-color:var(--blue-border); background:var(--blue-light); }
 
-/* chart legend */
 .chart-legend { display:flex; gap:16px; margin-bottom:10px; font-size:0.75rem; color:var(--text-mid); }
 .chart-legend span { display:flex; align-items:center; gap:5px; }
 .legend-box { width:12px; height:12px; border-radius:3px; flex-shrink:0; }
 
-/* ── TABLE ── */
 .pm-table-wrap { overflow-x:auto; margin-top:16px; }
 .pm-table { width:100%; border-collapse:collapse; font-size:0.82rem; }
-.pm-table th {
-  background:var(--bg-soft); color:var(--text-muted); padding:10px 14px; text-align:left;
-  border:1px solid var(--border-light); font-size:0.7rem; text-transform:uppercase; letter-spacing:0.6px; font-weight:700;
-}
+.pm-table th { background:var(--bg-soft); color:var(--text-muted); padding:10px 14px; text-align:left; border:1px solid var(--border-light); font-size:0.7rem; text-transform:uppercase; letter-spacing:0.6px; font-weight:700; }
 .pm-table td { padding:10px 14px; border:1px solid var(--border-light); color:var(--text); font-weight:500; }
 .pm-table tr:hover td { background:var(--bg-soft); }
 .status-pill { display:inline-flex; align-items:center; gap:5px; padding:3px 9px; border-radius:20px; font-size:0.7rem; font-weight:700; }
 .status-pill.on  { color:var(--green); background:var(--green-light); border:1px solid var(--green-border); }
 .status-pill.off { color:var(--red);   background:var(--red-light);   border:1px solid var(--red-border); }
 
-/* ── TOAST ── */
 #pmToast {
-  position:fixed; bottom:24px; right:24px; z-index:9999;
-  padding:12px 20px; border-radius:10px; font-size:0.85rem; font-weight:600;
-  box-shadow:var(--shadow-lg); transition:opacity 0.3s; display:none;
+  position:fixed; bottom:24px; right:24px; z-index:9999; padding:12px 20px;
+  border-radius:10px; font-size:0.85rem; font-weight:600; box-shadow:var(--shadow-lg);
+  transition:opacity 0.3s; display:none;
 }
 #pmToast.success { background:var(--green-light); border:1px solid var(--green-border); color:var(--green); }
 #pmToast.error   { background:var(--red-light);   border:1px solid var(--red-border);   color:var(--red); }
-
-.pm-empty { text-align:center; padding:60px 20px; color:var(--text-muted); font-size:0.9rem; }
 .pm-divider { height:1px; background:var(--border-light); margin:8px 0 24px; }
 
-/* ── RESPONSIVE ── */
 @media (max-width:1100px) { .dehum-grid { grid-template-columns:repeat(3,1fr); } }
-@media (max-width:768px)  { .dehum-grid { grid-template-columns:repeat(2,1fr); gap:12px; } .pm-stats-row { grid-template-columns:1fr 1fr; } .pm-chart-wrap { height:200px; } }
-@media (max-width:600px)  {
-  .pm-header { padding:0 12px; height:56px; }
-  .pm-header-sub { display:none; }
-  .pm-header-right > div:first-child { display:none; }
-  .pm-main { padding:14px 10px; }
-  .dehum-grid { grid-template-columns:repeat(2,1fr); gap:10px; }
-  .dehum-card { padding:12px 12px 10px; }
-  .dehum-voltage-val { font-size:1.5rem; }
-  .pm-filter-bar { flex-direction:column; align-items:stretch; gap:8px; }
-  .pm-date-input { width:100%; }
-  .pm-filter-bar .pm-btn { width:100%; }
-}
+@media (max-width:768px)  { .dehum-grid { grid-template-columns:repeat(2,1fr); gap:12px; } .pm-stats-row { grid-template-columns:1fr 1fr; } }
+@media (max-width:600px)  { .pm-header { padding:0 12px; height:56px; } .pm-header-sub { display:none; } .pm-header-right > div:first-child { display:none; } .pm-main { padding:14px 10px; } .dehum-grid { grid-template-columns:repeat(2,1fr); gap:10px; } }
 @media (max-width:400px)  { .dehum-grid { grid-template-columns:1fr; } .pm-stats-row { grid-template-columns:1fr; } }
 </style>
 </head>
 <body>
 
-<!-- HEADER -->
+<div class="demo-banner">
+  🧪 DEMO MODE — Fake Data
+  <span>All readings are simulated. Switch FAKE_MODE = false in powermonitor.html to use live data.</span>
+</div>
+
 <header class="pm-header">
   <div class="pm-header-left">
     <div class="pm-header-icon">⚡</div>
@@ -275,14 +212,12 @@ body {
       <div class="pm-chip online"><div class="pm-chip-dot"></div><span id="hdrOnlineCount">0</span> Online</div>
       <div class="pm-chip offline"><div class="pm-chip-dot"></div><span id="hdrOfflineCount">0</span> Offline</div>
     </div>
-    <a href="home.html" class="pm-back-btn">← <span class="btn-label">Home</span></a>
+    <button class="pm-btn pm-btn-ghost" onclick="showGrid()">← Back</button>
   </div>
 </header>
 
-<!-- MAIN -->
 <main class="pm-main">
 
-  <!-- GRID VIEW -->
   <div id="pmGridView">
     <div class="pm-section-header">
       <div class="pm-section-title">💧 Dehumidifier Units</div>
@@ -292,7 +227,6 @@ body {
     <div class="dehum-grid" id="dehumGrid"></div>
   </div>
 
-  <!-- DETAIL VIEW -->
   <div id="pmDetailView" class="pm-detail-view">
 
     <div class="pm-detail-header">
@@ -301,13 +235,12 @@ body {
         <div class="pm-detail-name" id="detailName">—</div>
         <div class="pm-detail-id"  id="detailId">—</div>
       </div>
-      <div id="detailStatusBadge" class="dehum-status-badge checking" style="margin-left:auto;">
+      <div id="detailStatusBadge" class="dehum-status-badge online" style="margin-left:auto;">
         <div class="dehum-dot"></div>
-        <span id="detailStatusText">Checking...</span>
+        <span id="detailStatusText">Online</span>
       </div>
     </div>
 
-    <!-- STATS -->
     <div class="pm-stats-row">
       <div class="pm-stat-card">
         <div class="pm-stat-label">Current Status</div>
@@ -331,19 +264,18 @@ body {
       </div>
     </div>
 
-    <!-- 24-HOUR TIMELINE -->
     <div class="pm-chart-card">
-      <div class="pm-chart-title">📊 24-Hour ON/OFF Timeline (today)
+      <div class="pm-chart-title">
+        📊 24-Hour ON/OFF Timeline (today)
         <span style="font-size:0.72rem;font-weight:500;color:var(--text-muted);margin-left:auto;">Hover a bar to see minutes ON/OFF in that hour</span>
       </div>
       <div class="chart-legend">
         <span><span class="legend-box" style="background:#16a34a;"></span>ON time</span>
         <span><span class="legend-box" style="background:#dc2626;"></span>OFF time</span>
       </div>
-      <div class="pm-chart-wrap"><canvas id="chartTimeline" role="img" aria-label="24-hour ON OFF timeline for today"></canvas></div>
+      <div class="pm-chart-wrap"><canvas id="chartTimeline" role="img" aria-label="24-hour ON OFF timeline"></canvas></div>
     </div>
 
-    <!-- CUSTOM DATE RANGE -->
     <div class="pm-chart-card">
       <div class="pm-chart-title">📅 Custom Date Range — ON/OFF History</div>
       <div class="pm-filter-bar">
@@ -351,15 +283,15 @@ body {
         <input type="date" class="pm-date-input" id="detailDateFrom">
         <label>To</label>
         <input type="date" class="pm-date-input" id="detailDateTo">
-        <button class="pm-btn pm-btn-primary" onclick="fetchAndRenderRange()">Apply</button>
-        <button class="pm-btn pm-btn-ghost"   onclick="setDetailToday()">Today</button>
+        <button class="pm-btn pm-btn-primary" onclick="renderRange()">Apply</button>
+        <button class="pm-btn pm-btn-ghost"   onclick="setToday()">Today</button>
       </div>
       <div class="chart-legend">
         <span><span class="legend-box" style="background:#16a34a;"></span>ON hours</span>
         <span><span class="legend-box" style="background:#dc2626;"></span>OFF hours</span>
       </div>
-      <div class="pm-chart-wrap"><canvas id="chartRange" role="img" aria-label="Custom date range ON OFF history"></canvas></div>
-      <div class="pm-table-wrap" id="rangeTableWrap"></div>
+      <div class="pm-chart-wrap"><canvas id="chartRange" role="img" aria-label="Date range ON OFF history"></canvas></div>
+      <div id="rangeTableWrap"></div>
     </div>
 
   </div>
@@ -368,8 +300,18 @@ body {
 <div id="pmToast"></div>
 
 <script>
-const PM_SERVER = 'https://rh-meter-production.onrender.com';
-const VOLTAGE_THRESHOLD = 100;  // vrms > 100V = online
+// ═══════════════════════════════════════════════════════════════
+//  FAKE DATA ENGINE
+//  Generates realistic dehumidifier power monitoring data:
+//  - 7 devices online, 3 offline (Dehum_03, Dehum_07, Dehum_09)
+//  - Each online device has realistic 230V ±5V readings
+//  - Each device has unique daily ON/OFF patterns (factory shifts,
+//    maintenance windows, night shutdowns)
+//  - 30 days of history data generated on the fly
+//  - History updates every 15s to simulate live ticking
+// ═══════════════════════════════════════════════════════════════
+
+const VOLTAGE_THRESHOLD = 100;
 
 const DEHUM_DEVICES = [
   { id:'Dehum_01', name:'Dehumidifier — Zone 1'  },
@@ -384,67 +326,199 @@ const DEHUM_DEVICES = [
   { id:'Dehum_10', name:'Dehumidifier — Zone 10' },
 ];
 
-let deviceCache        = {};
-let sparklineCharts    = {};
-let chartTimeline      = null;
-let chartRange         = null;
-let currentDetailId    = null;
-let deviceHistoryCache = {};
+// Each device has a unique operating schedule
+// offHours: array of hour ranges [start, end] when device is OFF
+// offlineDevice: true = always offline (no power at all)
+const DEVICE_PROFILES = {
+  Dehum_01: { offHours: [[2,4]],           offlineDevice: false }, // off 2–4am for maintenance
+  Dehum_02: { offHours: [[13,14],[3,4]],   offlineDevice: false }, // lunch break + early morning
+  Dehum_03: { offHours: [],                offlineDevice: true  }, // OFFLINE — tripped breaker
+  Dehum_04: { offHours: [[0,5]],           offlineDevice: false }, // night shutdown 12am–5am
+  Dehum_05: { offHours: [[12,13],[0,2]],   offlineDevice: false }, // midday break + midnight rest
+  Dehum_06: { offHours: [[6,7]],           offlineDevice: false }, // morning startup delay
+  Dehum_07: { offHours: [],                offlineDevice: true  }, // OFFLINE — power cut
+  Dehum_08: { offHours: [[23,24],[0,1]],   offlineDevice: false }, // late night off
+  Dehum_09: { offHours: [],                offlineDevice: true  }, // OFFLINE — under maintenance
+  Dehum_10: { offHours: [[10,11],[15,16]], offlineDevice: false }, // two short maintenance windows
+};
 
 function pad(n){ return n < 10 ? '0'+n : ''+n; }
+
 function todayIST(){
   const now = new Date(), ist = new Date(now.getTime() + 5.5*3600000);
   return ist.toISOString().slice(0,10);
 }
-function showToast(msg, type='success'){
-  const el = document.getElementById('pmToast');
-  el.textContent = msg; el.className = type; el.style.display = 'block'; el.style.opacity = '1';
-  setTimeout(()=>{ el.style.opacity='0'; setTimeout(()=>el.style.display='none',400); }, 3000);
+
+function randVrms(base=228){ return parseFloat((base + (Math.random()*8 - 4)).toFixed(1)); }
+function randLow(){          return parseFloat((1 + Math.random()*3).toFixed(1)); }
+
+function isDeviceOnAt(deviceId, hourIST){
+  const p = DEVICE_PROFILES[deviceId];
+  if(p.offlineDevice) return false;
+  for(const [s,e] of p.offHours){
+    if(hourIST >= s && hourIST < e) return false;
+  }
+  return true;
 }
 
-async function fetchDeviceStatus(deviceId){
-  try {
-    const res = await fetch(`${PM_SERVER}/api/power-data?deviceId=${deviceId}&_t=${Date.now()}`);
-    if(!res.ok) throw new Error('not ok');
-    const d = await res.json();
-    return { vrms:parseFloat(d.vrms??0), online:!!d.online, lastSeen:d.timestamp||null };
-  } catch(e){ return { vrms:0, online:false, lastSeen:null }; }
+// ── Generate today's 10-min interval records ──
+function generateTodayHistory(deviceId){
+  const p = DEVICE_PROFILES[deviceId];
+  const records = [];
+  const nowIST  = new Date(Date.now() + 5.5*3600*1000);
+  const baseIST = new Date(nowIST);
+  baseIST.setUTCHours(0,0,0,0);
+  // subtract 5.5h offset to get UTC midnight of IST today
+  const startUTC = new Date(baseIST.getTime() - 5.5*3600*1000);
+
+  const currentMinutes = nowIST.getUTCHours()*60 + nowIST.getUTCMinutes();
+
+  for(let m = 0; m < currentMinutes; m += 10){
+    const ts   = new Date(startUTC.getTime() + m*60000 + 5.5*3600000); // IST timestamp
+    const utcT = new Date(startUTC.getTime() + m*60000);
+    const hIST = Math.floor(m/60);
+    const isOn = isDeviceOnAt(deviceId, hIST);
+
+    records.push({
+      timestamp: utcT.toISOString(),
+      vrms:      isOn ? randVrms() : randLow(),
+      online:    isOn,
+    });
+  }
+  return records;
 }
 
-async function fetchPowerHistory(deviceId, from, to){
-  try {
-    const res = await fetch(`${PM_SERVER}/api/power-history?deviceId=${deviceId}&from=${from}&to=${to}&_t=${Date.now()}`);
-    if(!res.ok) throw new Error('not ok');
-    return await res.json();
-  } catch(e){ return []; }
+// ── Generate history for a past date (full 24h) ──
+function generateDayHistory(deviceId, dateStr){
+  // dateStr = 'YYYY-MM-DD' in IST
+  const records = [];
+  // Build UTC start of IST day
+  const [y,mo,d] = dateStr.split('-').map(Number);
+  const istMidnight = new Date(Date.UTC(y, mo-1, d, 0, 0, 0) - 5.5*3600*1000);
+
+  for(let m = 0; m < 24*60; m += 10){
+    const utcT = new Date(istMidnight.getTime() + m*60000);
+    const hIST = Math.floor(m/60);
+    const isOn = isDeviceOnAt(deviceId, hIST);
+
+    // Add occasional random glitches for realism (10% chance per interval for a brief flip)
+    const glitch = !DEVICE_PROFILES[deviceId].offlineDevice && Math.random() < 0.05;
+    const actualOn = glitch ? !isOn : isOn;
+
+    records.push({
+      timestamp: utcT.toISOString(),
+      vrms:      actualOn ? randVrms() : randLow(),
+      online:    actualOn,
+    });
+  }
+  return records;
 }
 
-// ── SPARKLINE on cards: green/red bar per hour showing ON minutes (0–60) ──
+// ── Get date strings for last 30 days in IST ──
+function getLast30Days(){
+  const days = [];
+  const now  = new Date(Date.now() + 5.5*3600*1000);
+  for(let i = 29; i >= 0; i--){
+    const d = new Date(now);
+    d.setUTCDate(d.getUTCDate() - i);
+    days.push(d.toISOString().slice(0,10));
+  }
+  return days;
+}
+
+// ── In-memory caches ──
+let deviceCache        = {};
+let deviceHistoryCache = {};
+let sparklineCharts    = {};
+let chartTimeline      = null;
+let chartRange         = null;
+let currentDetailId    = null;
+
+// ── Seed latest status for all devices ──
+function seedLatestStatus(){
+  DEHUM_DEVICES.forEach(dev => {
+    const p      = DEVICE_PROFILES[dev.id];
+    const nowIST = new Date(Date.now() + 5.5*3600*1000);
+    const hIST   = nowIST.getUTCHours();
+    const online = isDeviceOnAt(dev.id, hIST);
+    deviceCache[dev.id] = {
+      vrms:     online ? randVrms() : randLow(),
+      online,
+      lastSeen: new Date().toISOString(),
+    };
+  });
+}
+
+// ── Seed today's history for all devices ──
+function seedTodayHistory(){
+  DEHUM_DEVICES.forEach(dev => {
+    deviceHistoryCache[dev.id+':today'] = generateTodayHistory(dev.id);
+  });
+}
+
+// ── Get history for date range (fake API) ──
+function getFakeHistory(deviceId, from, to){
+  const fromD = new Date(from+'T00:00:00.000+05:30');
+  const toD   = new Date(to  +'T23:59:59.999+05:30');
+  const today = todayIST();
+  const days  = getLast30Days();
+  const allRecords = [];
+
+  days.forEach(day => {
+    const dayStart = new Date(day+'T00:00:00.000+05:30');
+    const dayEnd   = new Date(day+'T23:59:59.999+05:30');
+    if(dayEnd < fromD || dayStart > toD) return;
+
+    if(day === today){
+      const cached = deviceHistoryCache[deviceId+':today'] || generateTodayHistory(deviceId);
+      cached.forEach(r => {
+        const rt = new Date(r.timestamp);
+        if(rt >= fromD && rt <= toD) allRecords.push(r);
+      });
+    } else {
+      const cacheKey = deviceId+':'+day;
+      if(!deviceHistoryCache[cacheKey]){
+        deviceHistoryCache[cacheKey] = generateDayHistory(deviceId, day);
+      }
+      deviceHistoryCache[cacheKey].forEach(r => {
+        const rt = new Date(r.timestamp);
+        if(rt >= fromD && rt <= toD) allRecords.push(r);
+      });
+    }
+  });
+
+  return allRecords.sort((a,b) => new Date(a.timestamp) - new Date(b.timestamp));
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  UI — SPARKLINE  (per-hour ON bar on card)
+// ═══════════════════════════════════════════════════════════════
 function buildSparkline(canvasId, deviceId, data){
   const canvas = document.getElementById(canvasId);
   if(!canvas) return;
   if(sparklineCharts[deviceId]){ sparklineCharts[deviceId].destroy(); }
 
-  // Build 24 hourly buckets: count ON minutes per hour (each record = 10 min interval)
   const onMins  = new Array(24).fill(0);
   const offMins = new Array(24).fill(0);
   const labels  = Array.from({length:24}, (_,h) => pad(h)+':00');
 
   data.forEach(r => {
-    const d = new Date(r.timestamp), ist = new Date(d.getTime() + 5.5*3600000);
-    const h = ist.getUTCHours();
+    const d   = new Date(r.timestamp);
+    const ist = new Date(d.getTime() + 5.5*3600000);
+    const h   = ist.getUTCHours();
     const isOn = !!(r.online || parseFloat(r.vrms||0) >= VOLTAGE_THRESHOLD);
     if(isOn) onMins[h]  += 10;
     else     offMins[h] += 10;
   });
 
-  // Bar height = ON minutes (0–60), color green if any ON that hour, red if all off
-  const vals   = onMins.map((on, h) => on > 0 ? on : (offMins[h] > 0 ? -1 : null));
-  const colors = vals.map(v => v === null ? 'transparent' : v > 0 ? 'rgba(22,163,74,0.75)' : 'rgba(220,38,38,0.5)');
+  const colors = onMins.map((on,h) => {
+    if(onMins[h]+offMins[h] === 0) return 'transparent';
+    return on > 0 ? 'rgba(22,163,74,0.75)' : 'rgba(220,38,38,0.5)';
+  });
 
   sparklineCharts[deviceId] = new Chart(canvas.getContext('2d'), {
     type: 'bar',
-    data: { labels, datasets:[{ data: onMins.map((v,h) => offMins[h]+v > 0 ? v||0.5 : null), backgroundColor: colors, borderRadius:2, borderSkipped:false }] },
+    data: { labels, datasets:[{ data:onMins.map((v,h)=>onMins[h]+offMins[h]>0?Math.max(v,1):null), backgroundColor:colors, borderRadius:2, borderSkipped:false }] },
     options: {
       responsive:true, maintainAspectRatio:false, animation:{duration:200},
       plugins:{ legend:{display:false}, tooltip:{enabled:false} },
@@ -453,26 +527,25 @@ function buildSparkline(canvasId, deviceId, data){
   });
 }
 
-// ── RENDER GRID ──
+// ═══════════════════════════════════════════════════════════════
+//  UI — RENDER GRID
+// ═══════════════════════════════════════════════════════════════
 function renderGrid(){
   const grid = document.getElementById('dehumGrid');
   grid.innerHTML = '';
-  let onlineCount = 0, offlineCount = 0;
+  let onlineCount=0, offlineCount=0;
 
   DEHUM_DEVICES.forEach(dev => {
-    const cache    = deviceCache[dev.id] || {};
-    const isCheck  = cache.vrms === undefined;
-    const online   = cache.online === true;
-    const vrms     = cache.vrms;
-    const lastSeen = cache.lastSeen;
+    const cache   = deviceCache[dev.id] || {};
+    const online  = cache.online === true;
+    const vrms    = cache.vrms;
+    const lastSeen= cache.lastSeen;
 
-    if(!isCheck && online)  onlineCount++;
-    if(!isCheck && !online) offlineCount++;
+    if(online) onlineCount++; else offlineCount++;
 
-    const statusCls = isCheck?'checking': online?'online':'offline';
-    const statusTxt = isCheck?'Checking…': online?'Online':'Offline';
-    const cardCls   = isCheck?'is-checking': online?'is-online':'is-offline';
-    const vrmsCls   = isCheck?'nodata': online?'online':'offline';
+    const statusCls = online ? 'online' : 'offline';
+    const cardCls   = online ? 'is-online' : 'is-offline';
+    const vrmsCls   = online ? 'online' : 'offline';
     const lastStr   = lastSeen ? new Date(lastSeen).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true}) : '--:--';
     const sparkId   = `spark-${dev.id}`;
 
@@ -485,11 +558,11 @@ function renderGrid(){
           <div class="dehum-card-id">${dev.id}</div>
         </div>
         <div class="dehum-status-badge ${statusCls}">
-          <div class="dehum-dot"></div>${statusTxt}
+          <div class="dehum-dot"></div>${online?'Online':'Offline'}
         </div>
       </div>
       <div class="dehum-voltage">
-        <div class="dehum-voltage-val ${vrmsCls}">${vrms != null ? vrms.toFixed(1) : '--'}</div>
+        <div class="dehum-voltage-val ${vrmsCls}">${vrms!=null?vrms.toFixed(1):'--'}</div>
         <div class="dehum-voltage-unit">V RMS</div>
       </div>
       <canvas class="dehum-sparkline" id="${sparkId}" height="44"></canvas>
@@ -501,54 +574,42 @@ function renderGrid(){
     grid.appendChild(card);
   });
 
-  document.getElementById('hdrOnlineCount').textContent = onlineCount;
+  document.getElementById('hdrOnlineCount').textContent  = onlineCount;
   document.getElementById('hdrOfflineCount').textContent = offlineCount;
 
-  // Build sparklines
   DEHUM_DEVICES.forEach(dev => {
-    const hist = deviceHistoryCache[dev.id] || [];
+    const hist = deviceHistoryCache[dev.id+':today'] || [];
     if(hist.length) buildSparkline(`spark-${dev.id}`, dev.id, hist);
   });
 }
 
-async function refreshAll(){
-  await Promise.all(DEHUM_DEVICES.map(async dev => { deviceCache[dev.id] = await fetchDeviceStatus(dev.id); }));
-  const today = todayIST();
-  await Promise.all(DEHUM_DEVICES.map(async dev => { deviceHistoryCache[dev.id] = await fetchPowerHistory(dev.id, today, today); }));
-  renderGrid();
-}
-
-// ── SHOW / HIDE ──
+// ═══════════════════════════════════════════════════════════════
+//  UI — DETAIL PAGE
+// ═══════════════════════════════════════════════════════════════
 function showGrid(){
-  document.getElementById('pmGridView').style.display = 'block';
+  document.getElementById('pmGridView').style.display   = 'block';
   document.getElementById('pmDetailView').classList.remove('active');
   currentDetailId = null;
   if(chartTimeline){ chartTimeline.destroy(); chartTimeline=null; }
   if(chartRange){    chartRange.destroy();    chartRange=null; }
 }
 
-async function openDetail(deviceId){
+function openDetail(deviceId){
   currentDetailId = deviceId;
-  const dev = DEHUM_DEVICES.find(d => d.id===deviceId) || {id:deviceId, name:deviceId};
+  const dev = DEHUM_DEVICES.find(d=>d.id===deviceId)||{id:deviceId,name:deviceId};
   document.getElementById('pmGridView').style.display = 'none';
   document.getElementById('pmDetailView').classList.add('active');
   document.getElementById('detailName').textContent = dev.name;
   document.getElementById('detailId').textContent   = deviceId;
-  setDetailToday();
+  setToday();
 
-  const s = deviceCache[deviceId] || {};
-  updateDetailStats(s, []);
-
-  const fresh = await fetchDeviceStatus(deviceId);
-  deviceCache[deviceId] = fresh;
-  const today = todayIST();
-  const hist  = await fetchPowerHistory(deviceId, today, today);
-  deviceHistoryCache[deviceId] = hist;
-  updateDetailStats(fresh, hist);
+  const status = deviceCache[deviceId] || {};
+  const hist   = deviceHistoryCache[deviceId+':today'] || generateTodayHistory(deviceId);
+  updateDetailStats(status, hist);
   renderTimelineChart(hist);
 }
 
-function setDetailToday(){
+function setToday(){
   const today = todayIST();
   document.getElementById('detailDateFrom').value = today;
   document.getElementById('detailDateTo').value   = today;
@@ -557,35 +618,33 @@ function setDetailToday(){
 function updateDetailStats(status, hist){
   const badge = document.getElementById('detailStatusBadge');
   const txt   = document.getElementById('detailStatusText');
-  badge.className  = `dehum-status-badge ${status.online ? 'online' : 'offline'}`;
-  txt.textContent  = status.online ? 'Online' : 'Offline';
+  badge.className = `dehum-status-badge ${status.online?'online':'offline'}`;
+  txt.textContent = status.online ? 'Online' : 'Offline';
 
   const statEl = document.getElementById('detailStatus');
-  statEl.textContent  = status.online ? 'ONLINE' : 'OFFLINE';
-  statEl.style.color  = status.online ? '#16a34a' : '#dc2626';
+  statEl.textContent = status.online ? 'ONLINE' : 'OFFLINE';
+  statEl.style.color = status.online ? '#16a34a' : '#dc2626';
 
   if(hist && hist.length){
     let onMin=0, offMin=0;
     hist.forEach(r => {
-      if(r.online || parseFloat(r.vrms||0) >= VOLTAGE_THRESHOLD) onMin += 10;
-      else offMin += 10;
+      if(r.online || parseFloat(r.vrms||0) >= VOLTAGE_THRESHOLD) onMin  += 10;
+      else                                                         offMin += 10;
     });
     const total = onMin+offMin || 1;
     document.getElementById('detailOnTime').textContent  = (onMin/60).toFixed(1);
     document.getElementById('detailOffTime').textContent = (offMin/60).toFixed(1);
     document.getElementById('detailUptime').textContent  = Math.round((onMin/total)*100);
   } else {
-    ['detailOnTime','detailOffTime','detailUptime'].forEach(id => document.getElementById(id).textContent='--');
+    ['detailOnTime','detailOffTime','detailUptime'].forEach(id=>document.getElementById(id).textContent='--');
   }
 }
 
-// ══════════════════════════════════════════════════════════
-//  24-HOUR TIMELINE CHART
-//  X-axis: hours 00:00–23:00
-//  Y-axis: minutes 0–60
-//  Grouped bars: green = ON minutes, red = OFF minutes
-//  Tooltip: "13:00 — ON: 40 min | OFF: 20 min"
-// ══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
+//  CHART — 24-HOUR TIMELINE
+//  Y-axis: 0–60 minutes | X-axis: 00:00–23:00
+//  Green bars = ON minutes per hour | Red bars = OFF minutes per hour
+// ═══════════════════════════════════════════════════════════════
 function renderTimelineChart(hist){
   if(chartTimeline){ chartTimeline.destroy(); chartTimeline=null; }
 
@@ -593,107 +652,64 @@ function renderTimelineChart(hist){
   const onMins  = new Array(24).fill(0);
   const offMins = new Array(24).fill(0);
 
-  // Count 10-min intervals per hour
   hist.forEach(r => {
-    const d = new Date(r.timestamp), ist = new Date(d.getTime() + 5.5*3600000);
-    const h = ist.getUTCHours();
+    const d   = new Date(r.timestamp);
+    const ist = new Date(d.getTime() + 5.5*3600000);
+    const h   = ist.getUTCHours();
     const isOn = !!(r.online || parseFloat(r.vrms||0) >= VOLTAGE_THRESHOLD);
     if(isOn) onMins[h]  += 10;
     else     offMins[h] += 10;
   });
-
-  // Cap at 60 (in case of duplicate records)
-  onMins.forEach((v,i)  => { onMins[i]  = Math.min(v, 60); });
-  offMins.forEach((v,i) => { offMins[i] = Math.min(v, 60); });
+  onMins.forEach((v,i)  => { onMins[i]  = Math.min(v,60); });
+  offMins.forEach((v,i) => { offMins[i] = Math.min(v,60); });
 
   const ctx = document.getElementById('chartTimeline').getContext('2d');
   chartTimeline = new Chart(ctx, {
     type: 'bar',
     data: {
       labels,
-      datasets: [
-        {
-          label: 'ON',
-          data:  onMins,
-          backgroundColor: 'rgba(22,163,74,0.75)',
-          borderRadius: 3,
-          borderSkipped: false,
-        },
-        {
-          label: 'OFF',
-          data:  offMins,
-          backgroundColor: 'rgba(220,38,38,0.6)',
-          borderRadius: 3,
-          borderSkipped: false,
-        }
+      datasets:[
+        { label:'ON',  data:onMins,  backgroundColor:'rgba(22,163,74,0.75)', borderRadius:3, borderSkipped:false },
+        { label:'OFF', data:offMins, backgroundColor:'rgba(220,38,38,0.6)',  borderRadius:3, borderSkipped:false }
       ]
     },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: { duration: 400 },
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
+    options:{
+      responsive:true, maintainAspectRatio:false, animation:{duration:400},
+      plugins:{
+        legend:{display:false},
+        tooltip:{
+          callbacks:{
             title: ctx => `Hour: ${ctx[0].label}`,
-            label: ctx => {
-              const v = ctx.parsed.y;
-              const label = ctx.dataset.label;
-              return ` ${label}: ${v} min`;
-            },
+            label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y} min`,
             afterBody: items => {
-              const h  = items[0].dataIndex;
-              const on  = onMins[h];
-              const off = offMins[h];
-              if(on + off === 0) return ['No data recorded'];
-              const pct = Math.round((on/(on+off))*100);
-              return [`Uptime: ${pct}%`];
+              const h   = items[0].dataIndex;
+              const on  = onMins[h], off = offMins[h];
+              if(on+off===0) return ['No data recorded'];
+              return [`Uptime: ${Math.round((on/(on+off))*100)}%`];
             }
           }
         }
       },
-      scales: {
-        x: {
-          stacked: false,
-          ticks: {
-            color: '#94a3b8',
-            autoSkip: false,
-            maxRotation: 45,
-            callback: (val, i) => i % 2 === 0 ? labels[i] : ''
-          },
-          grid: { color: 'rgba(15,23,42,0.05)' }
-        },
-        y: {
-          min: 0,
-          max: 60,
-          ticks: {
-            color: '#94a3b8',
-            stepSize: 10,
-            callback: v => `${v} min`
-          },
-          grid: { color: 'rgba(15,23,42,0.05)' },
-          title: { display: true, text: 'Minutes per hour', color:'#94a3b8', font:{size:11} }
-        }
+      scales:{
+        x:{ ticks:{color:'#94a3b8', autoSkip:false, maxRotation:45, callback:(v,i)=>i%2===0?labels[i]:''}, grid:{color:'rgba(15,23,42,0.05)'} },
+        y:{ min:0, max:60, ticks:{color:'#94a3b8', stepSize:10, callback:v=>`${v} min`}, grid:{color:'rgba(15,23,42,0.05)'}, title:{display:true,text:'Minutes per hour',color:'#94a3b8',font:{size:11}} }
       }
     }
   });
 }
 
-// ══════════════════════════════════════════════════════════
-//  CUSTOM DATE RANGE CHART
-//  Single day  → hourly grouped bars (ON min vs OFF min per hour)
-//  Multi-day   → daily grouped bars  (ON hrs vs OFF hrs per day)
-//  Tooltip     → exact ON/OFF time on hover
-// ══════════════════════════════════════════════════════════
-async function fetchAndRenderRange(){
+// ═══════════════════════════════════════════════════════════════
+//  CHART — CUSTOM DATE RANGE
+//  Single day  → hourly grouped bars (0–60 min per hour)
+//  Multi-day   → daily grouped bars  (0–24 hrs per day)
+// ═══════════════════════════════════════════════════════════════
+function renderRange(){
   const from = document.getElementById('detailDateFrom').value;
   const to   = document.getElementById('detailDateTo').value;
-  if(!from || !to) return showToast('Select a date range','error');
-  if(!currentDetailId) return;
+  if(!from || !to || !currentDetailId) return;
 
-  const hist = await fetchPowerHistory(currentDetailId, from, to);
-  if(!hist.length){ showToast('No data in selected range','error'); return; }
+  const hist = getFakeHistory(currentDetailId, from, to);
+  if(!hist.length){ showToast('No data in range','error'); return; }
 
   if(chartRange){ chartRange.destroy(); chartRange=null; }
   document.getElementById('rangeTableWrap').innerHTML = '';
@@ -701,14 +717,15 @@ async function fetchAndRenderRange(){
   const isSameDay = from === to;
 
   if(isSameDay){
-    // ── Single day: hourly ON/OFF bars (0–60 min) ──
+    // ── Hourly view ──
     const labels  = Array.from({length:24}, (_,h) => pad(h)+':00');
     const onMins  = new Array(24).fill(0);
     const offMins = new Array(24).fill(0);
 
     hist.forEach(r => {
-      const d = new Date(r.timestamp), ist = new Date(d.getTime()+5.5*3600000);
-      const h = ist.getUTCHours();
+      const d   = new Date(r.timestamp);
+      const ist = new Date(d.getTime() + 5.5*3600000);
+      const h   = ist.getUTCHours();
       const isOn = !!(r.online || parseFloat(r.vrms||0) >= VOLTAGE_THRESHOLD);
       if(isOn) onMins[h]  += 10;
       else     offMins[h] += 10;
@@ -718,8 +735,8 @@ async function fetchAndRenderRange(){
 
     const ctx = document.getElementById('chartRange').getContext('2d');
     chartRange = new Chart(ctx, {
-      type: 'bar',
-      data: {
+      type:'bar',
+      data:{
         labels,
         datasets:[
           { label:'ON',  data:onMins,  backgroundColor:'rgba(22,163,74,0.75)', borderRadius:3, borderSkipped:false },
@@ -735,9 +752,8 @@ async function fetchAndRenderRange(){
               title: ctx => `Hour: ${ctx[0].label}`,
               label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y} min`,
               afterBody: items => {
-                const h  = items[0].dataIndex;
-                const on  = onMins[h];
-                const off = offMins[h];
+                const h   = items[0].dataIndex;
+                const on  = onMins[h], off = offMins[h];
                 if(on+off===0) return ['No data'];
                 return [`Uptime: ${Math.round((on/(on+off))*100)}%`];
               }
@@ -751,7 +767,6 @@ async function fetchAndRenderRange(){
       }
     });
 
-    // Summary stat cards
     let totalOn=0, totalOff=0;
     onMins.forEach(v=>totalOn+=v);
     offMins.forEach(v=>totalOff+=v);
@@ -776,12 +791,13 @@ async function fetchAndRenderRange(){
       </div>`;
 
   } else {
-    // ── Multi-day: daily ON/OFF grouped bars in hours ──
+    // ── Multi-day view ──
     const dayMap = {};
     hist.forEach(r => {
-      const d   = new Date(r.timestamp), ist = new Date(d.getTime()+5.5*3600000);
+      const d   = new Date(r.timestamp);
+      const ist = new Date(d.getTime() + 5.5*3600000);
       const key = ist.toISOString().slice(0,10);
-      if(!dayMap[key]) dayMap[key] = {onMin:0, offMin:0};
+      if(!dayMap[key]) dayMap[key] = { onMin:0, offMin:0 };
       const isOn = !!(r.online || parseFloat(r.vrms||0) >= VOLTAGE_THRESHOLD);
       if(isOn) dayMap[key].onMin  += 10;
       else     dayMap[key].offMin += 10;
@@ -793,9 +809,9 @@ async function fetchAndRenderRange(){
 
     const ctx = document.getElementById('chartRange').getContext('2d');
     chartRange = new Chart(ctx, {
-      type: 'bar',
+      type:'bar',
       data:{
-        labels: days,
+        labels:days,
         datasets:[
           { label:'ON (hrs)',  data:onHours,  backgroundColor:'rgba(22,163,74,0.75)', borderRadius:4, borderSkipped:false },
           { label:'OFF (hrs)', data:offHours, backgroundColor:'rgba(220,38,38,0.6)',  borderRadius:4, borderSkipped:false }
@@ -811,14 +827,13 @@ async function fetchAndRenderRange(){
               label: ctx => {
                 const v   = ctx.parsed.y;
                 const hrs = Math.floor(v);
-                const min = Math.round((v - hrs)*60);
-                const label = ctx.dataset.label.replace(' (hrs)','');
-                return ` ${label}: ${hrs}h ${min}m`;
+                const min = Math.round((v-hrs)*60);
+                const lbl = ctx.dataset.label.replace(' (hrs)','');
+                return ` ${lbl}: ${hrs}h ${min > 0 ? min+'m' : ''}`;
               },
               afterBody: items => {
                 const i   = items[0].dataIndex;
-                const on  = onHours[i];
-                const off = offHours[i];
+                const on  = onHours[i], off = offHours[i];
                 const pct = Math.round((on/(on+off||1))*100);
                 return [`Uptime: ${pct}%`];
               }
@@ -832,15 +847,14 @@ async function fetchAndRenderRange(){
       }
     });
 
-    // Table per day
+    // Table
     const rows = days.map(d => {
       const onH  = (dayMap[d].onMin/60).toFixed(1);
       const offH = (dayMap[d].offMin/60).toFixed(1);
       const up   = Math.round((dayMap[d].onMin/(dayMap[d].onMin+dayMap[d].offMin||1))*100);
-      const s    = parseFloat(onH)>0 ? 'on':'off';
       return `<tr>
         <td>${d}</td>
-        <td><span class="status-pill ${s}">${parseFloat(onH)>0?'▲ Running':'▼ Stopped'}</span></td>
+        <td><span class="status-pill ${parseFloat(onH)>0?'on':'off'}">${parseFloat(onH)>0?'▲ Running':'▼ Stopped'}</span></td>
         <td style="color:#16a34a;font-weight:700;">${onH} h</td>
         <td style="color:#dc2626;font-weight:700;">${offH} h</td>
         <td>${up}%</td>
@@ -855,19 +869,44 @@ async function fetchAndRenderRange(){
   }
 }
 
+function showToast(msg, type='success'){
+  const el=document.getElementById('pmToast');
+  el.textContent=msg; el.className=type; el.style.display='block'; el.style.opacity='1';
+  setTimeout(()=>{ el.style.opacity='0'; setTimeout(()=>el.style.display='none',400); },3000);
+}
+
 // ── BOOT ──
-document.getElementById('btnRefreshAll').addEventListener('click', refreshAll);
-refreshAll();
+seedLatestStatus();
+seedTodayHistory();
+renderGrid();
+
+// Refresh every 15s — tick voltage and last-seen for online devices
 setInterval(() => {
-  if(!currentDetailId) refreshAll();
-  else {
-    fetchDeviceStatus(currentDetailId).then(s => {
-      deviceCache[currentDetailId] = s;
-      updateDetailStats(s, deviceHistoryCache[currentDetailId]||[]);
+  if(!currentDetailId){
+    // Update voltages with slight drift (simulate live fluctuation)
+    DEHUM_DEVICES.forEach(dev => {
+      const c = deviceCache[dev.id];
+      if(!c) return;
+      if(c.online){
+        c.vrms     = randVrms(c.vrms);   // drift from current value
+        c.lastSeen = new Date().toISOString();
+      }
     });
+    renderGrid();
+  } else {
+    // Refresh current device stats
+    const s = deviceCache[currentDetailId] || {};
+    const h = deviceHistoryCache[currentDetailId+':today'] || [];
+    updateDetailStats(s, h);
   }
 }, 15000);
 
+document.getElementById('btnRefreshAll').addEventListener('click', () => {
+  seedLatestStatus();
+  seedTodayHistory();
+  renderGrid();
+  showToast('✅ Data refreshed');
+});
 </script>
 </body>
 </html>
