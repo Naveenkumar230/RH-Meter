@@ -411,9 +411,12 @@
       </div>
     </div>
      
+    
 
     
 <div class="home-header-right" style="gap:8px; flex-wrap:wrap; justify-content:flex-end;">
+
+  
 
   <!-- ← Hub button — sits just before the online badge -->
   <a href="/hub.html" class="header-action-btn" style="
@@ -448,6 +451,8 @@
         </button>
       </div>
 
+
+      
       <!-- Settings -->
       <button class="settings-icon-btn" onclick="openSettingsDrawer()" title="Settings">⚙️</button>
     </div>
@@ -467,7 +472,50 @@
   <button class="loc-btn loc-btn-all active" id="locBtnAll" onclick="filterByLocation('all')">
     <span class="loc-dot loc-dot-all"></span> All Devices
   </button>
+
+  <!-- Dehumidifier Monitor Button — paste anywhere in your nav or header -->
+<a href="powerconsumption.html" class="dehum-monitor-btn">
+  ⚡ Dehumidifier Monitor
+</a>
+
+<style>
+.dehum-monitor-btn {
+  display:          inline-flex;
+  align-items:      center;
+  gap:              8px;
+  padding:          10px 20px;
+  background:       linear-gradient(135deg, #1a4b8a, #2f81f7);
+  color:            #ffffff;
+  text-decoration:  none;
+  border-radius:    10px;
+  font-size:        0.875rem;
+  font-weight:      700;
+  white-space:      nowrap;
+  transition:       all 0.2s ease;
+  border:           1px solid rgba(47,129,247,0.4);
+}
+.dehum-monitor-btn:hover {
+  filter:     brightness(1.15);
+  transform:  translateY(-1px);
+  box-shadow: 0 4px 16px rgba(47,129,247,0.35);
+}
+.dehum-monitor-btn:active {
+  transform: translateY(0px);
+  filter:    brightness(0.95);
+}
+
+/* Responsive — shrinks on small screens */
+@media (max-width: 480px) {
+  .dehum-monitor-btn {
+    padding:   8px 14px;
+    font-size: 0.78rem;
+  }
+}
+</style>
 </div>
+
+
+
 
   <!-- FILTER ACTIVE CHIP -->
   <div class="filter-active-chip" id="filterActiveChip">

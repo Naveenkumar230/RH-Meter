@@ -1,0 +1,1054 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dehumidifier Power Monitor</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+
+<style>
+:root {
+  --bg:           #f0f4f8;
+  --bg-white:     #ffffff;
+  --bg-soft:      #f8fafc;
+  --border:       #e2e8f0;
+  --border-light: #edf2f7;
+  --text:         #0f172a;
+  --text-mid:     #475569;
+  --text-muted:   #94a3b8;
+  --blue:         #2563eb;
+  --blue-light:   #eff6ff;
+  --blue-border:  #bfdbfe;
+  --green:        #16a34a;
+  --green-light:  #f0fdf4;
+  --green-border: #bbf7d0;
+  --red:          #dc2626;
+  --red-light:    #fef2f2;
+  --red-border:   #fecaca;
+  --amber:        #d97706;
+  --amber-light:  #fffbeb;
+  --shadow-sm:    0 1px 3px rgba(15,23,42,0.08), 0 1px 2px rgba(15,23,42,0.04);
+  --shadow:       0 4px 16px rgba(15,23,42,0.08), 0 2px 6px rgba(15,23,42,0.04);
+  --shadow-lg:    0 12px 40px rgba(15,23,42,0.10), 0 4px 12px rgba(15,23,42,0.06);
+  --radius:       14px;
+  --radius-sm:    8px;
+  --font:         'Plus Jakarta Sans', sans-serif;
+  --mono:         'JetBrains Mono', monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: var(--font);
+  background:  var(--bg);
+  color:       var(--text);
+  min-height:  100vh;
+  line-height: 1.5;
+}
+
+/* ── HEADER ── */
+.pm-header {
+  background:    var(--bg-white);
+  border-bottom: 1px solid var(--border);
+  padding:       0 28px;
+  height:        64px;
+  display:       flex;
+  align-items:   center;
+  justify-content: space-between;
+  position:      sticky;
+  top:           0;
+  z-index:       200;
+  box-shadow:    var(--shadow-sm);
+  gap:           16px;
+}
+
+.pm-header-left {
+  display:     flex;
+  align-items: center;
+  gap:         14px;
+}
+
+.pm-header-icon {
+  width:           40px;
+  height:          40px;
+  border-radius:   11px;
+  background:      linear-gradient(135deg, #1d4ed8, #3b82f6);
+  display:         flex;
+  align-items:     center;
+  justify-content: center;
+  font-size:       20px;
+  box-shadow:      0 4px 12px rgba(37,99,235,0.3);
+}
+
+.pm-header-title {
+  font-size:   1rem;
+  font-weight: 800;
+  color:       var(--text);
+  letter-spacing: -0.3px;
+}
+
+.pm-header-sub {
+  font-size:  0.72rem;
+  color:      var(--text-muted);
+  font-weight: 500;
+  margin-top: 1px;
+}
+
+.pm-header-right {
+  display:     flex;
+  align-items: center;
+  gap:         10px;
+}
+
+.pm-back-btn {
+  display:         flex;
+  align-items:     center;
+  gap:             6px;
+  background:      var(--bg-soft);
+  border:          1px solid var(--border);
+  color:           var(--text-mid);
+  text-decoration: none;
+  padding:         7px 14px;
+  border-radius:   var(--radius-sm);
+  font-size:       0.8rem;
+  font-weight:     600;
+  transition:      all 0.2s;
+  cursor:          pointer;
+  white-space:     nowrap;
+  flex-shrink:     0;
+}
+.pm-back-btn:hover { color: var(--blue); border-color: var(--blue-border); background: var(--blue-light); }
+.pm-back-btn .btn-label { display: inline; }
+
+@media (max-width: 520px) {
+  .pm-back-btn { padding: 8px 10px; }
+  .pm-back-btn .btn-label { display: none; }
+  .pm-header-title { font-size: 0.85rem; }
+  .pm-header-icon  { width: 32px; height: 32px; font-size: 16px; border-radius: 9px; }
+  .pm-header { padding: 0 12px; gap: 8px; }
+}
+
+.pm-chip {
+  display:      flex;
+  align-items:  center;
+  gap:          5px;
+  padding:      5px 12px;
+  border-radius: 20px;
+  font-size:    0.72rem;
+  font-weight:  700;
+  border:       1px solid;
+}
+.pm-chip.online  { color: var(--green); border-color: var(--green-border); background: var(--green-light); }
+.pm-chip.offline { color: var(--red);   border-color: var(--red-border);   background: var(--red-light);   }
+.pm-chip-dot { width:7px; height:7px; border-radius:50%; background:currentColor; }
+.pm-chip.online .pm-chip-dot { animation: pulse-dot 2s infinite; }
+@keyframes pulse-dot {
+  0%,100% { opacity:1; transform:scale(1); }
+  50%      { opacity:.4; transform:scale(1.4); }
+}
+
+/* ── MAIN ── */
+.pm-main {
+  max-width: 1400px;
+  margin:    0 auto;
+  padding:   28px 24px;
+}
+
+/* ── SECTION HEADER ── */
+.pm-section-header {
+  display:       flex;
+  align-items:   center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  gap:           12px;
+}
+.pm-section-title {
+  font-size:   1.05rem;
+  font-weight: 800;
+  color:       var(--text);
+  letter-spacing: -0.3px;
+}
+
+/* ── GRID ── */
+.dehum-grid {
+  display:               grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap:                   16px;
+  margin-bottom:         32px;
+}
+
+/* ── DEVICE CARD ── */
+.dehum-card {
+  background:    var(--bg-white);
+  border:        1px solid var(--border);
+  border-radius: var(--radius);
+  padding:       18px 18px 14px;
+  cursor:        pointer;
+  transition:    all 0.22s ease;
+  position:      relative;
+  overflow:      hidden;
+  display:       flex;
+  flex-direction: column;
+  user-select:   none;
+  box-shadow:    var(--shadow-sm);
+  height:        auto;
+  max-height:    380px;
+}
+.dehum-card::before {
+  content:  '';
+  position: absolute;
+  top:0; left:0; right:0;
+  height:   3px;
+  transition: background 0.3s;
+}
+.dehum-card.is-online::before  { background: var(--green); }
+.dehum-card.is-offline::before { background: var(--red);   }
+.dehum-card.is-checking::before{ background: var(--amber); }
+
+.dehum-card:hover {
+  transform:    translateY(-3px);
+  box-shadow:   var(--shadow-lg);
+  border-color: #cbd5e1;
+}
+
+.dehum-card-top {
+  display:       flex;
+  align-items:   flex-start;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  gap:           8px;
+  flex-shrink:   0;
+}
+.dehum-card-name {
+  font-size:   0.9rem;
+  font-weight: 700;
+  color:       var(--text);
+  line-height: 1.3;
+}
+.dehum-card-id {
+  font-family: var(--mono);
+  font-size:   0.65rem;
+  color:       var(--text-muted);
+  margin-top:  3px;
+  background:  var(--bg-soft);
+  border:      1px solid var(--border-light);
+  border-radius: 4px;
+  padding:     1px 5px;
+  display:     inline-block;
+}
+
+.dehum-status-badge {
+  display:      flex;
+  align-items:  center;
+  gap:          5px;
+  padding:      4px 10px;
+  border-radius: 20px;
+  font-size:    0.7rem;
+  font-weight:  700;
+  flex-shrink:  0;
+  border:       1px solid;
+  white-space:  nowrap;
+}
+.dehum-status-badge.online   { color:var(--green); border-color:var(--green-border); background:var(--green-light); }
+.dehum-status-badge.offline  { color:var(--red);   border-color:var(--red-border);   background:var(--red-light);   }
+.dehum-status-badge.checking { color:var(--amber); border-color:#fde68a;             background:var(--amber-light); }
+.dehum-dot { width:7px; height:7px; border-radius:50%; background:currentColor; flex-shrink:0; }
+.dehum-status-badge.online .dehum-dot  { animation: pulse-dot 2s infinite; }
+.dehum-status-badge.offline .dehum-dot { animation: blink-red 1.2s infinite; }
+@keyframes blink-red { 0%,100%{ opacity:1; } 50%{ opacity:0.2; } }
+
+.dehum-relay-row {
+  display:       flex;
+  align-items:   center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  padding:       7px 10px;
+  background:    var(--bg-soft);
+  border:        1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  flex-shrink:   0;
+}
+.dehum-relay-label { font-size:0.75rem; color:var(--text-mid); font-weight:600; }
+
+.dehum-voltage {
+  text-align:  center;
+  margin:      6px 0 8px;
+  padding:     10px 0;
+  background:  var(--bg-soft);
+  border:      1px solid var(--border-light);
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+.dehum-voltage-val {
+  font-family: var(--mono);
+  font-size:   1.8rem;
+  font-weight: 700;
+  line-height: 1;
+}
+.dehum-voltage-val.online  { color: var(--green); }
+.dehum-voltage-val.offline { color: var(--red);   }
+.dehum-voltage-val.nodata  { color: var(--text-muted); }
+.dehum-voltage-unit { font-size:0.72rem; color:var(--text-muted); margin-top:3px; }
+
+.dehum-sparkline {
+  width:      100%;
+  height:     44px !important;
+  max-height: 44px;
+  flex-shrink: 0;
+  margin-bottom: 8px;
+  display:    block;
+}
+
+.dehum-card-footer {
+  display:       flex;
+  align-items:   center;
+  justify-content: space-between;
+  border-top:    1px solid var(--border-light);
+  padding-top:   8px;
+  margin-top:    auto;
+  flex-shrink:   0;
+}
+.dehum-last-seen { font-size:0.68rem; color:var(--text-muted); }
+.dehum-view-link { font-size:0.72rem; font-weight:700; color:var(--blue); }
+
+/* Toggle */
+.toggle-switch { position:relative; width:40px; height:22px; cursor:pointer; flex-shrink:0; }
+.toggle-switch input { display:none; }
+.toggle-track {
+  position:absolute; inset:0; border-radius:11px;
+  background:#e2e8f0; transition:background 0.2s;
+  border:1px solid var(--border);
+}
+.toggle-thumb {
+  position:absolute; top:3px; left:3px;
+  width:16px; height:16px; border-radius:50%;
+  background:#94a3b8; transition:all 0.2s;
+  box-shadow:0 1px 3px rgba(0,0,0,0.15);
+}
+.toggle-switch input:checked ~ .toggle-track { background:var(--green); border-color:var(--green); }
+.toggle-switch input:checked ~ .toggle-thumb { left:21px; background:#fff; }
+
+/* ── DETAIL VIEW ── */
+.pm-detail-view { display:none; }
+.pm-detail-view.active { display:block; }
+
+.pm-detail-header {
+  display:       flex;
+  align-items:   center;
+  gap:           12px;
+  margin-bottom: 24px;
+  flex-wrap:     wrap;
+  padding:       20px 24px;
+  background:    var(--bg-white);
+  border:        1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow:    var(--shadow-sm);
+}
+.pm-detail-name { font-size:1.25rem; font-weight:800; color:var(--text); letter-spacing:-0.4px; }
+.pm-detail-id {
+  font-family: var(--mono); font-size:0.75rem; color:var(--text-mid);
+  background:var(--bg-soft); border:1px solid var(--border); border-radius:var(--radius-sm);
+  padding:3px 9px;
+}
+
+.pm-stats-row {
+  display:               grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px,1fr));
+  gap:                   12px;
+  margin-bottom:         20px;
+}
+.pm-stat-card {
+  background:    var(--bg-white);
+  border:        1px solid var(--border);
+  border-radius: var(--radius);
+  padding:       18px;
+  box-shadow:    var(--shadow-sm);
+  transition:    box-shadow 0.2s;
+}
+.pm-stat-card:hover { box-shadow:var(--shadow); }
+.pm-stat-label { font-size:0.7rem; color:var(--text-muted); font-weight:700; text-transform:uppercase; letter-spacing:0.6px; margin-bottom:8px; }
+.pm-stat-val   { font-size:1.6rem; font-weight:800; font-family:var(--mono); color:var(--text); line-height:1; }
+.pm-stat-unit  { font-size:0.72rem; color:var(--text-muted); margin-top:4px; }
+
+.pm-chart-card {
+  background:    var(--bg-white);
+  border:        1px solid var(--border);
+  border-radius: var(--radius);
+  padding:       22px;
+  margin-bottom: 16px;
+  box-shadow:    var(--shadow-sm);
+}
+.pm-chart-title {
+  font-size:     0.88rem;
+  font-weight:   700;
+  color:         var(--text);
+  margin-bottom: 18px;
+  display:       flex;
+  align-items:   center;
+  gap:           8px;
+  letter-spacing:-0.2px;
+}
+.pm-chart-wrap { position:relative; height:220px; }
+
+.pm-filter-bar {
+  display:       flex;
+  align-items:   center;
+  gap:           10px;
+  flex-wrap:     wrap;
+  margin-bottom: 20px;
+}
+.pm-filter-bar label { font-size:0.78rem; color:var(--text-mid); font-weight:600; }
+.pm-date-input {
+  background:    var(--bg-soft);
+  border:        1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color:         var(--text);
+  padding:       8px 10px;
+  font-size:     0.8rem;
+  font-family:   var(--font);
+  outline:       none;
+  transition:    border-color 0.2s, box-shadow 0.2s;
+}
+.pm-date-input:focus { border-color:var(--blue); box-shadow:0 0 0 3px rgba(37,99,235,0.08); }
+
+.pm-btn {
+  padding:       8px 16px;
+  border-radius: var(--radius-sm);
+  border:        none;
+  font-family:   var(--font);
+  font-size:     0.8rem;
+  font-weight:   700;
+  cursor:        pointer;
+  transition:    all 0.2s;
+}
+.pm-btn-primary { background:var(--blue); color:#fff; box-shadow:0 2px 8px rgba(37,99,235,0.25); }
+.pm-btn-primary:hover { background:#1d4ed8; box-shadow:0 4px 12px rgba(37,99,235,0.35); }
+.pm-btn-ghost   { background:var(--bg-white); border:1px solid var(--border); color:var(--text-mid); }
+.pm-btn-ghost:hover { color:var(--blue); border-color:var(--blue-border); background:var(--blue-light); }
+
+/* ── TABLE ── */
+.pm-table-wrap { overflow-x:auto; margin-top:16px; }
+.pm-table { width:100%; border-collapse:collapse; font-size:0.82rem; }
+.pm-table th {
+  background:var(--bg-soft); color:var(--text-muted); padding:10px 14px;
+  text-align:left; border:1px solid var(--border-light);
+  font-size:0.7rem; text-transform:uppercase; letter-spacing:0.6px; font-weight:700;
+}
+.pm-table td { padding:10px 14px; border:1px solid var(--border-light); color:var(--text); font-weight:500; }
+.pm-table tr:hover td { background:var(--bg-soft); }
+
+.status-pill {
+  display:inline-flex; align-items:center; gap:5px;
+  padding:3px 9px; border-radius:20px; font-size:0.7rem; font-weight:700;
+}
+.status-pill.on  { color:var(--green); background:var(--green-light); border:1px solid var(--green-border); }
+.status-pill.off { color:var(--red);   background:var(--red-light);   border:1px solid var(--red-border);   }
+
+/* ── TOAST ── */
+#pmToast {
+  position:fixed; bottom:24px; right:24px; z-index:9999;
+  padding:12px 20px; border-radius:10px; font-size:0.85rem; font-weight:600;
+  box-shadow:var(--shadow-lg); transition:opacity 0.3s; display:none;
+}
+#pmToast.success { background:var(--green-light); border:1px solid var(--green-border); color:var(--green); }
+#pmToast.error   { background:var(--red-light);   border:1px solid var(--red-border);   color:var(--red);   }
+
+/* ── EMPTY ── */
+.pm-empty { text-align:center; padding:60px 20px; color:var(--text-muted); font-size:0.9rem; }
+.pm-empty-icon { font-size:3rem; margin-bottom:12px; }
+
+/* ── DIVIDER ── */
+.pm-divider { height:1px; background:var(--border-light); margin:8px 0 24px; }
+
+/* ══════════════════════════════════════════════
+   RESPONSIVE
+══════════════════════════════════════════════ */
+@media (max-width:1100px) {
+  .dehum-grid { grid-template-columns: repeat(3, 1fr); }
+}
+
+@media (max-width:768px) {
+  .pm-main       { padding:20px 16px; }
+  .dehum-grid    { grid-template-columns: repeat(2, 1fr); gap:12px; }
+  .pm-stats-row  { grid-template-columns:1fr 1fr; }
+  .pm-chart-card { padding:16px; }
+  .pm-chart-wrap { height:180px; }
+}
+
+@media (max-width:600px) {
+  .pm-header { padding:0 12px; height:56px; gap:8px; }
+  .pm-header-icon { width:30px; height:30px; font-size:15px; border-radius:8px; flex-shrink:0; }
+  .pm-header-title { font-size:0.8rem; }
+  .pm-header-sub { display:none; }
+  .pm-header-right > div:first-child { display:none; }
+  .pm-back-btn { padding:7px 10px; font-size:0.78rem; }
+  .pm-back-btn .btn-label { display:none; }
+  .pm-main { padding:14px 10px; }
+  .pm-section-header { margin-bottom:14px; }
+  .pm-section-title { font-size:0.92rem; }
+  .dehum-grid { grid-template-columns: repeat(2, 1fr); gap:10px; }
+  .dehum-card { padding:12px 12px 10px; max-height:340px; }
+  .dehum-card-name { font-size:0.82rem; }
+  .dehum-voltage-val { font-size:1.5rem; }
+  .dehum-sparkline { height:36px !important; max-height:36px; }
+  .pm-detail-header { padding:14px; gap:10px; }
+  .pm-detail-name { font-size:1rem; }
+  .pm-detail-id { font-size:0.68rem; }
+  .pm-stats-row { grid-template-columns:1fr 1fr; gap:10px; }
+  .pm-stat-card { padding:14px; }
+  .pm-stat-val { font-size:1.3rem; }
+  .pm-stat-label { font-size:0.65rem; }
+  .pm-chart-card { padding:14px; }
+  .pm-chart-title { font-size:0.8rem; margin-bottom:12px; }
+  .pm-chart-wrap { height:160px; }
+  .pm-filter-bar { flex-direction:column; align-items:stretch; gap:8px; }
+  .pm-filter-bar label { margin-bottom:-4px; }
+  .pm-date-input { width:100%; font-size:0.85rem; padding:10px; }
+  .pm-filter-bar .pm-btn { width:100%; padding:11px; font-size:0.85rem; }
+  .pm-table { font-size:0.75rem; }
+  .pm-table th, .pm-table td { padding:8px 10px; }
+  #pmToast { bottom:16px; right:12px; left:12px; text-align:center; font-size:0.8rem; }
+}
+
+@media (max-width:400px) {
+  .dehum-grid { grid-template-columns: 1fr; }
+  .pm-header-title { font-size:0.72rem; }
+  .pm-stats-row { grid-template-columns:1fr; }
+  .pm-stat-val { font-size:1.5rem; }
+  .dehum-card-name { font-size:0.8rem; }
+}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header class="pm-header">
+  <div class="pm-header-left">
+    <div class="pm-header-icon">⚡</div>
+    <div>
+      <div class="pm-header-title">Dehumidifier Power Monitor</div>
+      <div class="pm-header-sub">ZMPT101B AC Voltage Sensing — 10 Units</div>
+    </div>
+  </div>
+  <div class="pm-header-right">
+    <div style="display:flex;gap:8px;align-items:center;">
+      <div class="pm-chip online">
+        <div class="pm-chip-dot"></div>
+        <span id="hdrOnlineCount">0</span> Online
+      </div>
+      <div class="pm-chip offline">
+        <div class="pm-chip-dot"></div>
+        <span id="hdrOfflineCount">0</span> Offline
+      </div>
+    </div>
+    <a href="home.html" class="pm-back-btn">← <span class="btn-label">Home</span></a>
+  </div>
+</header>
+
+<!-- MAIN -->
+<main class="pm-main">
+
+  <!-- GRID VIEW -->
+  <div id="pmGridView">
+    <div class="pm-section-header">
+      <div class="pm-section-title">💧 Dehumidifier Units</div>
+      <button class="pm-btn pm-btn-ghost" id="btnRefreshAll">↻ Refresh</button>
+    </div>
+    <div class="pm-divider"></div>
+    <div class="dehum-grid" id="dehumGrid"></div>
+  </div>
+
+  <!-- DETAIL VIEW -->
+  <div id="pmDetailView" class="pm-detail-view">
+
+    <div class="pm-detail-header">
+      <button class="pm-btn pm-btn-ghost" onclick="showGrid()">← Back</button>
+      <div>
+        <div class="pm-detail-name" id="detailName">—</div>
+        <div class="pm-detail-id"  id="detailId">—</div>
+      </div>
+      <div id="detailStatusBadge" class="dehum-status-badge checking" style="margin-left:auto;">
+        <div class="dehum-dot"></div>
+        <span id="detailStatusText">Checking...</span>
+      </div>
+    </div>
+
+    <div class="pm-stats-row">
+      <div class="pm-stat-card">
+        <div class="pm-stat-label">Live Voltage</div>
+        <div class="pm-stat-val" id="detailVrms" style="color:var(--blue);">--</div>
+        <div class="pm-stat-unit">V RMS</div>
+      </div>
+      <div class="pm-stat-card">
+        <div class="pm-stat-label">Today ON Time</div>
+        <div class="pm-stat-val" id="detailOnTime" style="color:var(--green);">--</div>
+        <div class="pm-stat-unit">hours</div>
+      </div>
+      <div class="pm-stat-card">
+        <div class="pm-stat-label">Today OFF Time</div>
+        <div class="pm-stat-val" id="detailOffTime" style="color:var(--red);">--</div>
+        <div class="pm-stat-unit">hours</div>
+      </div>
+      <div class="pm-stat-card">
+        <div class="pm-stat-label">Uptime Today</div>
+        <div class="pm-stat-val" id="detailUptime">--</div>
+        <div class="pm-stat-unit">%</div>
+      </div>
+    </div>
+
+    <div class="pm-chart-card">
+      <div class="pm-chart-title">📊 24-Hour ON/OFF Timeline (today)</div>
+      <div class="pm-chart-wrap"><canvas id="chartTimeline"></canvas></div>
+    </div>
+
+    <div class="pm-chart-card">
+      <div class="pm-chart-title">📅 Custom Date Range — ON/OFF History</div>
+      <div class="pm-filter-bar">
+        <label>From</label>
+        <input type="date" class="pm-date-input" id="detailDateFrom">
+        <label>To</label>
+        <input type="date" class="pm-date-input" id="detailDateTo">
+        <button class="pm-btn pm-btn-primary" onclick="fetchAndRenderRange()">Apply</button>
+        <button class="pm-btn pm-btn-ghost"   onclick="setDetailToday()">Today</button>
+      </div>
+      <div class="pm-chart-wrap"><canvas id="chartRange"></canvas></div>
+      <div class="pm-table-wrap" id="rangeTableWrap"></div>
+    </div>
+
+  </div>
+</main>
+
+<div id="pmToast"></div>
+
+<script>
+const PM_SERVER = 'https://rh-meter-production.onrender.com';
+
+const DEHUM_DEVICES = [
+  { id:'Dehum_01', name:'Dehumidifier — Zone 1'  },
+  { id:'Dehum_02', name:'Dehumidifier — Zone 2'  },
+  { id:'Dehum_03', name:'Dehumidifier — Zone 3'  },
+  { id:'Dehum_04', name:'Dehumidifier — Zone 4'  },
+  { id:'Dehum_05', name:'Dehumidifier — Zone 5'  },
+  { id:'Dehum_06', name:'Dehumidifier — Zone 6'  },
+  { id:'Dehum_07', name:'Dehumidifier — Zone 7'  },
+  { id:'Dehum_08', name:'Dehumidifier — Zone 8'  },
+  { id:'Dehum_09', name:'Dehumidifier — Zone 9'  },
+  { id:'Dehum_10', name:'Dehumidifier — Zone 10' },
+];
+
+let deviceCache       = {};
+let sparklineCharts   = {};
+let chartTimeline     = null;
+let chartRange        = null;
+let currentDetailId   = null;
+let deviceHistoryCache = {};
+const VOLTAGE_THRESH  = 50;
+
+function pad(n){ return n<10?'0'+n:''+n; }
+function todayIST(){
+  const now=new Date(), ist=new Date(now.getTime()+5.5*3600000);
+  return ist.toISOString().slice(0,10);
+}
+
+function showToast(msg,type='success'){
+  const el=document.getElementById('pmToast');
+  el.textContent=msg; el.className=type; el.style.display='block'; el.style.opacity='1';
+  setTimeout(()=>{ el.style.opacity='0'; setTimeout(()=>el.style.display='none',400); },3000);
+}
+
+async function fetchDeviceStatus(deviceId){
+  try {
+    const res=await fetch(`${PM_SERVER}/api/power-data?deviceId=${deviceId}&_t=${Date.now()}`);
+    if(!res.ok) throw new Error('not ok');
+    const d=await res.json();
+    return { vrms:parseFloat(d.vrms??0), online:!!d.online, relay:!!d.relay, lastSeen:d.timestamp||null };
+  } catch(e){ return { vrms:0, online:false, relay:false, lastSeen:null }; }
+}
+
+async function fetchPowerHistory(deviceId,from,to){
+  try {
+    const res=await fetch(`${PM_SERVER}/api/power-history?deviceId=${deviceId}&from=${from}&to=${to}&_t=${Date.now()}`);
+    if(!res.ok) throw new Error('not ok');
+    return await res.json();
+  } catch(e){ return []; }
+}
+
+async function sendRelayCmd(deviceId,state){
+  try {
+    const res=await fetch(`${PM_SERVER}/api/power-relay`,{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({deviceId,state:state?'ON':'OFF'})
+    });
+    if(!res.ok) throw new Error('Server error');
+    showToast(`✅ ${deviceId} relay → ${state?'ON':'OFF'}`);
+  } catch(e){ showToast('❌ Command failed: '+e.message,'error'); }
+}
+
+function buildSparkline(canvasId,deviceId,data){
+  const canvas=document.getElementById(canvasId);
+  if(!canvas) return;
+  if(sparklineCharts[deviceId]){ sparklineCharts[deviceId].destroy(); }
+  const slots=[];
+  for(let h=0;h<24;h++) slots.push(pad(h)+':00');
+  const map={};
+  data.forEach(r=>{
+    const d=new Date(r.timestamp), ist=new Date(d.getTime()+5.5*3600000);
+    const key=pad(ist.getUTCHours())+':00';
+    if(!map[key]) map[key]={vrms:[]};
+    map[key].vrms.push(parseFloat(r.vrms||0));
+  });
+  const vals=slots.map(s=>map[s]?+(map[s].vrms.reduce((a,v)=>a+v,0)/map[s].vrms.length).toFixed(1):null);
+  const colors=vals.map(v=>v===null?'transparent':v>=VOLTAGE_THRESH?'rgba(22,163,74,0.75)':'rgba(220,38,38,0.55)');
+  sparklineCharts[deviceId]=new Chart(canvas.getContext('2d'),{
+    type:'bar',
+    data:{ labels:slots, datasets:[{ data:vals, backgroundColor:colors, borderRadius:2, borderSkipped:false }] },
+    options:{
+      responsive:true, maintainAspectRatio:false, animation:{duration:300},
+      plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label:ctx=>{ const v=ctx.parsed.y; return v>=VOLTAGE_THRESH?`Online ${v}V`:`Offline ${v}V`; } } } },
+      scales:{ x:{display:false}, y:{display:false,min:0,max:280} }
+    }
+  });
+}
+
+function renderGrid(){
+  const grid=document.getElementById('dehumGrid');
+  grid.innerHTML='';
+  let onlineCount=0, offlineCount=0;
+  DEHUM_DEVICES.forEach(dev=>{
+    const cache=deviceCache[dev.id]||{};
+    const isCheck=cache.vrms===undefined;
+    const online=cache.online===true;
+    const relay=cache.relay===true;
+    const vrms=cache.vrms;
+    const lastSeen=cache.lastSeen;
+    if(!isCheck && online)  onlineCount++;
+    if(!isCheck && !online) offlineCount++;
+    const statusCls=isCheck?'checking':online?'online':'offline';
+    const statusTxt=isCheck?'Checking…':online?'Online':'Offline';
+    const cardCls=isCheck?'is-checking':online?'is-online':'is-offline';
+    const vrmsCls=isCheck?'nodata':online?'online':'offline';
+    const lastSeenStr=lastSeen?new Date(lastSeen).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true}):'--:--';
+    const sparkId=`spark-${dev.id}`;
+    const card=document.createElement('div');
+    card.className=`dehum-card ${cardCls}`;
+    card.innerHTML=`
+      <div class="dehum-card-top">
+        <div>
+          <div class="dehum-card-name">${dev.name}</div>
+          <div class="dehum-card-id">${dev.id}</div>
+        </div>
+        <div class="dehum-status-badge ${statusCls}">
+          <div class="dehum-dot"></div>${statusTxt}
+        </div>
+      </div>
+      <div class="dehum-relay-row">
+        <span class="dehum-relay-label">⚡ Relay Control</span>
+        <label class="toggle-switch" onclick="event.stopPropagation()">
+          <input type="checkbox" id="relay-${dev.id}" ${relay?'checked':''}
+            onchange="onRelayToggle('${dev.id}',this.checked)">
+          <div class="toggle-track"></div>
+          <div class="toggle-thumb"></div>
+        </label>
+      </div>
+      <div class="dehum-voltage">
+        <div class="dehum-voltage-val ${vrmsCls}">${vrms!=null?vrms.toFixed(1):'--'}</div>
+        <div class="dehum-voltage-unit">V RMS</div>
+      </div>
+      <canvas class="dehum-sparkline" id="${sparkId}" height="44"></canvas>
+      <div class="dehum-card-footer">
+        <span class="dehum-last-seen">🕐 ${lastSeenStr}</span>
+        <span class="dehum-view-link">Details →</span>
+      </div>`;
+    card.addEventListener('click',()=>openDetail(dev.id));
+    grid.appendChild(card);
+  });
+  document.getElementById('hdrOnlineCount').textContent=onlineCount;
+  document.getElementById('hdrOfflineCount').textContent=offlineCount;
+  DEHUM_DEVICES.forEach(dev=>{
+    const hist=deviceHistoryCache[dev.id]||[];
+    if(hist.length) buildSparkline(`spark-${dev.id}`,dev.id,hist);
+  });
+}
+
+async function onRelayToggle(deviceId,state){ await sendRelayCmd(deviceId,state); }
+
+async function refreshAll(){
+  await Promise.all(DEHUM_DEVICES.map(async dev=>{ deviceCache[dev.id]=await fetchDeviceStatus(dev.id); }));
+  const today=todayIST();
+  await Promise.all(DEHUM_DEVICES.map(async dev=>{ deviceHistoryCache[dev.id]=await fetchPowerHistory(dev.id,today,today); }));
+  renderGrid();
+}
+
+function showGrid(){
+  document.getElementById('pmGridView').style.display='block';
+  document.getElementById('pmDetailView').classList.remove('active');
+  currentDetailId=null;
+  if(chartTimeline){ chartTimeline.destroy(); chartTimeline=null; }
+  if(chartRange){    chartRange.destroy();    chartRange=null; }
+}
+
+async function openDetail(deviceId){
+  currentDetailId=deviceId;
+  const dev=DEHUM_DEVICES.find(d=>d.id===deviceId)||{id:deviceId,name:deviceId};
+  document.getElementById('pmGridView').style.display='none';
+  document.getElementById('pmDetailView').classList.add('active');
+  document.getElementById('detailName').textContent=dev.name;
+  document.getElementById('detailId').textContent=deviceId;
+  setDetailToday();
+  const s=deviceCache[deviceId]||{};
+  updateDetailStats(s,[]);
+  const fresh=await fetchDeviceStatus(deviceId);
+  deviceCache[deviceId]=fresh;
+  const today=todayIST();
+  const hist=await fetchPowerHistory(deviceId,today,today);
+  deviceHistoryCache[deviceId]=hist;
+  updateDetailStats(fresh,hist);
+  renderTimelineChart(hist);
+}
+
+function setDetailToday(){
+  const today=todayIST();
+  document.getElementById('detailDateFrom').value=today;
+  document.getElementById('detailDateTo').value=today;
+}
+
+function updateDetailStats(status,hist){
+  const badge=document.getElementById('detailStatusBadge');
+  const txt=document.getElementById('detailStatusText');
+  badge.className=`dehum-status-badge ${status.online?'online':'offline'}`;
+  txt.textContent=status.online?'Online':'Offline';
+  document.getElementById('detailVrms').textContent=status.vrms!=null?parseFloat(status.vrms).toFixed(1):'--';
+  if(hist&&hist.length){
+    let onMin=0,offMin=0;
+    const interval=10;
+    hist.forEach(r=>{ if(r.online||parseFloat(r.vrms||0)>=VOLTAGE_THRESH) onMin+=interval; else offMin+=interval; });
+    const totalMin=onMin+offMin||1;
+    document.getElementById('detailOnTime').textContent=(onMin/60).toFixed(1);
+    document.getElementById('detailOffTime').textContent=(offMin/60).toFixed(1);
+    document.getElementById('detailUptime').textContent=((onMin/totalMin)*100).toFixed(0);
+  } else {
+    ['detailOnTime','detailOffTime','detailUptime'].forEach(id=>{ document.getElementById(id).textContent='--'; });
+  }
+}
+
+function renderTimelineChart(hist){
+  if(chartTimeline){ chartTimeline.destroy(); chartTimeline=null; }
+  const slots=[];
+  for(let h=0;h<24;h++){ slots.push(pad(h)+':00'); slots.push(pad(h)+':30'); }
+  const map={};
+  hist.forEach(r=>{
+    const d=new Date(r.timestamp), ist=new Date(d.getTime()+5.5*3600000);
+    const m=ist.getUTCMinutes()<30?'00':'30';
+    const key=pad(ist.getUTCHours())+':'+m;
+    if(!map[key]) map[key]={vrms:[]};
+    map[key].vrms.push(parseFloat(r.vrms||0));
+  });
+  const vals=slots.map(s=>map[s]?+(map[s].vrms.reduce((a,v)=>a+v,0)/map[s].vrms.length).toFixed(1):null);
+  const colors=vals.map(v=>v===null?'transparent':v>=VOLTAGE_THRESH?'rgba(22,163,74,0.7)':'rgba(220,38,38,0.55)');
+  const ctx=document.getElementById('chartTimeline').getContext('2d');
+  chartTimeline=new Chart(ctx,{
+    type:'bar',
+    data:{ labels:slots, datasets:[{ label:'Voltage (Vrms)', data:vals, backgroundColor:colors, borderRadius:3, borderSkipped:false }] },
+    options:{
+      responsive:true, maintainAspectRatio:false, animation:{duration:400},
+      plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label:ctx=>{ const v=ctx.parsed.y; if(v===null) return 'No data'; return v>=VOLTAGE_THRESH?`Online — ${v}V`:`Offline — ${v}V`; } } } },
+      scales:{
+        x:{ ticks:{color:'#94a3b8',maxRotation:45,minRotation:45,autoSkip:false,callback:(val,i)=>i%4===0?slots[i]:''}, grid:{color:'rgba(15,23,42,0.05)'} },
+        y:{ min:0,max:280, ticks:{color:'#94a3b8',callback:v=>`${v}V`}, grid:{color:'rgba(15,23,42,0.05)'} }
+      }
+    }
+  });
+}
+
+async function fetchAndRenderRange(){
+  const from=document.getElementById('detailDateFrom').value;
+  const to=document.getElementById('detailDateTo').value;
+  if(!from||!to) return showToast('Select a date range','error');
+  if(!currentDetailId) return;
+  const hist=await fetchPowerHistory(currentDetailId,from,to);
+  if(!hist.length){ showToast('No data in selected range','error'); return; }
+  const isSameDay=from===to;
+  if(chartRange){ chartRange.destroy(); chartRange=null; }
+  document.getElementById('rangeTableWrap').innerHTML='';
+
+  if(isSameDay){
+    const map={};
+    hist.forEach(r=>{
+      const d=new Date(r.timestamp), ist=new Date(d.getTime()+5.5*3600000);
+      const key=pad(ist.getUTCHours())+':00';
+      if(!map[key]) map[key]={vrms:[]};
+      map[key].vrms.push(parseFloat(r.vrms||0));
+    });
+    const labels=Object.keys(map).sort();
+    const vals=labels.map(k=>+(map[k].vrms.reduce((a,v)=>a+v,0)/map[k].vrms.length).toFixed(1));
+    const colors=vals.map(v=>v>=VOLTAGE_THRESH?'rgba(22,163,74,0.7)':'rgba(220,38,38,0.55)');
+    const ctx=document.getElementById('chartRange').getContext('2d');
+    chartRange=new Chart(ctx,{
+      type:'bar',
+      data:{ labels, datasets:[{ label:'Avg Vrms', data:vals, backgroundColor:colors, borderRadius:4 }] },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        plugins:{legend:{display:false}},
+        scales:{
+          x:{ticks:{color:'#94a3b8'},grid:{color:'rgba(15,23,42,0.05)'}},
+          y:{min:0,max:280,ticks:{color:'#94a3b8',callback:v=>`${v}V`},grid:{color:'rgba(15,23,42,0.05)'}}
+        }
+      }
+    });
+    let onMin=0,offMin=0;
+    hist.forEach(r=>{ if(r.online||parseFloat(r.vrms||0)>=VOLTAGE_THRESH) onMin+=10; else offMin+=10; });
+    const uptime=((onMin/(onMin+offMin||1))*100).toFixed(0);
+    document.getElementById('rangeTableWrap').innerHTML=`
+      <div style="margin-top:16px;display:flex;gap:12px;flex-wrap:wrap;">
+        <div class="pm-stat-card" style="flex:1;min-width:120px;">
+          <div class="pm-stat-label">ON Time</div>
+          <div class="pm-stat-val" style="color:var(--green);">${(onMin/60).toFixed(1)}</div>
+          <div class="pm-stat-unit">hours</div>
+        </div>
+        <div class="pm-stat-card" style="flex:1;min-width:120px;">
+          <div class="pm-stat-label">OFF Time</div>
+          <div class="pm-stat-val" style="color:var(--red);">${(offMin/60).toFixed(1)}</div>
+          <div class="pm-stat-unit">hours</div>
+        </div>
+        <div class="pm-stat-card" style="flex:1;min-width:120px;">
+          <div class="pm-stat-label">Uptime</div>
+          <div class="pm-stat-val">${uptime}</div>
+          <div class="pm-stat-unit">%</div>
+        </div>
+      </div>`;
+  } else {
+    const dayMap={};
+    hist.forEach(r=>{
+      const d=new Date(r.timestamp), ist=new Date(d.getTime()+5.5*3600000);
+      const key=ist.toISOString().slice(0,10);
+      if(!dayMap[key]) dayMap[key]={onMin:0,offMin:0};
+      if(r.online||parseFloat(r.vrms||0)>=VOLTAGE_THRESH) dayMap[key].onMin+=10;
+      else dayMap[key].offMin+=10;
+    });
+    const days=Object.keys(dayMap).sort();
+    const onVals=days.map(d=>(dayMap[d].onMin/60).toFixed(1));
+    const offVals=days.map(d=>(dayMap[d].offMin/60).toFixed(1));
+    const ctx=document.getElementById('chartRange').getContext('2d');
+    chartRange=new Chart(ctx,{
+      type:'bar',
+      data:{ labels:days, datasets:[
+        { label:'ON (hrs)',  data:onVals,  backgroundColor:'rgba(22,163,74,0.7)',  borderRadius:4 },
+        { label:'OFF (hrs)', data:offVals, backgroundColor:'rgba(220,38,38,0.55)', borderRadius:4 }
+      ]},
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        plugins:{legend:{display:true, labels:{color:'#475569'}}},
+        scales:{
+          x:{ticks:{color:'#94a3b8'},grid:{color:'rgba(15,23,42,0.05)'}},
+          y:{ticks:{color:'#94a3b8',callback:v=>`${v}h`},grid:{color:'rgba(15,23,42,0.05)'}}
+        }
+      }
+    });
+    const rows=days.map(d=>{
+      const onH=(dayMap[d].onMin/60).toFixed(1);
+      const offH=(dayMap[d].offMin/60).toFixed(1);
+      const up=((dayMap[d].onMin/(dayMap[d].onMin+dayMap[d].offMin||1))*100).toFixed(0);
+      const s=parseFloat(onH)>0?'on':'off';
+      return `<tr>
+        <td>${d}</td>
+        <td><span class="status-pill ${s}">${parseFloat(onH)>0?'▲ Running':'▼ Stopped'}</span></td>
+        <td style="color:var(--green);font-weight:700;">${onH} h</td>
+        <td style="color:var(--red);font-weight:700;">${offH} h</td>
+        <td>${up}%</td>
+      </tr>`;
+    }).join('');
+    document.getElementById('rangeTableWrap').innerHTML=`
+      <table class="pm-table" style="margin-top:16px;">
+        <thead><tr><th>Date</th><th>Status</th><th>ON Time</th><th>OFF Time</th><th>Uptime</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  }
+}
+
+// ══════════════════════════════════════════════
+//  CONFIG — flip this one line for production
+// ══════════════════════════════════════════════
+const FAKE_MODE = false;   // ← change to false for production
+// ══════════════════════════════════════════════
+
+// ── FAKE DATA ENGINE ──
+function injectFakeData() {
+  DEHUM_DEVICES.forEach((dev, i) => {
+    const online = i % 3 !== 2;
+    const vrms   = online ? +(210 + Math.random() * 30).toFixed(1) : +(2 + Math.random() * 5).toFixed(1);
+
+    deviceCache[dev.id] = {
+      vrms, online, relay: online,
+      lastSeen: new Date().toISOString(),
+    };
+
+    const history = [];
+    const base = new Date();
+    base.setHours(0, 0, 0, 0);
+
+    for (let m = 0; m < 24 * 60; m += 10) {
+      const ts   = new Date(base.getTime() + m * 60000);
+      const hour = ts.getHours();
+      const isOn = online && !(hour >= 2 && hour < 4) && !(hour >= 13 && hour < 14);
+      history.push({
+        timestamp: ts.toISOString(),
+        vrms:      isOn ? +(210 + Math.random() * 30).toFixed(1) : +(1 + Math.random() * 4).toFixed(1),
+        online:    isOn,
+        relay:     isOn,
+      });
+    }
+
+    deviceHistoryCache[dev.id] = history;
+  });
+
+  renderGrid();
+  console.log('🧪 Fake data injected for', DEHUM_DEVICES.length, 'devices');
+}
+
+// ── REAL DATA ENGINE ──
+function startRealMode() {
+  refreshAll();
+  setInterval(() => {
+    if (!currentDetailId) refreshAll();
+    else {
+      fetchDeviceStatus(currentDetailId).then(s => {
+        deviceCache[currentDetailId] = s;
+        updateDetailStats(s, deviceHistoryCache[currentDetailId] || []);
+      });
+    }
+  }, 15000);
+}
+
+// ── BOOT ──
+document.getElementById('btnRefreshAll').addEventListener('click', FAKE_MODE ? injectFakeData : refreshAll);
+
+if (FAKE_MODE) {
+  injectFakeData();
+} else {
+  startRealMode();
+}
+
+document.getElementById('btnRefreshAll').addEventListener('click', FAKE_MODE ? injectFakeData : refreshAll);
+
+if (FAKE_MODE) {
+  injectFakeData();
+} else {
+  refreshAll();
+  setInterval(()=>{
+    if(!currentDetailId) refreshAll();
+    else {
+      fetchDeviceStatus(currentDetailId).then(s=>{
+        deviceCache[currentDetailId]=s;
+        updateDetailStats(s,deviceHistoryCache[currentDetailId]||[]);
+      });
+    }
+  },15000);
+}
+</script>
+</body>
+</html>

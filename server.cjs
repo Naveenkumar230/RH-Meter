@@ -122,6 +122,7 @@ const DEFAULT_NAMES = {
   "Meter_13": "Dispatch Area"
 };
 
+
 // ── Seed defaults ─────────────────────────────────────────────
 mongoose.connection.once('open', async () => {
   try {
@@ -951,6 +952,7 @@ app.post('/api/reset-cooldown', async (req, res) => {
 });
 
 
+require('./powermonitor')(app, mongoose, mqtt);
 
 // ── Debug ─────────────────────────────────────────────────────
 app.get('/api/debug', async (req, res) => {
