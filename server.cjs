@@ -7,7 +7,7 @@ const mongoose = require('mongoose');
 const cron     = require('node-cron');
 const axios    = require('axios');
 const cors     = require('cors');
-const https    = require('https');
+// const https    = require('https');
 const mqtt     = require('mqtt');
 const multer   = require('multer');
 const FormData = require('form-data');
@@ -17,8 +17,16 @@ const upload   = multer({ storage: multer.memoryStorage() });
 const DASHBOARD_URL = 'https://rh-meter-production.onrender.com';
 const LOCATION_NAME = 'CT-PAT Area';
 const SENDER_EMAIL = 'naveenkumarak@aquarelleindia.com';
-const BREVO_API_KEY = process.env.BREVO_API_KEY || '';
+const nodemailer = require('nodemailer');
 const app = express();
+
+const gmailTransporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.GMAIL_USER,       // e.g. yourname@gmail.com
+    pass: process.env.GMAIL_APP_PASS,   // the 16-char app password from Google
+  }
+});
 
 // ── In-memory stores ──────────────────────────────────────────
 const lastSaveTime   = {};
@@ -242,15 +250,20 @@ async function markAlertSent(key) {
 
 // ── Brevo email sender ────────────────────────────────────────
 async function sendEmail(subject, htmlBody, recipients) {
-  const apiKey = process.env.BREVO_API_KEY || BREVO_API_KEY;
-  if (!apiKey) { console.error('❌ BREVO_API_KEY not set'); return { ok: false, error: 'BREVO_API_KEY not configured' }; }
-
-  const payload = JSON.stringify({
-    sender:      { name: 'RH-Meter Alert System', email: SENDER_EMAIL },
-    to:          recipients.map(email => ({ email })),
-    subject,
-    htmlContent: htmlBody
-  });
+  try {
+    await gmailTransporter.sendMail({
+      from: `"RH-Meter Alert System" <${process.env.GMAIL_USER}>`,
+      to: recipients.join(', '),
+      subject,
+      html: htmlBody,
+    });
+    console.log('✅ Email sent via Gmail SMTP');
+    return { ok: true };
+  } catch (err) {
+    console.error('❌ Gmail SMTP error:', err.message);
+    return { ok: false, error: err.message };
+  }
+}
 
   return new Promise((resolve) => {
     const req = https.request({
@@ -272,7 +285,7 @@ async function sendEmail(subject, htmlBody, recipients) {
     req.write(payload);
     req.end();
   });
-}
+
 // ── Email Template ────────────────────────────────────────────
 function buildAlertEmail({ deviceId, friendlyName, location, alertType, actualValue, threshold, unit, otherTemp, otherHum, tempThreshold, humThreshold, time, date, combined }) {
 const dashUrl = `https://rh-meter-production.onrender.com/detail.html?id=${deviceId}`;
@@ -967,7 +980,7 @@ app.get('/api/debug', async (req, res) => {
       recipients:       s?.recipients,
       tempThreshold:    s?.tempThreshold,
       humThreshold:     s?.humThreshold,
-brevoKeySet: !!BREVO_API_KEY,
+gmailConfigured: !!(process.env.GMAIL_USER && process.env.GMAIL_APP_PASS),
       locationRecipients: recDoc?.recipients || {},
       cooldowns,
     });
