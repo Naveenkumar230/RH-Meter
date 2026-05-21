@@ -23,8 +23,8 @@ const app = express();
 const gmailTransporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
-    user: process.env.GMAIL_USER,       // e.g. yourname@gmail.com
-    pass: process.env.GMAIL_APP_PASS,   // the 16-char app password from Google
+    user: process.env.GMAIL_USER,
+    pass: process.env.GMAIL_APP_PASS,
   }
 });
 
@@ -264,27 +264,6 @@ async function sendEmail(subject, htmlBody, recipients) {
     return { ok: false, error: err.message };
   }
 }
-
-  return new Promise((resolve) => {
-    const req = https.request({
-      hostname: 'api.brevo.com', path: '/v3/smtp/email', method: 'POST',
-      headers: {
-        'accept': 'application/json', 'api-key': apiKey,
-        'content-type': 'application/json', 'content-length': Buffer.byteLength(payload)
-      }
-    }, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        console.log(`[Brevo] Status: ${res.statusCode}, Response: ${data}`);
-        if (res.statusCode >= 400) { console.error('❌ Brevo error:', data); resolve({ ok: false, error: data }); }
-        else { console.log('✅ Email sent via Brevo'); resolve({ ok: true }); }
-      });
-    });
-    req.on('error', (err) => { console.error('❌ Brevo request error:', err.message); resolve({ ok: false, error: err.message }); });
-    req.write(payload);
-    req.end();
-  });
 
 // ── Email Template ────────────────────────────────────────────
 function buildAlertEmail({ deviceId, friendlyName, location, alertType, actualValue, threshold, unit, otherTemp, otherHum, tempThreshold, humThreshold, time, date, combined }) {
@@ -799,7 +778,6 @@ app.post('/api/test-email', async (req, res) => {
     let recipientStr = (req.body.recipients || (settings && settings.recipients) || '').trim();
 
     console.log('[TestEmail] Recipients:', recipientStr);
-console.log('[TestEmail] BREVO_API_KEY set:', !!BREVO_API_KEY);
     if (!recipientStr) {
       return res.status(400).json({ ok: false, error: 'No recipients configured. Add recipients in Settings first.' });
     }
