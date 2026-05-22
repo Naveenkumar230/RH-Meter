@@ -247,7 +247,7 @@ async function sendEmail(subject, htmlBody, recipients) {
   if (!apiKey) { console.error('❌ BREVO_API_KEY not set'); return { ok: false, error: 'BREVO_API_KEY not configured' }; }
 
   const payload = JSON.stringify({
-    sender:      { name: 'RH-Meter Alert System', email: 'naveenkumarak@aquarelleindia.com' },
+sender: { name: 'RH-Meter Alert System', email: 'naveenkumarak2002@gmail.com' },
     to:          recipients.map(email => ({ email })),
     subject,
     htmlContent: htmlBody
