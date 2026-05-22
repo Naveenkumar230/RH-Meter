@@ -13,20 +13,13 @@ const multer   = require('multer');
 const FormData = require('form-data');
 const upload   = multer({ storage: multer.memoryStorage() });
 
+const BREVO_API_KEY = process.env.BREVO_API_KEY || '';
+
 // ── Constants ─────────────────────────────────────────────────
 const DASHBOARD_URL = 'https://rh-meter-production.onrender.com';
 const LOCATION_NAME = 'CT-PAT Area';
 const SENDER_EMAIL = 'naveenkumarak@aquarelleindia.com';
-const nodemailer = require('nodemailer');
 const app = express();
-
-const gmailTransporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.GMAIL_USER,
-    pass: process.env.GMAIL_APP_PASS,
-  }
-});
 
 // ── In-memory stores ──────────────────────────────────────────
 const lastSaveTime   = {};
@@ -250,19 +243,36 @@ async function markAlertSent(key) {
 
 // ── Brevo email sender ────────────────────────────────────────
 async function sendEmail(subject, htmlBody, recipients) {
-  try {
-    await gmailTransporter.sendMail({
-      from: `"RH-Meter Alert System" <${process.env.GMAIL_USER}>`,
-      to: recipients.join(', '),
-      subject,
-      html: htmlBody,
+  const apiKey = process.env.BREVO_API_KEY || BREVO_API_KEY;
+  if (!apiKey) { console.error('❌ BREVO_API_KEY not set'); return { ok: false, error: 'BREVO_API_KEY not configured' }; }
+
+  const payload = JSON.stringify({
+    sender:      { name: 'RH-Meter Alert System', email: 'naveenkumarak@aquarelleindia.com' },
+    to:          recipients.map(email => ({ email })),
+    subject,
+    htmlContent: htmlBody
+  });
+
+  return new Promise((resolve) => {
+    const req = https.request({
+      hostname: 'api.brevo.com', path: '/v3/smtp/email', method: 'POST',
+      headers: {
+        'accept': 'application/json', 'api-key': apiKey,
+        'content-type': 'application/json', 'content-length': Buffer.byteLength(payload)
+      }
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        console.log(`[Brevo] Status: ${res.statusCode}, Response: ${data}`);
+        if (res.statusCode >= 400) { console.error('❌ Brevo error:', data); resolve({ ok: false, error: data }); }
+        else { console.log('✅ Email sent via Brevo'); resolve({ ok: true }); }
+      });
     });
-    console.log('✅ Email sent via Gmail SMTP');
-    return { ok: true };
-  } catch (err) {
-    console.error('❌ Gmail SMTP error:', err.message);
-    return { ok: false, error: err.message };
-  }
+    req.on('error', (err) => { console.error('❌ Brevo request error:', err.message); resolve({ ok: false, error: err.message }); });
+    req.write(payload);
+    req.end();
+  });
 }
 
 // ── Email Template ────────────────────────────────────────────
