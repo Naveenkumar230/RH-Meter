@@ -968,7 +968,7 @@ app.get('/api/debug', async (req, res) => {
       recipients:       s?.recipients,
       tempThreshold:    s?.tempThreshold,
       humThreshold:     s?.humThreshold,
-gmailConfigured: !!(process.env.GMAIL_USER && process.env.GMAIL_APP_PASS),
+brevoKeySet: !!BREVO_API_KEY,
       locationRecipients: recDoc?.recipients || {},
       cooldowns,
     });
