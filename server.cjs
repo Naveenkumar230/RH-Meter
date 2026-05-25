@@ -104,7 +104,9 @@ const DeviceRecipients = mongoose.model('DeviceRecipients', new mongoose.Schema(
   recipients: { type: mongoose.Schema.Types.Mixed, default: {} }  // ← Mixed not Object
 }, { timestamps: true }));
 
-const COOLDOWN_MS = 3 * 60 * 60 * 1000; // 3 hours
+const COOLDOWN_MS = 5 * 60 * 60 * 1000; // 5 hours
+const alertInProgress = new Set();
+
 
 // ── Default device names ──────────────────────────────────────
 const DEFAULT_NAMES = {
@@ -228,6 +230,11 @@ mongoose.connection.once('open', () => { startHiveMQSubscriber(); });
 
 // ── Cooldown helpers ──────────────────────────────────────────
 async function canSendAlert(key) {
+  // Synchronous check first — blocks concurrent calls instantly
+  if (alertInProgress.has(key)) {
+    console.log(`🔒 [Alert] In-progress lock active for ${key}, skipping`);
+    return false;
+  }
   try {
     const r = await AlertCooldown.findOne({ key });
     if (!r || !r.lastSentAt) return true;
@@ -236,9 +243,15 @@ async function canSendAlert(key) {
 }
 
 async function markAlertSent(key) {
-  await AlertCooldown.findOneAndUpdate(
-    { key }, { $set: { lastSentAt: new Date() } }, { upsert: true, new: true }
-  );
+  alertInProgress.add(key); // Lock immediately (synchronous)
+  try {
+    await AlertCooldown.findOneAndUpdate(
+      { key }, { $set: { lastSentAt: new Date() } }, { upsert: true, new: true }
+    );
+  } finally {
+    // Release lock after a short delay so any in-flight messages also get blocked
+    setTimeout(() => alertInProgress.delete(key), 10_000); // 10 seconds
+  }
 }
 
 // ── Brevo email sender ────────────────────────────────────────
