@@ -229,12 +229,8 @@ function startHiveMQSubscriber() {
 mongoose.connection.once('open', () => { startHiveMQSubscriber(); });
 
 // ── Cooldown helpers ──────────────────────────────────────────
-async function canSendAlert(key) {
-  // Synchronous check first — blocks concurrent calls instantly
-  if (alertInProgress.has(key)) {
-    console.log(`🔒 [Alert] In-progress lock active for ${key}, skipping`);
-    return false;
-  }
+// DB-only cooldown check (lock is handled in checkAndAlert)
+async function checkCooldownDB(key) {
   try {
     const r = await AlertCooldown.findOne({ key });
     if (!r || !r.lastSentAt) return true;
@@ -242,16 +238,11 @@ async function canSendAlert(key) {
   } catch { return true; }
 }
 
-async function markAlertSent(key) {
-  alertInProgress.add(key); // Lock immediately (synchronous)
-  try {
-    await AlertCooldown.findOneAndUpdate(
-      { key }, { $set: { lastSentAt: new Date() } }, { upsert: true, new: true }
-    );
-  } finally {
-    // Release lock after a short delay so any in-flight messages also get blocked
-    setTimeout(() => alertInProgress.delete(key), 10_000); // 10 seconds
-  }
+// DB-only write (lock is handled in checkAndAlert)
+async function writeCooldownDB(key) {
+  await AlertCooldown.findOneAndUpdate(
+    { key }, { $set: { lastSentAt: new Date() } }, { upsert: true, new: true }
+  );
 }
 
 // ── Brevo email sender ────────────────────────────────────────
@@ -479,55 +470,87 @@ async function checkAndAlert(record) {
     const device   = record.deviceId || 'Meter_02';
     const temp     = record.temperature;
     const hum      = record.humidity;
-    const location = LOCATION_MAP_SERVER[device] || 'Unknown';
-    const now      = new Date();
-    const time     = now.toLocaleTimeString('en-IN',  { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true });
-    const date     = now.toLocaleDateString('en-IN',  { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'long', year: 'numeric' });
-
-    // ── Get friendly name from MongoDB ────────────────────────
-    let friendlyName = device;
-    try {
-      const namesDoc = await DeviceNames.findOne({ key: 'global' });
-      if (namesDoc && namesDoc.names && namesDoc.names[device]) friendlyName = namesDoc.names[device];
-    } catch (e) {}
-
-    // ── Build recipient list: global + location-based ─────────
-    const recipientStr = (settings && settings.recipients) || '';
-    const globalEmails = recipientStr.split(',').map(e => e.trim()).filter(Boolean);
-
-    let locationEmails = [];
-    try {
-      const devRecipientsDoc = await DeviceRecipients.findOne({ key: 'global' });
-      if (devRecipientsDoc && devRecipientsDoc.recipients) {
-        const locKey = `loc_${LOCATION_GROUP_MAP[device] || 'samudra'}`;
-        const locStr = devRecipientsDoc.recipients[locKey] || '';
-        locationEmails = locStr.split(',').map(e => e.trim()).filter(Boolean);
-      }
-    } catch (e) {
-      console.warn('[Recipients] Failed to load location recipients:', e.message);
-    }
-
-    const allRecipients = [...new Set([...globalEmails, ...locationEmails])];
-
-    if (!allRecipients.length) {
-      console.warn(`⚠️ No recipients configured for ${device} (location: ${LOCATION_GROUP_MAP[device]})`);
-      return;
-    }
-
-    console.log(`📋 Recipients for ${device} [${LOCATION_GROUP_MAP[device]}]: ${allRecipients.join(', ')}`);
 
     const tempBreached = temp != null && temp > settings.tempThreshold;
     const humBreached  = hum  != null && hum  > settings.humThreshold;
-    const tempKey      = `${device}_temp`;
-    const humKey       = `${device}_hum`;
-    const canTemp      = tempBreached && await canSendAlert(tempKey);
-    const canHum       = humBreached  && await canSendAlert(humKey);
 
-    // ── Combined alert ────────────────────────────────────────
-    if (canTemp && canHum) {
-      await markAlertSent(tempKey);
-      await markAlertSent(humKey);
-      const html = buildAlertEmail({
+    if (!tempBreached && !humBreached) {
+      console.log(`✅ OK for ${device}: T=${temp}°C H=${hum}%`);
+      return;
+    }
+
+    const tempKey = `${device}_temp`;
+    const humKey  = `${device}_hum`;
+
+    // ── STEP 1: Synchronous lock claim (no await, instant) ────
+    const claimTemp = tempBreached && !alertInProgress.has(tempKey);
+    const claimHum  = humBreached  && !alertInProgress.has(humKey);
+
+    // Lock immediately before any async work
+    if (claimTemp) alertInProgress.add(tempKey);
+    if (claimHum)  alertInProgress.add(humKey);
+
+    // ── STEP 2: DB cooldown check (only for claimed keys) ─────
+    const [tempAllowed, humAllowed] = await Promise.all([
+      claimTemp ? checkCooldownDB(tempKey) : Promise.resolve(false),
+      claimHum  ? checkCooldownDB(humKey)  : Promise.resolve(false),
+    ]);
+
+    // Release locks for keys the DB cooldown blocked
+    if (claimTemp && !tempAllowed) alertInProgress.delete(tempKey);
+    if (claimHum  && !humAllowed)  alertInProgress.delete(humKey);
+
+    if (!tempAllowed && !humAllowed) {
+      if (tempBreached) console.log(`⏳ Temp cooldown active for ${device}`);
+      if (humBreached)  console.log(`⏳ Hum cooldown active for ${device}`);
+      return;
+    }
+
+    // ── STEP 3: Write cooldown to DB immediately ──────────────
+    await Promise.all([
+      tempAllowed ? writeCooldownDB(tempKey) : Promise.resolve(),
+      humAllowed  ? writeCooldownDB(humKey)  : Promise.resolve(),
+    ]);
+
+    // ── STEP 4: Build shared context ─────────────────────────
+    const location = LOCATION_MAP_SERVER[device] || 'Unknown';
+    const now      = new Date();
+    const time     = now.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true });
+    const date     = now.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'long', year: 'numeric' });
+
+    let friendlyName = device;
+    try {
+      const namesDoc = await DeviceNames.findOne({ key: 'global' });
+      if (namesDoc?.names?.[device]) friendlyName = namesDoc.names[device];
+    } catch(e) {}
+
+    // ── STEP 5: Build recipients ──────────────────────────────
+    const recipientStr = (settings.recipients || '');
+    const globalEmails = recipientStr.split(',').map(e => e.trim()).filter(Boolean);
+    let locationEmails = [];
+    try {
+      const devRecipientsDoc = await DeviceRecipients.findOne({ key: 'global' });
+      if (devRecipientsDoc?.recipients) {
+        const locKey = `loc_${LOCATION_GROUP_MAP[device] || 'samudra'}`;
+        locationEmails = (devRecipientsDoc.recipients[locKey] || '').split(',').map(e => e.trim()).filter(Boolean);
+      }
+    } catch(e) {}
+
+    const allRecipients = [...new Set([...globalEmails, ...locationEmails])];
+    if (!allRecipients.length) {
+      console.warn(`⚠️ No recipients for ${device}, releasing locks`);
+      alertInProgress.delete(tempKey);
+      alertInProgress.delete(humKey);
+      return;
+    }
+
+    // ── STEP 6: Send exactly one email ───────────────────────
+    let subject, html;
+
+    if (tempAllowed && humAllowed) {
+      // Combined alert
+      subject = `⚠️ Combined Alert — ${friendlyName} | T:${temp.toFixed(1)}°C & H:${hum.toFixed(1)}% | ${location}`;
+      html = buildAlertEmail({
         deviceId: device, friendlyName, location,
         alertType: 'temperature', combined: true,
         actualValue: temp, threshold: settings.tempThreshold, unit: '°C',
@@ -535,19 +558,11 @@ async function checkAndAlert(record) {
         tempThreshold: settings.tempThreshold, humThreshold: settings.humThreshold,
         time, date
       });
-      await sendEmail(
-        `⚠️ Combined Alert — ${friendlyName} | Temp ${temp.toFixed(1)}°C & Humidity ${hum.toFixed(1)}% | ${location}`,
-        html,
-        allRecipients
-      );
-      console.log(`📧 Combined alert sent for ${device} → ${allRecipients.join(', ')}`);
-      return;
-    }
+      console.log(`📧 Sending combined alert for ${device}`);
 
-    // ── Single temperature alert ──────────────────────────────
-    if (canTemp) {
-      await markAlertSent(tempKey);
-      const html = buildAlertEmail({
+    } else if (tempAllowed) {
+      subject = `⚠️ Temperature Alert — ${friendlyName} | ${temp.toFixed(1)}°C | ${location}`;
+      html = buildAlertEmail({
         deviceId: device, friendlyName, location,
         alertType: 'temperature', combined: false,
         actualValue: temp, threshold: settings.tempThreshold, unit: '°C',
@@ -555,22 +570,11 @@ async function checkAndAlert(record) {
         tempThreshold: settings.tempThreshold, humThreshold: settings.humThreshold,
         time, date
       });
-      await sendEmail(
-        `⚠️ Temperature Alert — ${friendlyName} | ${temp.toFixed(1)}°C | ${location}`,
-        html,
-        allRecipients
-      );
-      console.log(`📧 Temp alert sent for ${device} → ${allRecipients.join(', ')}`);
-    } else if (tempBreached) {
-      console.log(`⏳ Temp cooldown active for ${device}`);
-    } else if (temp != null) {
-      console.log(`✅ Temp OK for ${device}: ${temp}°C`);
-    }
+      console.log(`📧 Sending temp alert for ${device}`);
 
-    // ── Single humidity alert ─────────────────────────────────
-    if (canHum) {
-      await markAlertSent(humKey);
-      const html = buildAlertEmail({
+    } else {
+      subject = `⚠️ Humidity Alert — ${friendlyName} | ${hum.toFixed(1)}% | ${location}`;
+      html = buildAlertEmail({
         deviceId: device, friendlyName, location,
         alertType: 'humidity', combined: false,
         actualValue: hum, threshold: settings.humThreshold, unit: '%',
@@ -578,19 +582,23 @@ async function checkAndAlert(record) {
         tempThreshold: settings.tempThreshold, humThreshold: settings.humThreshold,
         time, date
       });
-      await sendEmail(
-        `⚠️ Humidity Alert — ${friendlyName} | ${hum.toFixed(1)}% | ${location}`,
-        html,
-        allRecipients
-      );
-      console.log(`📧 Hum alert sent for ${device} → ${allRecipients.join(', ')}`);
-    } else if (humBreached) {
-      console.log(`⏳ Hum cooldown active for ${device}`);
-    } else if (hum != null) {
-      console.log(`✅ Hum OK for ${device}: ${hum}%`);
+      console.log(`📧 Sending hum alert for ${device}`);
     }
 
-  } catch (err) { console.error('❌ Alert check error:', err.message); }
+    await sendEmail(subject, html, allRecipients);
+    console.log(`✅ Alert sent for ${device} → ${allRecipients.join(', ')}`);
+
+    // ── STEP 7: Release in-memory lock after 60s ─────────────
+    // DB cooldown handles the 5-hour window from here
+    setTimeout(() => {
+      alertInProgress.delete(tempKey);
+      alertInProgress.delete(humKey);
+      console.log(`🔓 Lock released for ${device}`);
+    }, 60_000);
+
+  } catch (err) {
+    console.error('❌ Alert check error:', err.message);
+  }
 }
 
 // ── Keep-alive ping ───────────────────────────────────────────
