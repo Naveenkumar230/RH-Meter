@@ -105,8 +105,6 @@ const DeviceRecipients = mongoose.model('DeviceRecipients', new mongoose.Schema(
 }, { timestamps: true }));
 
 const COOLDOWN_MS = 5 * 60 * 60 * 1000; // 5 hours
-const alertInProgress = new Set();
-
 
 // ── Default device names ──────────────────────────────────────
 const DEFAULT_NAMES = {
@@ -228,14 +226,36 @@ function startHiveMQSubscriber() {
 
 mongoose.connection.once('open', () => { startHiveMQSubscriber(); });
 
-// ── Cooldown helpers ──────────────────────────────────────────
-// DB-only cooldown check (lock is handled in checkAndAlert)
-async function checkCooldownDB(key) {
+// ── Atomic cooldown claim (returns true only for the FIRST caller) ────────────
+async function claimCooldownDB(key) {
   try {
-    const r = await AlertCooldown.findOne({ key });
-    if (!r || !r.lastSentAt) return true;
-    return (Date.now() - new Date(r.lastSentAt).getTime()) > COOLDOWN_MS;
-  } catch { return true; }
+    const now     = new Date();
+    const cutoff  = new Date(now.getTime() - COOLDOWN_MS);
+
+    // Only update if the record doesn't exist OR lastSentAt is older than cutoff
+    // $setOnInsert alone won't work for updates, so we use a conditional $set
+    const result = await AlertCooldown.findOneAndUpdate(
+      {
+        key,
+        $or: [
+          { lastSentAt: null },
+          { lastSentAt: { $exists: false } },
+          { lastSentAt: { $lte: cutoff } }   // cooldown has expired
+        ]
+      },
+      { $set: { lastSentAt: now } },
+      { upsert: true, new: true }
+    );
+
+    // If result is null it means no document matched the condition —
+    // meaning cooldown is still active, another process already claimed it
+    return result != null;
+  } catch (err) {
+    // Duplicate key error = another racing caller just inserted it — we lost the race
+    if (err.code === 11000) return false;
+    console.error('❌ claimCooldownDB error:', err.message);
+    return false;
+  }
 }
 
 // DB-only write (lock is handled in checkAndAlert)
@@ -467,9 +487,9 @@ async function checkAndAlert(record) {
     const settings = await Settings.findOne({ key: 'global' });
     if (!settings) { console.warn('⚠️ No settings in DB'); return; }
 
-    const device   = record.deviceId || 'Meter_02';
-    const temp     = record.temperature;
-    const hum      = record.humidity;
+    const device = record.deviceId || 'Meter_02';
+    const temp   = record.temperature;
+    const hum    = record.humidity;
 
     const tempBreached = temp != null && temp > settings.tempThreshold;
     const humBreached  = hum  != null && hum  > settings.humThreshold;
@@ -482,37 +502,20 @@ async function checkAndAlert(record) {
     const tempKey = `${device}_temp`;
     const humKey  = `${device}_hum`;
 
-    // ── STEP 1: Synchronous lock claim (no await, instant) ────
-    const claimTemp = tempBreached && !alertInProgress.has(tempKey);
-    const claimHum  = humBreached  && !alertInProgress.has(humKey);
-
-    // Lock immediately before any async work
-    if (claimTemp) alertInProgress.add(tempKey);
-    if (claimHum)  alertInProgress.add(humKey);
-
-    // ── STEP 2: DB cooldown check (only for claimed keys) ─────
-    const [tempAllowed, humAllowed] = await Promise.all([
-      claimTemp ? checkCooldownDB(tempKey) : Promise.resolve(false),
-      claimHum  ? checkCooldownDB(humKey)  : Promise.resolve(false),
+    // ── STEP 1: Atomically claim cooldown slots in DB ─────────────────────────
+    // Only ONE of the racing MQTT duplicates will win each claim.
+    // claimCooldownDB writes the timestamp and returns true only for the winner.
+    const [tempClaimed, humClaimed] = await Promise.all([
+      tempBreached ? claimCooldownDB(tempKey) : Promise.resolve(false),
+      humBreached  ? claimCooldownDB(humKey)  : Promise.resolve(false),
     ]);
 
-    // Release locks for keys the DB cooldown blocked
-    if (claimTemp && !tempAllowed) alertInProgress.delete(tempKey);
-    if (claimHum  && !humAllowed)  alertInProgress.delete(humKey);
-
-    if (!tempAllowed && !humAllowed) {
-      if (tempBreached) console.log(`⏳ Temp cooldown active for ${device}`);
-      if (humBreached)  console.log(`⏳ Hum cooldown active for ${device}`);
+    if (!tempClaimed && !humClaimed) {
+      console.log(`⏳ Cooldown active for ${device} — duplicate suppressed`);
       return;
     }
 
-    // ── STEP 3: Write cooldown to DB immediately ──────────────
-    await Promise.all([
-      tempAllowed ? writeCooldownDB(tempKey) : Promise.resolve(),
-      humAllowed  ? writeCooldownDB(humKey)  : Promise.resolve(),
-    ]);
-
-    // ── STEP 4: Build shared context ─────────────────────────
+    // ── STEP 2: Build shared context ──────────────────────────────────────────
     const location = LOCATION_MAP_SERVER[device] || 'Unknown';
     const now      = new Date();
     const time     = now.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true });
@@ -524,7 +527,7 @@ async function checkAndAlert(record) {
       if (namesDoc?.names?.[device]) friendlyName = namesDoc.names[device];
     } catch(e) {}
 
-    // ── STEP 5: Build recipients ──────────────────────────────
+    // ── STEP 3: Build recipients ───────────────────────────────────────────────
     const recipientStr = (settings.recipients || '');
     const globalEmails = recipientStr.split(',').map(e => e.trim()).filter(Boolean);
     let locationEmails = [];
@@ -538,17 +541,14 @@ async function checkAndAlert(record) {
 
     const allRecipients = [...new Set([...globalEmails, ...locationEmails])];
     if (!allRecipients.length) {
-      console.warn(`⚠️ No recipients for ${device}, releasing locks`);
-      alertInProgress.delete(tempKey);
-      alertInProgress.delete(humKey);
+      console.warn(`⚠️ No recipients for ${device}`);
       return;
     }
 
-    // ── STEP 6: Send exactly one email ───────────────────────
+    // ── STEP 4: Send exactly one email ────────────────────────────────────────
     let subject, html;
 
-    if (tempAllowed && humAllowed) {
-      // Combined alert
+    if (tempClaimed && humClaimed) {
       subject = `⚠️ Combined Alert — ${friendlyName} | T:${temp.toFixed(1)}°C & H:${hum.toFixed(1)}% | ${location}`;
       html = buildAlertEmail({
         deviceId: device, friendlyName, location,
@@ -560,7 +560,7 @@ async function checkAndAlert(record) {
       });
       console.log(`📧 Sending combined alert for ${device}`);
 
-    } else if (tempAllowed) {
+    } else if (tempClaimed) {
       subject = `⚠️ Temperature Alert — ${friendlyName} | ${temp.toFixed(1)}°C | ${location}`;
       html = buildAlertEmail({
         deviceId: device, friendlyName, location,
@@ -587,14 +587,6 @@ async function checkAndAlert(record) {
 
     await sendEmail(subject, html, allRecipients);
     console.log(`✅ Alert sent for ${device} → ${allRecipients.join(', ')}`);
-
-    // ── STEP 7: Release in-memory lock after 60s ─────────────
-    // DB cooldown handles the 5-hour window from here
-    setTimeout(() => {
-      alertInProgress.delete(tempKey);
-      alertInProgress.delete(humKey);
-      console.log(`🔓 Lock released for ${device}`);
-    }, 60_000);
 
   } catch (err) {
     console.error('❌ Alert check error:', err.message);
