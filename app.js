@@ -5,8 +5,7 @@
 // const SERVER_URL = 'http://localhost:3000';
 // const SERVER_URL = 'https://rh-meter-bridge.onrender.com';
 
-const SERVER_URL = 'rh-meter-production-de5e.up.railway.app';
-
+const SERVER_URL = 'https://rh-meter-production-de5e.up.railway.app'; 
 
 // ════════════════════════════════════════════════════════════
 //  DEVICE NAME MAP
