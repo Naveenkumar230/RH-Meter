@@ -2,11 +2,10 @@
 //  Factory Monitor Pro — app.js  v3.0
 //  Multi-device | DEVICE_NAME_MAP | Dynamic URL params
 // ============================================================
-// const SERVER_URL = 'https://rh-meter-production.up.railway.app';
 // const SERVER_URL = 'http://localhost:3000';
 // const SERVER_URL = 'https://rh-meter-bridge.onrender.com';
 
-const SERVER_URL = 'https://rh-meter-production.onrender.com';
+const SERVER_URL = 'rh-meter-production-de5e.up.railway.app';
 
 
 // ════════════════════════════════════════════════════════════
@@ -241,9 +240,6 @@ function getHumLevel(h)  { return h < 40  ? 'critical' : (h <= 70 ? 'normal'  : 
 // ════════════════════════════════════════════════════════════
 //  STATUS BADGE  (detail page)
 // ════════════════════════════════════════════════════════════
-// ════════════════════════════════════════════════════════════
-//  STATUS BADGE  (detail page)
-// ════════════════════════════════════════════════════════════
 function updateStatusBadge(isOnline, lastTimestamp) {
   const badge  = document.getElementById('statusBadge');
   const text   = document.getElementById('statusText');
@@ -277,9 +273,7 @@ function updateStatusBadge(isOnline, lastTimestamp) {
     }
   }
 }
-// ════════════════════════════════════════════════════════════
-//  FETCH CURRENT READING  (detail page — uses URL device ID)
-// ════════════════════════════════════════════════════════════
+
 // ════════════════════════════════════════════════════════════
 //  FETCH CURRENT READING  (detail page — uses URL device ID)
 // ════════════════════════════════════════════════════════════
