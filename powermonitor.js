@@ -25,7 +25,7 @@ module.exports = function (app, mongoose, mqtt) {
   // Password required to rename a device.
   // Set RENAME_PASSWORD in your environment variables (Render dashboard → Environment).
   // Falling back to a default is ONLY for local testing — change it in production!
-  const RENAME_PASSWORD = process.env.RENAME_PASSWORD || 'changeme123';
+  const RENAME_PASSWORD = '12345';
 
   // ── In-memory stores ──────────────────────────────────────
   const latestPower  = {};   // { Dehum_01: { vrms, online, relay, timestamp } }
