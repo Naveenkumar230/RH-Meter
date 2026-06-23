@@ -18,14 +18,15 @@
 //       online = false if vrms ≤ VOLTAGE_THRESHOLD
 //
 //  Payload: {"id":"Dehum_01","vrms":228.5,"online":true}
+//
+//  NOTE: LCD display removed — telemetry is sent via MQTT
+//        and printed to Serial only.
 // ============================================================
 
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WiFiManager.h>
 #include <PubSubClient.h>
-#include <Wire.h>
-#include <LiquidCrystal_I2C.h>
 #include <WiFiClientSecure.h>
 
 // ════════════════════════════════════════════════════════════
@@ -58,8 +59,8 @@ constexpr int       NUM_CYCLES        = 5;            // average over 5 full cyc
 constexpr float     ADC_VREF          = 3.3f;         // ESP32 ADC reference voltage
 constexpr int       ADC_RESOLUTION    = 4095;         // 12-bit ADC
 constexpr float     CALIBRATION       = 520.0f;       // ← TUNE THIS with a multimeter
-                                                       //   Formula: actual_V / raw_rms_reading
-                                                       //   Default 520 is a safe starting point
+                                                      //   Formula: actual_V / raw_rms_reading
+                                                      //   Default 520 is a safe starting point
 
 // Online threshold: if vrms > this → dehumidifier has power → ONLINE
 constexpr float VOLTAGE_THRESHOLD = 100.0f;           // Volts RMS
@@ -68,21 +69,18 @@ constexpr float VOLTAGE_THRESHOLD = 100.0f;           // Volts RMS
 //  TIMING
 // ════════════════════════════════════════════════════════════
 constexpr unsigned long PUBLISH_INTERVAL_MS = 10000UL;   // publish every 10s
-constexpr unsigned long LCD_REFRESH_MS      = 1000UL;    // LCD update every 1s
 
 // ════════════════════════════════════════════════════════════
 //  GLOBALS
 // ════════════════════════════════════════════════════════════
 WiFiClientSecure  wifiClientSecure;
 PubSubClient      mqttClient(wifiClientSecure);
-LiquidCrystal_I2C lcd(0x27, 16, 2);
 
 char mqttTopic[80];
 
 float         vrms         = 0.0f;
 bool          isOnline     = false;
 unsigned long lastPublish  = 0;
-unsigned long lastLcd      = 0;
 
 // ════════════════════════════════════════════════════════════
 //  VOLTAGE MEASUREMENT — True RMS via oversampling
@@ -170,29 +168,6 @@ void mqttReconnect() {
 }
 
 // ════════════════════════════════════════════════════════════
-//  LCD DISPLAY
-//  Line 0: Device ID + V reading
-//  Line 1: ONLINE / OFFLINE status
-// ════════════════════════════════════════════════════════════
-void updateLCD() {
-  lcd.clear();
-
-  // Line 0 — Device ID and voltage
-  lcd.setCursor(0, 0);
-  char line0[17];
-  snprintf(line0, sizeof(line0), "%-8s%6.1fV", DEVICE_ID, vrms);
-  lcd.print(line0);
-
-  // Line 1 — Status
-  lcd.setCursor(0, 1);
-  if (isOnline) {
-    lcd.print("Status:  ONLINE ");
-  } else {
-    lcd.print("Status: OFFLINE ");
-  }
-}
-
-// ════════════════════════════════════════════════════════════
 //  SETUP
 // ════════════════════════════════════════════════════════════
 void setup() {
@@ -208,28 +183,15 @@ void setup() {
   snprintf(mqttTopic, sizeof(mqttTopic),
            "AIPL/Power_Monitor/%s/telemetry", DEVICE_ID);
 
-  // ── LCD init ──────────────────────────────────────────────
-  Wire.begin();
-  lcd.init();
-  lcd.backlight();
-  lcd.setCursor(0, 0);
-  lcd.print("  Dehumidifier  ");
-  lcd.setCursor(0, 1);
-  lcd.print("   Monitor v2   ");
-  delay(1500);
-
   // ── WiFiManager — AP mode on first boot ───────────────────
   // After flashing: ESP32 creates AP "Dehum-Setup-Dehum_01"
   // User connects to that AP, opens 192.168.4.1
   // Enters home WiFi SSID + password → saved to flash
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("Connect to AP:  ");
-  lcd.setCursor(0, 1);
+  Serial.println("[WiFi] Starting WiFiManager AP portal...");
 
   char apName[32];
   snprintf(apName, sizeof(apName), "Dehum-%s", DEVICE_ID);
-  lcd.print(apName);
+  Serial.printf("[WiFi] Connect to AP: %s\n", apName);
 
   WiFiManager wm;
   wm.setConfigPortalTimeout(180);   // AP portal stays open 3 minutes
@@ -239,23 +201,11 @@ void setup() {
 
   if (!wm.autoConnect(apName)) {
     Serial.println("[WiFi] Connect failed — restarting in 5s");
-    lcd.clear();
-    lcd.setCursor(0, 0);
-    lcd.print("WiFi Failed!    ");
-    lcd.setCursor(0, 1);
-    lcd.print("Restarting...   ");
     delay(5000);
     ESP.restart();
   }
 
   Serial.printf("[WiFi] ✅ Connected: %s\n", WiFi.localIP().toString().c_str());
-
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("WiFi Connected! ");
-  lcd.setCursor(0, 1);
-  lcd.print(WiFi.localIP().toString());
-  delay(1500);
 
   // ── MQTT over TLS ─────────────────────────────────────────
   wifiClientSecure.setInsecure();           // skip cert validation
@@ -264,10 +214,7 @@ void setup() {
   mqttClient.setSocketTimeout(10);
   mqttReconnect();
 
-  // ── Initial LCD ───────────────────────────────────────────
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("Reading sensor..");
+  Serial.println("[Setup] Ready — reading sensor...");
 }
 
 // ════════════════════════════════════════════════════════════
@@ -297,12 +244,6 @@ void loop() {
     } else {
       Serial.println("[MQTT] Not connected — skipping publish");
     }
-  }
-
-  // ── LCD refresh every 1s ──────────────────────────────────
-  if (now - lastLcd >= LCD_REFRESH_MS) {
-    lastLcd = now;
-    updateLCD();
   }
 }
 

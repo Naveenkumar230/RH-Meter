@@ -75,6 +75,7 @@ body {
 .pm-header-title  { font-size:1rem; font-weight:800; color:var(--text); letter-spacing:-0.3px; }
 .pm-header-sub    { font-size:0.72rem; color:var(--text-muted); font-weight:500; margin-top:1px; }
 .pm-header-right  { display:flex; align-items:center; gap:10px; }
+.pm-header-right-flex { display:flex; gap:8px; align-items:center; }
 .pm-back-btn {
   display:flex; align-items:center; gap:6px;
   background:var(--bg-soft); border:1px solid var(--border);
@@ -114,7 +115,7 @@ body {
   cursor:pointer; transition:all 0.22s ease;
   position:relative; overflow:hidden;
   display:flex; flex-direction:column;
-  user-select:none; box-shadow:var(--shadow-sm);
+  -webkit-user-select:none; user-select:none; box-shadow:var(--shadow-sm);
 }
 .dehum-card::before {
   content:''; position:absolute; top:0; left:0; right:0; height:3px; transition:background 0.3s;
@@ -126,6 +127,13 @@ body {
 
 .dehum-card-top { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:12px; gap:8px; }
 .dehum-card-name { font-size:0.9rem; font-weight:700; color:var(--text); line-height:1.3; }
+.dehum-card-name-row { display:flex; align-items:center; gap:5px; }
+.dehum-rename-pencil {
+  font-size:0.72rem; color:var(--text-muted); opacity:0; transition:opacity 0.15s;
+  cursor:pointer; flex-shrink:0;
+}
+.dehum-card:hover .dehum-rename-pencil { opacity:1; }
+.dehum-rename-pencil:hover { color:var(--blue); }
 .dehum-card-id {
   font-family:var(--mono); font-size:0.65rem; color:var(--text-muted);
   margin-top:3px; background:var(--bg-soft); border:1px solid var(--border-light);
@@ -174,7 +182,10 @@ body {
   background:var(--bg-white); border:1px solid var(--border);
   border-radius:var(--radius); box-shadow:var(--shadow-sm);
 }
+.pm-detail-name-row { display:flex; align-items:center; gap:6px; }
 .pm-detail-name { font-size:1.25rem; font-weight:800; color:var(--text); letter-spacing:-0.4px; }
+.pm-detail-rename-pencil { font-size:0.85rem; color:var(--text-muted); cursor:pointer; transition:color 0.15s; }
+.pm-detail-rename-pencil:hover { color:var(--blue); }
 .pm-detail-id {
   font-family:var(--mono); font-size:0.75rem; color:var(--text-mid);
   background:var(--bg-soft); border:1px solid var(--border);
@@ -189,6 +200,9 @@ body {
 .pm-stat-card:hover { box-shadow:var(--shadow); }
 .pm-stat-label { font-size:0.7rem; color:var(--text-muted); font-weight:700; text-transform:uppercase; letter-spacing:0.6px; margin-bottom:8px; }
 .pm-stat-val   { font-size:1.6rem; font-weight:800; font-family:var(--mono); color:var(--text); line-height:1; }
+.pm-stat-val.stat-font-lg { font-size:1.1rem; }
+.pm-stat-val.stat-green { color:#16a34a; }
+.pm-stat-val.stat-red   { color:#dc2626; }
 .pm-stat-unit  { font-size:0.72rem; color:var(--text-muted); margin-top:4px; }
 
 .pm-chart-card {
@@ -219,6 +233,7 @@ body {
 /* ── TABLE ── */
 .pm-table-wrap { overflow-x:auto; margin-top:16px; }
 .pm-table { width:100%; border-collapse:collapse; font-size:0.82rem; }
+.pm-table.range-table { margin-top:16px; }
 .pm-table th {
   background:var(--bg-soft); color:var(--text-muted); padding:10px 14px; text-align:left;
   border:1px solid var(--border-light); font-size:0.7rem; text-transform:uppercase; letter-spacing:0.6px; font-weight:700;
@@ -228,6 +243,10 @@ body {
 .status-pill { display:inline-flex; align-items:center; gap:5px; padding:3px 9px; border-radius:20px; font-size:0.7rem; font-weight:700; }
 .status-pill.on  { color:var(--green); background:var(--green-light); border:1px solid var(--green-border); }
 .status-pill.off { color:var(--red);   background:var(--red-light);   border:1px solid var(--red-border); }
+
+/* ── RANGE SUMMARY CARDS ── */
+.range-summary-row { margin-top:16px; display:flex; gap:12px; flex-wrap:wrap; }
+.range-summary-card { flex:1; min-width:120px; }
 
 /* ── TOAST ── */
 #pmToast {
@@ -240,6 +259,33 @@ body {
 
 .pm-empty { text-align:center; padding:60px 20px; color:var(--text-muted); font-size:0.9rem; }
 .pm-divider { height:1px; background:var(--border-light); margin:8px 0 24px; }
+
+/* ── RENAME MODAL ── */
+.pm-modal-overlay {
+  position:fixed; inset:0; background:rgba(15,23,42,0.45);
+  display:none; align-items:center; justify-content:center;
+  z-index:1000; padding:20px;
+}
+.pm-modal-overlay.active { display:flex; }
+.pm-modal-box {
+  background:var(--bg-white); border-radius:var(--radius);
+  width:100%; max-width:380px; padding:24px;
+  box-shadow:var(--shadow-lg); border:1px solid var(--border);
+}
+.pm-modal-title { font-size:1rem; font-weight:800; color:var(--text); margin-bottom:6px; }
+.pm-modal-sub   { font-size:0.78rem; color:var(--text-muted); margin-bottom:18px; }
+.pm-modal-label { font-size:0.75rem; font-weight:700; color:var(--text-mid); margin-bottom:6px; display:block; }
+.pm-modal-input {
+  width:100%; background:var(--bg-soft); border:1px solid var(--border);
+  border-radius:var(--radius-sm); padding:10px 12px; font-size:0.85rem;
+  font-family:var(--font); color:var(--text); outline:none; margin-bottom:14px; transition:border-color 0.2s;
+}
+.pm-modal-input:focus { border-color:var(--blue); box-shadow:0 0 0 3px rgba(37,99,235,0.08); }
+.pm-modal-error {
+  font-size:0.76rem; color:var(--red); margin:-6px 0 12px; display:none;
+}
+.pm-modal-error.show { display:block; }
+.pm-modal-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:4px; }
 
 /* ── RESPONSIVE ── */
 @media (max-width:1100px) { .dehum-grid { grid-template-columns:repeat(3,1fr); } }
@@ -255,6 +301,7 @@ body {
   .pm-filter-bar { flex-direction:column; align-items:stretch; gap:8px; }
   .pm-date-input { width:100%; }
   .pm-filter-bar .pm-btn { width:100%; }
+  .dehum-rename-pencil { opacity:1; } /* always visible on touch devices */
 }
 @media (max-width:400px)  { .dehum-grid { grid-template-columns:1fr; } .pm-stats-row { grid-template-columns:1fr; } }
 </style>
@@ -271,7 +318,7 @@ body {
     </div>
   </div>
   <div class="pm-header-right">
-    <div style="display:flex;gap:8px;align-items:center;">
+    <div class="pm-header-right-flex">
       <div class="pm-chip online"><div class="pm-chip-dot"></div><span id="hdrOnlineCount">0</span> Online</div>
       <div class="pm-chip offline"><div class="pm-chip-dot"></div><span id="hdrOfflineCount">0</span> Offline</div>
     </div>
@@ -298,10 +345,13 @@ body {
     <div class="pm-detail-header">
       <button class="pm-btn pm-btn-ghost" onclick="showGrid()">← Back</button>
       <div>
-        <div class="pm-detail-name" id="detailName">—</div>
+        <div class="pm-detail-name-row">
+          <div class="pm-detail-name" id="detailName">—</div>
+          <span class="pm-detail-rename-pencil" id="detailRenamePencil" title="Rename this device">✏️</span>
+        </div>
         <div class="pm-detail-id"  id="detailId">—</div>
       </div>
-      <div id="detailStatusBadge" class="dehum-status-badge checking" style="margin-left:auto;">
+      <div id="detailStatusBadge" class="dehum-status-badge checking detail-badge-auto">
         <div class="dehum-dot"></div>
         <span id="detailStatusText">Checking...</span>
       </div>
@@ -311,17 +361,17 @@ body {
     <div class="pm-stats-row">
       <div class="pm-stat-card">
         <div class="pm-stat-label">Current Status</div>
-        <div class="pm-stat-val" id="detailStatus" style="font-size:1.1rem;">--</div>
+        <div class="pm-stat-val stat-font-lg" id="detailStatus">--</div>
         <div class="pm-stat-unit">live reading</div>
       </div>
       <div class="pm-stat-card">
         <div class="pm-stat-label">Today ON Time</div>
-        <div class="pm-stat-val" id="detailOnTime" style="color:#16a34a;">--</div>
+        <div class="pm-stat-val stat-green" id="detailOnTime">--</div>
         <div class="pm-stat-unit">hours</div>
       </div>
       <div class="pm-stat-card">
         <div class="pm-stat-label">Today OFF Time</div>
-        <div class="pm-stat-val" id="detailOffTime" style="color:#dc2626;">--</div>
+        <div class="pm-stat-val stat-red" id="detailOffTime">--</div>
         <div class="pm-stat-unit">hours</div>
       </div>
       <div class="pm-stat-card">
@@ -365,10 +415,40 @@ body {
   </div>
 </main>
 
+<!-- ══════════════ RENAME MODAL — STEP 1: PASSWORD ══════════════ -->
+<div class="pm-modal-overlay" id="passwordModalOverlay">
+  <div class="pm-modal-box">
+    <div class="pm-modal-title">🔒 Enter Password</div>
+    <div class="pm-modal-sub">Renaming devices requires the admin password.</div>
+    <label class="pm-modal-label">Password</label>
+    <input type="password" class="pm-modal-input" id="renamePasswordInput" placeholder="Enter password" autocomplete="off">
+    <div class="pm-modal-error" id="passwordModalError">Incorrect password. Please try again.</div>
+    <div class="pm-modal-actions">
+      <button class="pm-btn pm-btn-ghost" onclick="closePasswordModal()">Cancel</button>
+      <button class="pm-btn pm-btn-primary" onclick="submitPasswordModal()">Continue</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ RENAME MODAL — STEP 2: NEW NAME ══════════════ -->
+<div class="pm-modal-overlay" id="renameModalOverlay">
+  <div class="pm-modal-box">
+    <div class="pm-modal-title">✏️ Rename Device</div>
+    <div class="pm-modal-sub" id="renameModalSub">Enter a new display name for this device.</div>
+    <label class="pm-modal-label">Device Name</label>
+    <input type="text" class="pm-modal-input" id="renameNameInput" placeholder="e.g. Living Room Dehumidifier" maxlength="60">
+    <div class="pm-modal-error" id="renameModalError">Please enter a valid name.</div>
+    <div class="pm-modal-actions">
+      <button class="pm-btn pm-btn-ghost" onclick="closeRenameModal()">Cancel</button>
+      <button class="pm-btn pm-btn-primary" onclick="submitRenameModal()">Save Name</button>
+    </div>
+  </div>
+</div>
+
 <div id="pmToast"></div>
 
 <script>
-const PM_SERVER = 'https://rh-meter-production.onrender.com';
+const PM_SERVER = 'https://rh-meter-production-de5e.up.railway.app';
 const VOLTAGE_THRESHOLD = 100;  // vrms > 100V = online
 
 const DEHUM_DEVICES = [
@@ -390,6 +470,11 @@ let chartTimeline      = null;
 let chartRange         = null;
 let currentDetailId    = null;
 let deviceHistoryCache = {};
+let customNames        = {};   // { Dehum_01: "Living Room Dehumidifier" } — loaded from server
+
+// ── Rename modal state ──
+let pendingRenameDeviceId = null;
+let verifiedPassword      = null;
 
 function pad(n){ return n < 10 ? '0'+n : ''+n; }
 function todayIST(){
@@ -400,6 +485,20 @@ function showToast(msg, type='success'){
   const el = document.getElementById('pmToast');
   el.textContent = msg; el.className = type; el.style.display = 'block'; el.style.opacity = '1';
   setTimeout(()=>{ el.style.opacity='0'; setTimeout(()=>el.style.display='none',400); }, 3000);
+}
+
+function getDisplayName(deviceId){
+  if(customNames[deviceId]) return customNames[deviceId];
+  const dev = DEHUM_DEVICES.find(d => d.id === deviceId);
+  return dev ? dev.name : deviceId;
+}
+
+async function fetchCustomNames(){
+  try {
+    const res = await fetch(`${PM_SERVER}/api/device-names?_t=${Date.now()}`);
+    if(!res.ok) throw new Error('not ok');
+    customNames = await res.json();
+  } catch(e){ customNames = {}; }
 }
 
 async function fetchDeviceStatus(deviceId){
@@ -419,13 +518,11 @@ async function fetchPowerHistory(deviceId, from, to){
   } catch(e){ return []; }
 }
 
-// ── SPARKLINE on cards: green/red bar per hour showing ON minutes (0–60) ──
 function buildSparkline(canvasId, deviceId, data){
   const canvas = document.getElementById(canvasId);
   if(!canvas) return;
   if(sparklineCharts[deviceId]){ sparklineCharts[deviceId].destroy(); }
 
-  // Build 24 hourly buckets: count ON minutes per hour (each record = 10 min interval)
   const onMins  = new Array(24).fill(0);
   const offMins = new Array(24).fill(0);
   const labels  = Array.from({length:24}, (_,h) => pad(h)+':00');
@@ -438,13 +535,12 @@ function buildSparkline(canvasId, deviceId, data){
     else     offMins[h] += 10;
   });
 
-  // Bar height = ON minutes (0–60), color green if any ON that hour, red if all off
-  const vals   = onMins.map((on, h) => on > 0 ? on : (offMins[h] > 0 ? -1 : null));
-  const colors = vals.map(v => v === null ? 'transparent' : v > 0 ? 'rgba(22,163,74,0.75)' : 'rgba(220,38,38,0.5)');
+  const barVals = onMins.map((v,h) => (offMins[h]+v) > 0 ? (v || 0.5) : null);
+  const colors  = onMins.map((v,h) => (offMins[h]+v) === 0 ? 'transparent' : (v > 0 ? 'rgba(22,163,74,0.75)' : 'rgba(220,38,38,0.5)'));
 
   sparklineCharts[deviceId] = new Chart(canvas.getContext('2d'), {
     type: 'bar',
-    data: { labels, datasets:[{ data: onMins.map((v,h) => offMins[h]+v > 0 ? v||0.5 : null), backgroundColor: colors, borderRadius:2, borderSkipped:false }] },
+    data: { labels, datasets:[{ data: barVals, backgroundColor: colors, borderRadius:2, borderSkipped:false }] },
     options: {
       responsive:true, maintainAspectRatio:false, animation:{duration:200},
       plugins:{ legend:{display:false}, tooltip:{enabled:false} },
@@ -453,7 +549,6 @@ function buildSparkline(canvasId, deviceId, data){
   });
 }
 
-// ── RENDER GRID ──
 function renderGrid(){
   const grid = document.getElementById('dehumGrid');
   grid.innerHTML = '';
@@ -465,6 +560,7 @@ function renderGrid(){
     const online   = cache.online === true;
     const vrms     = cache.vrms;
     const lastSeen = cache.lastSeen;
+    const dispName = getDisplayName(dev.id);
 
     if(!isCheck && online)  onlineCount++;
     if(!isCheck && !online) offlineCount++;
@@ -481,7 +577,10 @@ function renderGrid(){
     card.innerHTML = `
       <div class="dehum-card-top">
         <div>
-          <div class="dehum-card-name">${dev.name}</div>
+          <div class="dehum-card-name-row">
+            <div class="dehum-card-name">${dispName}</div>
+            <span class="dehum-rename-pencil" data-device-id="${dev.id}" title="Rename this device">✏️</span>
+          </div>
           <div class="dehum-card-id">${dev.id}</div>
         </div>
         <div class="dehum-status-badge ${statusCls}">
@@ -497,28 +596,60 @@ function renderGrid(){
         <span class="dehum-last-seen">🕐 ${lastStr}</span>
         <span class="dehum-view-link">Details →</span>
       </div>`;
-    card.addEventListener('click', () => openDetail(dev.id));
+
+    card.addEventListener('click', (e) => {
+      if(e.target.closest('.dehum-rename-pencil')) return;
+      openDetail(dev.id);
+    });
+
+    const pencil = card.querySelector('.dehum-rename-pencil');
+    pencil.addEventListener('click', (e) => {
+      e.stopPropagation();
+      startRenameFlow(dev.id);
+    });
+
     grid.appendChild(card);
   });
 
   document.getElementById('hdrOnlineCount').textContent = onlineCount;
   document.getElementById('hdrOfflineCount').textContent = offlineCount;
 
-  // Build sparklines
   DEHUM_DEVICES.forEach(dev => {
     const hist = deviceHistoryCache[dev.id] || [];
     if(hist.length) buildSparkline(`spark-${dev.id}`, dev.id, hist);
   });
 }
 
+let isRefreshing = false;
+
 async function refreshAll(){
-  await Promise.all(DEHUM_DEVICES.map(async dev => { deviceCache[dev.id] = await fetchDeviceStatus(dev.id); }));
-  const today = todayIST();
-  await Promise.all(DEHUM_DEVICES.map(async dev => { deviceHistoryCache[dev.id] = await fetchPowerHistory(dev.id, today, today); }));
-  renderGrid();
+  if (isRefreshing) return;          // ignore overlapping calls / double-clicks
+  isRefreshing = true;
+  try {
+    await fetchCustomNames();
+
+    const res = await fetch(`${PM_SERVER}/api/power-all?_t=${Date.now()}`);
+    if (!res.ok) throw new Error(`power-all failed: ${res.status}`);
+    const all = await res.json();
+    DEHUM_DEVICES.forEach(dev => {
+      const d = all[dev.id] || {};
+      deviceCache[dev.id] = { vrms: parseFloat(d.vrms ?? 0), online: !!d.online, lastSeen: d.timestamp || null };
+    });
+
+    const today = todayIST();
+    const histRes = await fetch(`${PM_SERVER}/api/power-history-all?from=${today}&to=${today}&_t=${Date.now()}`);
+    if (!histRes.ok) throw new Error(`power-history-all failed: ${histRes.status}`);
+    deviceHistoryCache = await histRes.json();
+
+    renderGrid();
+  } catch (err) {
+    console.warn('[refreshAll] skipped this cycle:', err.message);
+    // don't rethrow — just let the next 30s tick try again
+  } finally {
+    isRefreshing = false;
+  }
 }
 
-// ── SHOW / HIDE ──
 function showGrid(){
   document.getElementById('pmGridView').style.display = 'block';
   document.getElementById('pmDetailView').classList.remove('active');
@@ -529,10 +660,9 @@ function showGrid(){
 
 async function openDetail(deviceId){
   currentDetailId = deviceId;
-  const dev = DEHUM_DEVICES.find(d => d.id===deviceId) || {id:deviceId, name:deviceId};
   document.getElementById('pmGridView').style.display = 'none';
   document.getElementById('pmDetailView').classList.add('active');
-  document.getElementById('detailName').textContent = dev.name;
+  document.getElementById('detailName').textContent = getDisplayName(deviceId);
   document.getElementById('detailId').textContent   = deviceId;
   setDetailToday();
 
@@ -557,12 +687,13 @@ function setDetailToday(){
 function updateDetailStats(status, hist){
   const badge = document.getElementById('detailStatusBadge');
   const txt   = document.getElementById('detailStatusText');
-  badge.className  = `dehum-status-badge ${status.online ? 'online' : 'offline'}`;
+  badge.className  = `dehum-status-badge detail-badge-auto ${status.online ? 'online' : 'offline'}`;
   txt.textContent  = status.online ? 'Online' : 'Offline';
 
   const statEl = document.getElementById('detailStatus');
-  statEl.textContent  = status.online ? 'ONLINE' : 'OFFLINE';
-  statEl.style.color  = status.online ? '#16a34a' : '#dc2626';
+  statEl.textContent = status.online ? 'ONLINE' : 'OFFLINE';
+  statEl.classList.remove('stat-green','stat-red');
+  statEl.classList.add(status.online ? 'stat-green' : 'stat-red');
 
   if(hist && hist.length){
     let onMin=0, offMin=0;
@@ -579,13 +710,6 @@ function updateDetailStats(status, hist){
   }
 }
 
-// ══════════════════════════════════════════════════════════
-//  24-HOUR TIMELINE CHART
-//  X-axis: hours 00:00–23:00
-//  Y-axis: minutes 0–60
-//  Grouped bars: green = ON minutes, red = OFF minutes
-//  Tooltip: "13:00 — ON: 40 min | OFF: 20 min"
-// ══════════════════════════════════════════════════════════
 function renderTimelineChart(hist){
   if(chartTimeline){ chartTimeline.destroy(); chartTimeline=null; }
 
@@ -593,7 +717,6 @@ function renderTimelineChart(hist){
   const onMins  = new Array(24).fill(0);
   const offMins = new Array(24).fill(0);
 
-  // Count 10-min intervals per hour
   hist.forEach(r => {
     const d = new Date(r.timestamp), ist = new Date(d.getTime() + 5.5*3600000);
     const h = ist.getUTCHours();
@@ -602,7 +725,6 @@ function renderTimelineChart(hist){
     else     offMins[h] += 10;
   });
 
-  // Cap at 60 (in case of duplicate records)
   onMins.forEach((v,i)  => { onMins[i]  = Math.min(v, 60); });
   offMins.forEach((v,i) => { offMins[i] = Math.min(v, 60); });
 
@@ -612,20 +734,8 @@ function renderTimelineChart(hist){
     data: {
       labels,
       datasets: [
-        {
-          label: 'ON',
-          data:  onMins,
-          backgroundColor: 'rgba(22,163,74,0.75)',
-          borderRadius: 3,
-          borderSkipped: false,
-        },
-        {
-          label: 'OFF',
-          data:  offMins,
-          backgroundColor: 'rgba(220,38,38,0.6)',
-          borderRadius: 3,
-          borderSkipped: false,
-        }
+        { label: 'ON',  data: onMins,  backgroundColor: 'rgba(22,163,74,0.75)', borderRadius: 3, borderSkipped: false },
+        { label: 'OFF', data: offMins, backgroundColor: 'rgba(220,38,38,0.6)',  borderRadius: 3, borderSkipped: false }
       ]
     },
     options: {
@@ -637,11 +747,7 @@ function renderTimelineChart(hist){
         tooltip: {
           callbacks: {
             title: ctx => `Hour: ${ctx[0].label}`,
-            label: ctx => {
-              const v = ctx.parsed.y;
-              const label = ctx.dataset.label;
-              return ` ${label}: ${v} min`;
-            },
+            label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y} min`,
             afterBody: items => {
               const h  = items[0].dataIndex;
               const on  = onMins[h];
@@ -656,22 +762,12 @@ function renderTimelineChart(hist){
       scales: {
         x: {
           stacked: false,
-          ticks: {
-            color: '#94a3b8',
-            autoSkip: false,
-            maxRotation: 45,
-            callback: (val, i) => i % 2 === 0 ? labels[i] : ''
-          },
+          ticks: { color: '#94a3b8', autoSkip: false, maxRotation: 45, callback: (val, i) => i % 2 === 0 ? labels[i] : '' },
           grid: { color: 'rgba(15,23,42,0.05)' }
         },
         y: {
-          min: 0,
-          max: 60,
-          ticks: {
-            color: '#94a3b8',
-            stepSize: 10,
-            callback: v => `${v} min`
-          },
+          min: 0, max: 60,
+          ticks: { color: '#94a3b8', stepSize: 10, callback: v => `${v} min` },
           grid: { color: 'rgba(15,23,42,0.05)' },
           title: { display: true, text: 'Minutes per hour', color:'#94a3b8', font:{size:11} }
         }
@@ -680,12 +776,6 @@ function renderTimelineChart(hist){
   });
 }
 
-// ══════════════════════════════════════════════════════════
-//  CUSTOM DATE RANGE CHART
-//  Single day  → hourly grouped bars (ON min vs OFF min per hour)
-//  Multi-day   → daily grouped bars  (ON hrs vs OFF hrs per day)
-//  Tooltip     → exact ON/OFF time on hover
-// ══════════════════════════════════════════════════════════
 async function fetchAndRenderRange(){
   const from = document.getElementById('detailDateFrom').value;
   const to   = document.getElementById('detailDateTo').value;
@@ -701,7 +791,6 @@ async function fetchAndRenderRange(){
   const isSameDay = from === to;
 
   if(isSameDay){
-    // ── Single day: hourly ON/OFF bars (0–60 min) ──
     const labels  = Array.from({length:24}, (_,h) => pad(h)+':00');
     const onMins  = new Array(24).fill(0);
     const offMins = new Array(24).fill(0);
@@ -751,24 +840,23 @@ async function fetchAndRenderRange(){
       }
     });
 
-    // Summary stat cards
     let totalOn=0, totalOff=0;
     onMins.forEach(v=>totalOn+=v);
     offMins.forEach(v=>totalOff+=v);
     const uptime = Math.round((totalOn/(totalOn+totalOff||1))*100);
     document.getElementById('rangeTableWrap').innerHTML=`
-      <div style="margin-top:16px;display:flex;gap:12px;flex-wrap:wrap;">
-        <div class="pm-stat-card" style="flex:1;min-width:120px;">
+      <div class="range-summary-row">
+        <div class="pm-stat-card range-summary-card">
           <div class="pm-stat-label">ON Time</div>
-          <div class="pm-stat-val" style="color:#16a34a;">${(totalOn/60).toFixed(1)}</div>
+          <div class="pm-stat-val stat-green">${(totalOn/60).toFixed(1)}</div>
           <div class="pm-stat-unit">hours</div>
         </div>
-        <div class="pm-stat-card" style="flex:1;min-width:120px;">
+        <div class="pm-stat-card range-summary-card">
           <div class="pm-stat-label">OFF Time</div>
-          <div class="pm-stat-val" style="color:#dc2626;">${(totalOff/60).toFixed(1)}</div>
+          <div class="pm-stat-val stat-red">${(totalOff/60).toFixed(1)}</div>
           <div class="pm-stat-unit">hours</div>
         </div>
-        <div class="pm-stat-card" style="flex:1;min-width:120px;">
+        <div class="pm-stat-card range-summary-card">
           <div class="pm-stat-label">Uptime</div>
           <div class="pm-stat-val">${uptime}</div>
           <div class="pm-stat-unit">%</div>
@@ -776,7 +864,6 @@ async function fetchAndRenderRange(){
       </div>`;
 
   } else {
-    // ── Multi-day: daily ON/OFF grouped bars in hours ──
     const dayMap = {};
     hist.forEach(r => {
       const d   = new Date(r.timestamp), ist = new Date(d.getTime()+5.5*3600000);
@@ -787,7 +874,7 @@ async function fetchAndRenderRange(){
       else     dayMap[key].offMin += 10;
     });
 
-    const days    = Object.keys(dayMap).sort();
+    const days     = Object.keys(dayMap).sort();
     const onHours  = days.map(d => parseFloat((dayMap[d].onMin/60).toFixed(2)));
     const offHours = days.map(d => parseFloat((dayMap[d].offMin/60).toFixed(2)));
 
@@ -832,7 +919,6 @@ async function fetchAndRenderRange(){
       }
     });
 
-    // Table per day
     const rows = days.map(d => {
       const onH  = (dayMap[d].onMin/60).toFixed(1);
       const offH = (dayMap[d].offMin/60).toFixed(1);
@@ -848,12 +934,122 @@ async function fetchAndRenderRange(){
     }).join('');
 
     document.getElementById('rangeTableWrap').innerHTML=`
-      <table class="pm-table" style="margin-top:16px;">
+      <table class="pm-table range-table">
         <thead><tr><th>Date</th><th>Status</th><th>ON Time</th><th>OFF Time</th><th>Uptime</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>`;
   }
 }
+
+// ══════════════════════════════════════════════════════════
+//  RENAME FLOW — Step 1: password modal → Step 2: name modal → save
+// ══════════════════════════════════════════════════════════
+function startRenameFlow(deviceId){
+  pendingRenameDeviceId = deviceId;
+  verifiedPassword = null;
+  document.getElementById('renamePasswordInput').value = '';
+  document.getElementById('passwordModalError').classList.remove('show');
+  document.getElementById('passwordModalOverlay').classList.add('active');
+  setTimeout(() => document.getElementById('renamePasswordInput').focus(), 50);
+}
+
+function closePasswordModal(){
+  document.getElementById('passwordModalOverlay').classList.remove('active');
+  pendingRenameDeviceId = null;
+}
+
+async function submitPasswordModal(){
+  const pwInput = document.getElementById('renamePasswordInput');
+  const pw = pwInput.value;
+  const errEl = document.getElementById('passwordModalError');
+
+  if(!pw){
+    errEl.textContent = 'Please enter the password.';
+    errEl.classList.add('show');
+    return;
+  }
+
+  // Actual verification happens server-side on the real rename call in step 2.
+  verifiedPassword = pw;
+  document.getElementById('passwordModalOverlay').classList.remove('active');
+  openRenameNameModal();
+}
+
+function openRenameNameModal(){
+  const deviceId = pendingRenameDeviceId;
+  const current  = getDisplayName(deviceId);
+  document.getElementById('renameModalSub').textContent = `Renaming ${deviceId} (current: "${current}")`;
+  document.getElementById('renameNameInput').value = current;
+  document.getElementById('renameModalError').classList.remove('show');
+  document.getElementById('renameModalOverlay').classList.add('active');
+  setTimeout(() => {
+    const input = document.getElementById('renameNameInput');
+    input.focus();
+    input.select();
+  }, 50);
+}
+
+function closeRenameModal(){
+  document.getElementById('renameModalOverlay').classList.remove('active');
+  pendingRenameDeviceId = null;
+  verifiedPassword = null;
+}
+
+async function submitRenameModal(){
+  const deviceId = pendingRenameDeviceId;
+  const newName  = document.getElementById('renameNameInput').value.trim();
+  const errEl    = document.getElementById('renameModalError');
+
+  if(!newName){
+    errEl.textContent = 'Please enter a valid name.';
+    errEl.classList.add('show');
+    return;
+  }
+
+  try {
+    const res = await fetch(`${PM_SERVER}/api/device-name/rename`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceId, newName, password: verifiedPassword })
+    });
+    const data = await res.json();
+
+    if(res.status === 401){
+      document.getElementById('renameModalOverlay').classList.remove('active');
+      showToast('Incorrect password', 'error');
+      document.getElementById('passwordModalError').textContent = 'Incorrect password. Please try again.';
+      document.getElementById('passwordModalError').classList.add('show');
+      document.getElementById('passwordModalOverlay').classList.add('active');
+      return;
+    }
+    if(!data.ok){
+      errEl.textContent = data.error || 'Could not save name. Try again.';
+      errEl.classList.add('show');
+      return;
+    }
+
+    customNames[deviceId] = data.name;
+    closeRenameModal();
+    showToast(`Renamed to "${data.name}"`, 'success');
+    renderGrid();
+    if(currentDetailId === deviceId){
+      document.getElementById('detailName').textContent = data.name;
+    }
+  } catch(e){
+    errEl.textContent = 'Network error — please try again.';
+    errEl.classList.add('show');
+  }
+}
+
+document.addEventListener('keydown', (e) => {
+  if(e.key !== 'Enter') return;
+  if(document.getElementById('passwordModalOverlay').classList.contains('active')) submitPasswordModal();
+  else if(document.getElementById('renameModalOverlay').classList.contains('active')) submitRenameModal();
+});
+
+document.getElementById('detailRenamePencil').addEventListener('click', () => {
+  if(currentDetailId) startRenameFlow(currentDetailId);
+});
 
 // ── BOOT ──
 document.getElementById('btnRefreshAll').addEventListener('click', refreshAll);
@@ -866,7 +1062,7 @@ setInterval(() => {
       updateDetailStats(s, deviceHistoryCache[currentDetailId]||[]);
     });
   }
-}, 15000);
+}, 30000);
 
 </script>
 </body>

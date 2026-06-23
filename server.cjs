@@ -16,7 +16,8 @@ const upload   = multer({ storage: multer.memoryStorage() });
 const BREVO_API_KEY = process.env.BREVO_API_KEY || '';
 
 // ── Constants ─────────────────────────────────────────────────
-const DASHBOARD_URL = 'https://rh-meter-production.onrender.com';
+// const dashUrl = `https://rh-meter-production.onrender.com/detail.html?id=${deviceId}`;
+// await axios.get('https://rh-meter-production.onrender.com/api/ping');
 const LOCATION_NAME = 'CT-PAT Area';
 const SENDER_EMAIL = 'naveenkumarak@aquarelleindia.com';
 const app = express();
