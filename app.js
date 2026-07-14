@@ -7,8 +7,7 @@
 
 // const SERVER_URL = 'https://rh-meter-production-de5e.up.railway.app'; 
 
-const SERVER_URL = 'https://rh-meter-production-ed87.up.railway.app';cls
-
+const SERVER_URL = 'https://rh-meter-production-ed87.up.railway.app';
 
 // ════════════════════════════════════════════════════════════
 //  DEVICE NAME MAP
