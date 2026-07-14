@@ -5,7 +5,10 @@
 // const SERVER_URL = 'http://localhost:3000';
 // const SERVER_URL = 'https://rh-meter-bridge.onrender.com';
 
-const SERVER_URL = 'https://rh-meter-production-de5e.up.railway.app'; 
+// const SERVER_URL = 'https://rh-meter-production-de5e.up.railway.app'; 
+
+const SERVER_URL = 'https://rh-meter-production-ed87.up.railway.app/'; 
+
 
 // ════════════════════════════════════════════════════════════
 //  DEVICE NAME MAP
@@ -796,14 +799,49 @@ async function renderTempDetail() {
   const oldTable = document.getElementById('tempDayTable');
   if (oldTable) oldTable.remove();
 
-  if (isSameDay) {
-    document.getElementById('tempChartTitle').textContent = '📈 Temperature — Single Day';
-    const bucketed = bucket5min(subset);
-    chartTempDetail = new Chart(document.getElementById('chartTempDetail').getContext('2d'), {
-      type: 'line',
-      data: { labels: bucketed.map(b => b.label), datasets: [{ label: 'Temperature (°C)', data: bucketed.map(b => b.temp), borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.1)', fill: true, tension: 0.4, pointRadius: 2, borderWidth: 2 }] },
-      plugins: [tempThresholdPlugin],
-      options: { ...getChartOptions(thresholds.temp, true), plugins: { legend: { display: true, labels: { color:'#475569' } } } }
+  // if (isSameDay) {
+  //   document.getElementById('tempChartTitle').textContent = '📈 Temperature — Single Day';
+  //   const bucketed = bucket5min(subset);
+  //   chartTempDetail = new Chart(document.getElementById('chartTempDetail').getContext('2d'), {
+  //     type: 'line',
+  //     data: { labels: bucketed.map(b => b.label), datasets: [{ label: 'Temperature (°C)', data: bucketed.map(b => b.temp), borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.1)', fill: true, tension: 0.4, pointRadius: 2, borderWidth: 2 }] },
+  //     plugins: [tempThresholdPlugin],
+  //     options: { ...getChartOptions(thresholds.temp, true), plugins: { legend: { display: true, labels: { color:'#475569' } } } }
+  //   });
+  // } else {
+
+    if (isSameDay) {
+    const allowedHours = ['12:00', '15:00']; // only 12 PM and 3 PM
+    const map = {};
+    raw.forEach(r => {
+      const d   = new Date(r.timestamp);
+      const ist = new Date(d.getTime() + (5.5 * 60 * 60 * 1000));
+      const hourKey = pad(ist.getUTCHours()) + ':00';
+      if (!allowedHours.includes(hourKey)) return; // skip everything else
+      const key = dateStr(d) + ' ' + hourKey;
+      if (!map[key]) map[key] = { temps: [], hums: [] };
+      map[key].temps.push(r.temp);
+      map[key].hums.push(r.hum);
+    });
+    Object.keys(map).sort().forEach(key => {
+      const b       = map[key];
+      const avg     = arr => +(arr.reduce((a,v)=>a+v,0)/arr.length).toFixed(1);
+      const minTemp = +Math.min(...b.temps).toFixed(1);
+      const avgTemp = avg(b.temps);
+      const maxTemp = +Math.max(...b.temps).toFixed(1);
+      const minHum  = +Math.min(...b.hums).toFixed(1);
+      const avgHum  = avg(b.hums);
+      const maxHum  = +Math.max(...b.hums).toFixed(1);
+      dataRows.push([
+        makeCell(friendlyName, areaStyle()),
+        makeCell(key,          labelStyle()),
+        makeCell(minTemp,      plainDataStyle()),
+        makeCell(avgTemp,      plainDataStyle()),
+        makeCell(maxTemp,      plainDataStyle()),
+        makeCell(minHum,       plainDataStyle()),
+        makeCell(avgHum,       plainDataStyle()),
+        makeCell(maxHum,       plainDataStyle()),
+      ]);
     });
   } else {
     document.getElementById('tempChartTitle').textContent = '📊 Temperature — Daily Summary';
@@ -1888,6 +1926,14 @@ async function exportAllDevicesExcel(deviceIds, from, to) {
   }
   function makeCell(v, s) { return { v, s, t: typeof v === 'number' ? 'n' : 's' }; }
 
+  function plainDataStyle() {
+  return {
+    font:      { color: { rgb: 'FF1F2937' }, sz: 10 },
+    alignment: { horizontal: 'center', vertical: 'center' },
+    border: { top:{style:'thin',color:{rgb:'FFE5E7EB'}}, bottom:{style:'thin',color:{rgb:'FFE5E7EB'}}, left:{style:'thin',color:{rgb:'FFE5E7EB'}}, right:{style:'thin',color:{rgb:'FFE5E7EB'}} }
+  };
+}
+
   // ── Header row ──────────────────────────────────────────────
   const HEADER = [
     makeCell('Factory Area',     headerStyle('FF0F4C81')),
@@ -1939,15 +1985,54 @@ async function exportAllDevicesExcel(deviceIds, from, to) {
       ]);
     } else {
       // ── Always use 1-hour buckets regardless of date range ──
+      // const map = {};
+      // raw.forEach(r => {
+      //   const d   = new Date(r.timestamp);
+      //   const ist = new Date(d.getTime() + (5.5 * 60 * 60 * 1000));
+      //   // Key = date + hour (IST)
+      //   const dateKey = ist.getUTCFullYear() + '-' +
+      //     String(ist.getUTCMonth()+1).padStart(2,'0') + '-' +
+      //     String(ist.getUTCDate()).padStart(2,'0');
+      //   const key = dateKey + ' ' + pad(ist.getUTCHours()) + ':00';
+      //   if (!map[key]) map[key] = { temps: [], hums: [] };
+      //   map[key].temps.push(r.temp);
+      //   map[key].hums.push(r.hum);
+      // });
+      // Object.keys(map).sort().forEach(key => {
+      //   const b       = map[key];
+      //   const avg     = arr => +(arr.reduce((a,v)=>a+v,0)/arr.length).toFixed(1);
+      //   const minTemp = +Math.min(...b.temps).toFixed(1);
+      //   const avgTemp = avg(b.temps);
+      //   const maxTemp = +Math.max(...b.temps).toFixed(1);
+      //   const minHum  = +Math.min(...b.hums).toFixed(1);
+      //   const avgHum  = avg(b.hums);
+      //   const maxHum  = +Math.max(...b.hums).toFixed(1);
+      //   dataRows.push([
+      //     makeCell(friendlyName, areaStyle()),
+      //     makeCell(key,          labelStyle()),
+      //     makeCell(minTemp,      dataStyle(minTemp, tempThresh)),
+      //     makeCell(avgTemp,      dataStyle(avgTemp, tempThresh)),
+      //     makeCell(maxTemp,      dataStyle(maxTemp, tempThresh)),
+      //     makeCell(minHum,       dataStyle(minHum,  humThresh)),
+      //     makeCell(avgHum,       dataStyle(avgHum,  humThresh)),
+      //     makeCell(maxHum,       dataStyle(maxHum,  humThresh)),
+      //   ]);
+      // });
+
+
+      // ── Only 12:00 PM and 3:00 PM (15:00) buckets ──
+      const allowedHours = ['12:00', '15:00'];
       const map = {};
       raw.forEach(r => {
         const d   = new Date(r.timestamp);
         const ist = new Date(d.getTime() + (5.5 * 60 * 60 * 1000));
-        // Key = date + hour (IST)
+        const hourKey = pad(ist.getUTCHours()) + ':00';
+        if (!allowedHours.includes(hourKey)) return; // skip all other hours
+
         const dateKey = ist.getUTCFullYear() + '-' +
           String(ist.getUTCMonth()+1).padStart(2,'0') + '-' +
           String(ist.getUTCDate()).padStart(2,'0');
-        const key = dateKey + ' ' + pad(ist.getUTCHours()) + ':00';
+        const key = dateKey + ' ' + hourKey;
         if (!map[key]) map[key] = { temps: [], hums: [] };
         map[key].temps.push(r.temp);
         map[key].hums.push(r.hum);
@@ -1964,12 +2049,12 @@ async function exportAllDevicesExcel(deviceIds, from, to) {
         dataRows.push([
           makeCell(friendlyName, areaStyle()),
           makeCell(key,          labelStyle()),
-          makeCell(minTemp,      dataStyle(minTemp, tempThresh)),
-          makeCell(avgTemp,      dataStyle(avgTemp, tempThresh)),
-          makeCell(maxTemp,      dataStyle(maxTemp, tempThresh)),
-          makeCell(minHum,       dataStyle(minHum,  humThresh)),
-          makeCell(avgHum,       dataStyle(avgHum,  humThresh)),
-          makeCell(maxHum,       dataStyle(maxHum,  humThresh)),
+          makeCell(minTemp,      plainDataStyle()),
+          makeCell(avgTemp,      plainDataStyle()),
+          makeCell(maxTemp,      plainDataStyle()),
+          makeCell(minHum,       plainDataStyle()),
+          makeCell(avgHum,       plainDataStyle()),
+          makeCell(maxHum,       plainDataStyle()),
         ]);
       });
     }

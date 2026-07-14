@@ -33,7 +33,7 @@
 //  DEVICE CONFIGURATION — Change DEVICE_ID per unit
 //  e.g. "Dehum_01", "Dehum_02" ... "Dehum_10"
 // ════════════════════════════════════════════════════════════
-constexpr const char* DEVICE_ID = "Dehum_01";   // ← CHANGE THIS PER DEVICE
+constexpr const char* DEVICE_ID = "Dehum_08";   // ← CHANGE THIS PER DEVICE
 
 // ════════════════════════════════════════════════════════════
 //  MQTT CREDENTIALS
