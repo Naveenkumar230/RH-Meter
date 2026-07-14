@@ -451,6 +451,13 @@
         </button>
       </div>
 
+      <!-- Monitoring Record Button -->
+      <div>
+        <button class="header-action-btn" id="monitoringBtn" onclick="toggleMonitoringDropdown()">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M4 2h8v12H4z M6 5h4 M6 8h4 M6 11h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          Monitoring Record
+        </button>
+      </div>
 
       
       <!-- Settings -->
@@ -624,6 +631,7 @@
 </div>
 
 <!-- EXPORT MODAL -->
+<!-- EXPORT MODAL -->
 <div class="modal-overlay" id="exportModal" onclick="handleModalOverlayClick(event,'exportModal')">
   <div class="action-dropdown" id="exportDropdown">
     <div class="dropdown-header">
@@ -633,11 +641,11 @@
     <div class="dropdown-field">
       <label>Location</label>
       <select id="exportLocation">
-  <option value="all">All Devices (excl. R&amp;D)</option>
-  <option value="samudra">Samudra only</option>
-  <option value="bng">BNG only</option>
-  <option value="rd">R&amp;D only</option>
-</select>
+        <option value="all">All Devices (excl. R&amp;D)</option>
+        <option value="samudra">Samudra only</option>
+        <option value="bng">BNG only</option>
+        <option value="rd">R&amp;D only</option>
+      </select>
     </div>
     <div class="dropdown-row">
       <div class="dropdown-field"><label>From</label><input type="date" id="exportDateFrom"></div>
@@ -645,6 +653,31 @@
     </div>
     <div class="dropdown-divider"></div>
     <button class="dropdown-action-btn export-btn" id="exportExcelBtn" onclick="runExportFromDropdown()">📥 Download Excel</button>
+  </div>
+</div>
+
+<!-- MONITORING RECORD MODAL -->
+<div class="modal-overlay" id="monitoringModal" onclick="handleModalOverlayClick(event,'monitoringModal')">
+  <div class="action-dropdown" id="monitoringDropdown">
+    <div class="dropdown-header">
+      <div class="dropdown-title">📋 Monitoring Record</div>
+      <button class="dropdown-close" onclick="closeAllDropdowns()">✕</button>
+    </div>
+    <div class="dropdown-field">
+      <label>Location</label>
+      <select id="monitoringLocation">
+        <option value="all">All Devices (excl. R&amp;D)</option>
+        <option value="samudra">Samudra only</option>
+        <option value="bng">BNG only</option>
+        <option value="rd">R&amp;D only</option>
+      </select>
+    </div>
+    <div class="dropdown-row">
+      <div class="dropdown-field"><label>From</label><input type="date" id="monitoringDateFrom"></div>
+      <div class="dropdown-field"><label>To</label><input type="date" id="monitoringDateTo"></div>
+    </div>
+    <div class="dropdown-divider"></div>
+    <button class="dropdown-action-btn export-btn" id="monitoringExcelBtn" onclick="runMonitoringExportFromDropdown()">📋 Download Monitoring Record</button>
   </div>
 </div>
 
@@ -771,10 +804,20 @@ function toggleExportDropdown() {
   }
 }
 function closeAllDropdowns() {
-  ['filterModal','exportModal'].forEach(id => document.getElementById(id)?.classList.remove('open'));
-  ['filterBtn','exportBtn'].forEach(id => document.getElementById(id)?.classList.remove('active'));
+  ['filterModal','exportModal','monitoringModal'].forEach(id => document.getElementById(id)?.classList.remove('open'));
+  ['filterBtn','exportBtn','monitoringBtn'].forEach(id => document.getElementById(id)?.classList.remove('active'));
   document.getElementById('dropdownBackdrop')?.classList.remove('open');
 }
+
+function toggleMonitoringDropdown() {
+  const isOpen = document.getElementById('monitoringModal').classList.contains('open');
+  closeAllDropdowns();
+  if (!isOpen) {
+    document.getElementById('monitoringModal').classList.add('open');
+    document.getElementById('monitoringBtn').classList.add('active');
+  }
+}
+
 function handleModalOverlayClick(event, modalId) {
   if (event.target === document.getElementById(modalId)) closeAllDropdowns();
 }
@@ -813,6 +856,7 @@ function showFilterChip(text) { const c=document.getElementById('filterActiveChi
 function hideFilterChip() { document.getElementById('filterActiveChip')?.classList.remove('visible'); }
 
 // ── Export from dropdown ──────────────────────────────────────
+// ── Export from dropdown ──────────────────────────────────────
 async function runExportFromDropdown() {
   const from = document.getElementById('exportDateFrom').value;
   const to   = document.getElementById('exportDateTo').value;
@@ -830,6 +874,45 @@ async function runExportFromDropdown() {
   closeAllDropdowns();
   await exportAllDevicesExcel(deviceIds, from, to);
   btn.disabled=false; btn.textContent='📥 Download Excel';
+}
+
+// ── Monitoring record export from dropdown ────────────────────
+async function runMonitoringExportFromDropdown() {
+  const from = document.getElementById('monitoringDateFrom').value;
+  const to   = document.getElementById('monitoringDateTo').value;
+  const loc  = document.getElementById('monitoringLocation').value;
+  if (!from || !to) return showToast('Please select a date range','error');
+  const btn = document.getElementById('monitoringExcelBtn');
+  btn.disabled = true; btn.textContent = '⏳ Preparing...';
+
+  let deviceIds;
+  if      (loc === 'samudra') deviceIds = LOCATION_MAP.samudra;
+  else if (loc === 'bng')     deviceIds = LOCATION_MAP.bng;
+  else if (loc === 'rd')      deviceIds = LOCATION_MAP.rd;
+  else                        deviceIds = [...LOCATION_MAP.samudra, ...LOCATION_MAP.bng];
+
+  closeAllDropdowns();
+  await exportAllDevicesMonitoringRecord(deviceIds, from, to);
+  btn.disabled = false; btn.textContent = '📋 Download Monitoring Record';
+}
+
+async function runMonitoringExportFromDropdown() {
+  const from = document.getElementById('monitoringDateFrom').value;
+  const to   = document.getElementById('monitoringDateTo').value;
+  const loc  = document.getElementById('monitoringLocation').value;
+  if (!from || !to) return showToast('Please select a date range','error');
+  const btn = document.getElementById('monitoringExcelBtn');
+  btn.disabled = true; btn.textContent = '⏳ Preparing...';
+
+  let deviceIds;
+  if      (loc === 'samudra') deviceIds = LOCATION_MAP.samudra;
+  else if (loc === 'bng')     deviceIds = LOCATION_MAP.bng;
+  else if (loc === 'rd')      deviceIds = LOCATION_MAP.rd;
+  else                        deviceIds = [...LOCATION_MAP.samudra, ...LOCATION_MAP.bng];
+
+  closeAllDropdowns();
+  await exportAllDevicesMonitoringRecord(deviceIds, from, to);
+  btn.disabled = false; btn.textContent = '📋 Download Monitoring Record';
 }
 
 // ── Device grid renderer ──────────────────────────────────────
@@ -1099,7 +1182,7 @@ setInterval(()=>{cd--;if(cd<=0)cd=30;const el=document.getElementById('refreshCo
 // ── Set today dates ───────────────────────────────────────────
 (function(){
   const today=new Date().toISOString().slice(0,10);
-  ['filterDateFrom','filterDateTo','exportDateFrom','exportDateTo'].forEach(id=>{
+  ['filterDateFrom','filterDateTo','exportDateFrom','exportDateTo','monitoringDateFrom','monitoringDateTo'].forEach(id=>{
     const el=document.getElementById(id); if(el)el.value=today;
   });
 })();

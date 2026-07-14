@@ -2168,6 +2168,343 @@ function initHomePage() {
   document.getElementById('settingsOverlay')?.addEventListener('click', closeSettingsDrawer);
 }
 
+async function exportAllDevicesMonitoringRecord(deviceIds, from, to) {
+  if (!from || !to) return showToast('Please select a date range', 'error');
+  if (!deviceIds || !deviceIds.length) return showToast('No devices to export', 'error');
+
+  const thin = { style: 'thin', color: { rgb: 'FF000000' } };
+  const borderAll = { top: thin, bottom: thin, left: thin, right: thin };
+  const titleStyle = { font: { bold: true, sz: 12 }, alignment: { horizontal: 'center' } };
+  const smallBold  = { font: { bold: true, sz: 8 }, alignment: { horizontal: 'left' } };
+  const headerIn   = { font: { bold: true, sz: 8 }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: borderAll };
+  const headerOut  = { font: { bold: true, sz: 8 }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: borderAll,
+                        fill: { patternType: 'solid', fgColor: { rgb: 'FFDDEBF7' } } };
+  const dataCell   = { font: { sz: 9 }, alignment: { horizontal: 'center', vertical: 'center' }, border: borderAll };
+  function cell(v, s) { return { v, s, t: typeof v === 'number' ? 'n' : 's' }; }
+
+  const monthLabel = new Date(from).toLocaleString('default', { month: 'long' }).toUpperCase();
+  const wb = XLSX.utils.book_new();
+  let sheetsAdded = 0;
+
+  for (const deviceId of deviceIds) {
+    const friendlyName = getFriendlyName(deviceId);
+
+    let raw = [];
+    try {
+      const res = await fetch(`${SERVER_URL}/api/history?deviceId=${deviceId}&from=${from}&to=${to}&_t=${Date.now()}`);
+      if (res.ok) {
+        const records = await res.json();
+        raw = records.map(r => ({
+          timestamp: r.timestamp,
+          temp: r.temperature !== undefined ? r.temperature : r.temp,
+          hum:  r.humidity    !== undefined ? r.humidity    : r.hum
+        })).filter(r => r.temp != null && r.hum != null);
+      }
+    } catch (e) {
+      console.warn(`[MonitoringExport] Failed to fetch ${deviceId}:`, e.message);
+    }
+
+    const byDate = {};
+    raw.forEach(r => {
+      const d   = new Date(r.timestamp);
+      const ist = new Date(d.getTime() + (5.5 * 60 * 60 * 1000));
+      const hh  = pad(ist.getUTCHours());
+      if (hh !== '12' && hh !== '15') return;
+      const ds  = dateStr(d);
+      if (!byDate[ds]) byDate[ds] = {};
+      byDate[ds][hh] = { temp: r.temp, hum: r.hum };
+    });
+
+    const rows = [];
+    rows.push([cell('TEMPERATURE AND HUMIDITY MONITORING RECORD', titleStyle)]);
+    rows.push([cell(`DEPARTMENT: ${friendlyName}`, smallBold)]);
+    rows.push([cell(`MONTH - ${monthLabel}`, smallBold)]);
+    rows.push([
+      cell('DATE:-', headerIn),
+      cell('INSIDE TEMPERATURE BEFORE 2PM', headerIn), '', '',
+      cell('OUTSIDE TEMPERATURE BEFORE 2PM', headerOut), '',
+      cell('INSIDE TEMPERATURE TIME AFTER 2PM', headerIn), '', '',
+      cell('OUTSIDE TEMPERATURE AFTER 2PM', headerOut), '',
+      cell('CHECKED BY', headerIn)
+    ]);
+    rows.push([
+      '', cell('TIME', headerIn), cell('TEMPERATURE(°C)', headerIn), cell('HUMIDITY', headerIn),
+      cell('TEMPERATURE(°C)', headerOut), cell('HUMIDITY', headerOut),
+      cell('TIME', headerIn), cell('TEMPERATURE(°C)', headerIn), cell('HUMIDITY', headerIn),
+      cell('TEMPERATURE(°C)', headerOut), cell('HUMIDITY', headerOut), ''
+    ]);
+
+    if (Object.keys(byDate).length === 0) {
+      rows.push([cell(friendlyName, dataCell), cell('No data for selected range', dataCell)]);
+    } else {
+      Object.keys(byDate).sort().forEach(ds => {
+        const noon  = byDate[ds]['12'];
+        const three = byDate[ds]['15'];
+        rows.push([
+          cell(ds, dataCell), cell('12:00', dataCell),
+          cell(noon ? noon.temp : '--', dataCell), cell(noon ? noon.hum : '--', dataCell),
+          cell('', dataCell), cell('', dataCell),
+          cell('15:00', dataCell),
+          cell(three ? three.temp : '--', dataCell), cell(three ? three.hum : '--', dataCell),
+          cell('', dataCell), cell('', dataCell), cell('', dataCell)
+        ]);
+      });
+    }
+
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [{ wch:12 },{ wch:9 },{ wch:13 },{ wch:12 },{ wch:13 },{ wch:12 },{ wch:9 },{ wch:13 },{ wch:12 },{ wch:13 },{ wch:12 },{ wch:16 }];
+    ws['!merges'] = [
+      { s:{r:0,c:0}, e:{r:0,c:8} },
+      { s:{r:1,c:0}, e:{r:1,c:11} },
+      { s:{r:2,c:0}, e:{r:2,c:11} },
+      { s:{r:3,c:1}, e:{r:3,c:3} },
+      { s:{r:3,c:4}, e:{r:3,c:5} },
+      { s:{r:3,c:6}, e:{r:3,c:8} },
+      { s:{r:3,c:9}, e:{r:3,c:10} },
+    ];
+    XLSX.utils.book_append_sheet(wb, ws, friendlyName.substring(0, 31));
+    sheetsAdded++;
+  }
+
+  const filename = `MonitoringRecord_${from}_to_${to}.xlsx`;
+  const url = URL.createObjectURL(new Blob(
+    [XLSX.write(wb, { bookType: 'xlsx', type: 'array' })],
+    { type: 'application/octet-stream' }
+  ));
+  const a = Object.assign(document.createElement('a'), { href: url, download: filename });
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+
+  showToast(`✅ Monitoring record exported! ${sheetsAdded} sheet(s) included.`, 'success');
+}
+
+
+// ════════════════════════════════════════════════════════════
+//  MONITORING RECORD EXPORT — ALL DEVICES (one sheet each)
+// ════════════════════════════════════════════════════════════
+async function exportAllDevicesMonitoringRecord(deviceIds, from, to) {
+  if (!from || !to) return showToast('Please select a date range', 'error');
+  if (!deviceIds || !deviceIds.length) return showToast('No devices to export', 'error');
+
+  const thin = { style: 'thin', color: { rgb: 'FF000000' } };
+  const borderAll = { top: thin, bottom: thin, left: thin, right: thin };
+  const titleStyle = { font: { bold: true, sz: 12 }, alignment: { horizontal: 'center' } };
+  const smallBold  = { font: { bold: true, sz: 8 }, alignment: { horizontal: 'left' } };
+  const headerIn   = { font: { bold: true, sz: 8 }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: borderAll };
+  const headerOut  = { font: { bold: true, sz: 8 }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: borderAll,
+                        fill: { patternType: 'solid', fgColor: { rgb: 'FFDDEBF7' } } };
+  const dataCell   = { font: { sz: 9 }, alignment: { horizontal: 'center', vertical: 'center' }, border: borderAll };
+  function cell(v, s) { return { v, s, t: typeof v === 'number' ? 'n' : 's' }; }
+
+  const monthLabel = new Date(from).toLocaleString('default', { month: 'long' }).toUpperCase();
+  const wb = XLSX.utils.book_new();
+  let sheetsAdded = 0;
+
+  for (const deviceId of deviceIds) {
+    const friendlyName = getFriendlyName(deviceId);
+
+    let raw = [];
+    try {
+      const res = await fetch(`${SERVER_URL}/api/history?deviceId=${deviceId}&from=${from}&to=${to}&_t=${Date.now()}`);
+      if (res.ok) {
+        const records = await res.json();
+        raw = records.map(r => ({
+          timestamp: r.timestamp,
+          temp: r.temperature !== undefined ? r.temperature : r.temp,
+          hum:  r.humidity    !== undefined ? r.humidity    : r.hum
+        })).filter(r => r.temp != null && r.hum != null);
+      }
+    } catch (e) {
+      console.warn(`[MonitoringExport] Failed to fetch ${deviceId}:`, e.message);
+    }
+
+    const byDate = {};
+    raw.forEach(r => {
+      const d   = new Date(r.timestamp);
+      const ist = new Date(d.getTime() + (5.5 * 60 * 60 * 1000));
+      const hh  = pad(ist.getUTCHours());
+      if (hh !== '12' && hh !== '15') return;
+      const ds  = dateStr(d);
+      if (!byDate[ds]) byDate[ds] = {};
+      byDate[ds][hh] = { temp: r.temp, hum: r.hum };
+    });
+
+    const rows = [];
+    rows.push([cell('TEMPERATURE AND HUMIDITY MONITORING RECORD', titleStyle)]);
+    rows.push([cell(`DEPARTMENT: ${friendlyName}`, smallBold)]);
+    rows.push([cell(`MONTH - ${monthLabel}`, smallBold)]);
+    rows.push([
+      cell('DATE:-', headerIn),
+      cell('INSIDE TEMPERATURE BEFORE 2PM', headerIn), '', '',
+      cell('OUTSIDE TEMPERATURE BEFORE 2PM', headerOut), '',
+      cell('INSIDE TEMPERATURE TIME AFTER 2PM', headerIn), '', '',
+      cell('OUTSIDE TEMPERATURE AFTER 2PM', headerOut), '',
+      cell('CHECKED BY', headerIn)
+    ]);
+    rows.push([
+      '', cell('TIME', headerIn), cell('TEMPERATURE(°C)', headerIn), cell('HUMIDITY', headerIn),
+      cell('TEMPERATURE(°C)', headerOut), cell('HUMIDITY', headerOut),
+      cell('TIME', headerIn), cell('TEMPERATURE(°C)', headerIn), cell('HUMIDITY', headerIn),
+      cell('TEMPERATURE(°C)', headerOut), cell('HUMIDITY', headerOut), ''
+    ]);
+
+    if (Object.keys(byDate).length === 0) {
+      rows.push([cell(friendlyName, dataCell), cell('No data for selected range', dataCell)]);
+    } else {
+      Object.keys(byDate).sort().forEach(ds => {
+        const noon  = byDate[ds]['12'];
+        const three = byDate[ds]['15'];
+        rows.push([
+          cell(ds, dataCell), cell('12:00', dataCell),
+          cell(noon ? noon.temp : '--', dataCell), cell(noon ? noon.hum : '--', dataCell),
+          cell('', dataCell), cell('', dataCell),
+          cell('15:00', dataCell),
+          cell(three ? three.temp : '--', dataCell), cell(three ? three.hum : '--', dataCell),
+          cell('', dataCell), cell('', dataCell), cell('', dataCell)
+        ]);
+      });
+    }
+
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [{ wch:12 },{ wch:9 },{ wch:13 },{ wch:12 },{ wch:13 },{ wch:12 },{ wch:9 },{ wch:13 },{ wch:12 },{ wch:13 },{ wch:12 },{ wch:16 }];
+    ws['!merges'] = [
+      { s:{r:0,c:0}, e:{r:0,c:8} },
+      { s:{r:1,c:0}, e:{r:1,c:11} },
+      { s:{r:2,c:0}, e:{r:2,c:11} },
+      { s:{r:3,c:1}, e:{r:3,c:3} },
+      { s:{r:3,c:4}, e:{r:3,c:5} },
+      { s:{r:3,c:6}, e:{r:3,c:8} },
+      { s:{r:3,c:9}, e:{r:3,c:10} },
+    ];
+    XLSX.utils.book_append_sheet(wb, ws, friendlyName.substring(0, 31));
+    sheetsAdded++;
+  }
+
+  const filename = `MonitoringRecord_${from}_to_${to}.xlsx`;
+  const url = URL.createObjectURL(new Blob(
+    [XLSX.write(wb, { bookType: 'xlsx', type: 'array' })],
+    { type: 'application/octet-stream' }
+  ));
+  const a = Object.assign(document.createElement('a'), { href: url, download: filename });
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+
+  showToast(`✅ Monitoring record exported! ${sheetsAdded} sheet(s) included.`, 'success');
+}
+
+// ════════════════════════════════════════════════════════════
+//  MONITORING RECORD EXPORT — matches TEMPERATURE & HUMIDITY
+//  MONITORING RECORD.xlsx template exactly
+// ════════════════════════════════════════════════════════════
+async function exportMonitoringRecord(deviceId, department, monthLabel, from, to) {
+  const raw = await fetchRangeData(from, to);
+  const friendlyName = getFriendlyName(deviceId);
+
+  // Group by date, pull the 12:00 and 15:00 readings only
+  const byDate = {};
+  raw.forEach(r => {
+    const d   = new Date(r.timestamp);
+    const ist = new Date(d.getTime() + (5.5 * 60 * 60 * 1000));
+    const hh  = pad(ist.getUTCHours());
+    if (hh !== '12' && hh !== '15') return; // only these two slots
+    const ds  = dateStr(d);
+    if (!byDate[ds]) byDate[ds] = {};
+    byDate[ds][hh] = { temp: r.temp, hum: r.hum };
+  });
+
+  // ── Styles ─────────────────────────────────────────────────
+  const thin = { style: 'thin', color: { rgb: 'FF000000' } };
+  const borderAll = { top: thin, bottom: thin, left: thin, right: thin };
+
+  const titleStyle = { font: { bold: true, sz: 12 }, alignment: { horizontal: 'center' } };
+  const smallBold  = { font: { bold: true, sz: 8 }, alignment: { horizontal: 'left' } };
+  const headerIn   = { font: { bold: true, sz: 8 }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: borderAll };
+  const headerOut  = { font: { bold: true, sz: 8 }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: borderAll,
+                        fill: { patternType: 'solid', fgColor: { rgb: 'FFDDEBF7' } } }; // light blue — matches template's OUTSIDE header shading
+  const dataCell   = { font: { sz: 9 }, alignment: { horizontal: 'center', vertical: 'center' }, border: borderAll };
+
+  function cell(v, s) { return { v, s, t: typeof v === 'number' ? 'n' : 's' }; }
+
+  const rows = [];
+
+  // Row 2 — Title
+  rows.push([cell('TEMPERATURE AND HUMIDITY MONITORING RECORD', titleStyle)]);
+  // Row 3 — Department
+  rows.push([cell(`DEPARTMENT: ${department || friendlyName}`, smallBold)]);
+  // Row 4 — Month
+  rows.push([cell(`MONTH - ${monthLabel}`, smallBold)]);
+
+  // Row 5 — group headers
+  rows.push([
+    cell('DATE:-', headerIn),
+    cell('INSIDE TEMPERATURE BEFORE 2PM', headerIn), '', '',
+    cell('OUTSIDE TEMPERATURE BEFORE 2PM', headerOut), '',
+    cell('INSIDE TEMPERATURE TIME AFTER 2PM', headerIn), '', '',
+    cell('OUTSIDE TEMPERATURE AFTER 2PM', headerOut), '',
+    cell('CHECKED BY', headerIn)
+  ]);
+
+  // Row 6 — column headers
+  rows.push([
+    '',
+    cell('TIME', headerIn), cell('TEMPERATURE(°C)', headerIn), cell('HUMIDITY', headerIn),
+    cell('TEMPERATURE(°C)', headerOut), cell('HUMIDITY', headerOut),
+    cell('TIME', headerIn), cell('TEMPERATURE(°C)', headerIn), cell('HUMIDITY', headerIn),
+    cell('TEMPERATURE(°C)', headerOut), cell('HUMIDITY', headerOut),
+    ''
+  ]);
+
+  // ── Data rows: one per date ────────────────────────────────
+  Object.keys(byDate).sort().forEach(ds => {
+    const noon  = byDate[ds]['12'];
+    const three = byDate[ds]['15'];
+    rows.push([
+      cell(ds, dataCell),
+      cell('12:00', dataCell),
+      cell(noon ? noon.temp : '--', dataCell),
+      cell(noon ? noon.hum  : '--', dataCell),
+      cell('', dataCell), // OUTSIDE temp — filled in manually
+      cell('', dataCell), // OUTSIDE humidity — filled in manually
+      cell('15:00', dataCell),
+      cell(three ? three.temp : '--', dataCell),
+      cell(three ? three.hum  : '--', dataCell),
+      cell('', dataCell), // OUTSIDE temp — filled in manually
+      cell('', dataCell), // OUTSIDE humidity — filled in manually
+      cell('', dataCell)  // CHECKED BY — filled in manually
+    ]);
+  });
+
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [
+    { wch: 12 }, { wch: 9 }, { wch: 13 }, { wch: 12 },
+    { wch: 13 }, { wch: 12 }, { wch: 9 }, { wch: 13 },
+    { wch: 12 }, { wch: 13 }, { wch: 12 }, { wch: 16 }
+  ];
+  ws['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 8 } },   // title
+    { s: { r: 1, c: 0 }, e: { r: 1, c: 11 } },  // department
+    { s: { r: 2, c: 0 }, e: { r: 2, c: 11 } },  // month
+    { s: { r: 3, c: 1 }, e: { r: 3, c: 3 } },   // inside before 2pm
+    { s: { r: 3, c: 4 }, e: { r: 3, c: 5 } },   // outside before 2pm
+    { s: { r: 3, c: 6 }, e: { r: 3, c: 8 } },   // inside after 2pm
+    { s: { r: 3, c: 9 }, e: { r: 3, c: 10 } },  // outside after 2pm
+  ];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, friendlyName.substring(0, 31));
+
+  const filename = `${friendlyName.replace(/[^a-zA-Z0-9]/g, '')}_MonitoringRecord_${from}_to_${to}.xlsx`;
+  const url = URL.createObjectURL(new Blob(
+    [XLSX.write(wb, { bookType: 'xlsx', type: 'array' })],
+    { type: 'application/octet-stream' }
+  ));
+  const a = Object.assign(document.createElement('a'), { href: url, download: filename });
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+
+  showToast('✅ Monitoring record exported!', 'success');
+}
+
 // ════════════════════════════════════════════════════════════
 //  DOM READY — auto-detect which page we're on
 // ════════════════════════════════════════════════════════════
