@@ -3,11 +3,11 @@
 //  Multi-device | DEVICE_NAME_MAP | Dynamic URL params
 // ============================================================
 // const SERVER_URL = 'http://localhost:3000';
-// const SERVER_URL = 'https://rh-meter-bridge.onrender.com';
+const SERVER_URL = 'rh-meter-production-dd73.up.railway.app';
 
 // const SERVER_URL = 'https://rh-meter-production-de5e.up.railway.app'; 
 
-const SERVER_URL = 'https://rh-meter-production-ed87.up.railway.app';
+// const SERVER_URL = 'https://rh-meter-production-ed87.up.railway.app';
 
 // ════════════════════════════════════════════════════════════
 //  DEVICE NAME MAP
@@ -31,7 +31,10 @@ const DEFAULT_DEVICE_NAME_MAP = {
   "Meter_10": "Server Room",
   "Meter_11": "Assembly Line - 1",
   "Meter_12": "Assembly Line - 2",
-  "Meter_13": "Dispatch Area"
+  "Meter_13": "Dispatch Area",
+  "Meter_14": "Andhra - Unit 1",
+  "Meter_15": "Andhra - Unit 2",
+  "Meter_16": "Andhra - Unit 3"
 };
 
 let lastKnownTimestamp = null;
@@ -810,37 +813,25 @@ async function renderTempDetail() {
   // } else {
 
     if (isSameDay) {
-    const allowedHours = ['12:00', '15:00']; // only 12 PM and 3 PM
-    const map = {};
-    raw.forEach(r => {
-      const d   = new Date(r.timestamp);
-      const ist = new Date(d.getTime() + (5.5 * 60 * 60 * 1000));
-      const hourKey = pad(ist.getUTCHours()) + ':00';
-      if (!allowedHours.includes(hourKey)) return; // skip everything else
-      const key = dateStr(d) + ' ' + hourKey;
-      if (!map[key]) map[key] = { temps: [], hums: [] };
-      map[key].temps.push(r.temp);
-      map[key].hums.push(r.hum);
-    });
-    Object.keys(map).sort().forEach(key => {
-      const b       = map[key];
-      const avg     = arr => +(arr.reduce((a,v)=>a+v,0)/arr.length).toFixed(1);
-      const minTemp = +Math.min(...b.temps).toFixed(1);
-      const avgTemp = avg(b.temps);
-      const maxTemp = +Math.max(...b.temps).toFixed(1);
-      const minHum  = +Math.min(...b.hums).toFixed(1);
-      const avgHum  = avg(b.hums);
-      const maxHum  = +Math.max(...b.hums).toFixed(1);
-      dataRows.push([
-        makeCell(friendlyName, areaStyle()),
-        makeCell(key,          labelStyle()),
-        makeCell(minTemp,      plainDataStyle()),
-        makeCell(avgTemp,      plainDataStyle()),
-        makeCell(maxTemp,      plainDataStyle()),
-        makeCell(minHum,       plainDataStyle()),
-        makeCell(avgHum,       plainDataStyle()),
-        makeCell(maxHum,       plainDataStyle()),
-      ]);
+    document.getElementById('tempChartTitle').textContent = '📈 Temperature — Single Day';
+    const bucketed = bucket5min(subset);
+    chartTempDetail = new Chart(document.getElementById('chartTempDetail').getContext('2d'), {
+      type: 'line',
+      data: {
+        labels: bucketed.map(b => b.label),
+        datasets: [{
+          label: 'Temperature (°C)',
+          data: bucketed.map(b => b.temp),
+          borderColor: '#3b82f6',
+          backgroundColor: 'rgba(59,130,246,0.1)',
+          fill: true,
+          tension: 0.4,
+          pointRadius: 2,
+          borderWidth: 2
+        }]
+      },
+      plugins: [tempThresholdPlugin],
+      options: { ...getChartOptions(thresholds.temp, true), plugins: { legend: { display: true, labels: { color:'#475569' } } } }
     });
   } else {
     document.getElementById('tempChartTitle').textContent = '📊 Temperature — Daily Summary';
@@ -1241,6 +1232,12 @@ function populateNameEditor() {
       label: 'R&D',
       color: '#a855f7',
       devices: ['Meter_02']
+    },
+    {
+      key: 'andhra',
+      label: 'Andhra',
+      color: '#f97316',
+      devices: ['Meter_14','Meter_15','Meter_16']
     }
   ];
 
@@ -1257,7 +1254,7 @@ function populateNameEditor() {
   `;
   list.appendChild(locHeader);
 
-  // ── One card per location group ───────────────────────────
+  // ── One card per location group (Samudra, BNG, R&D, Andhra) ──
   locationGroups.forEach(group => {
     const currentEmails = (DEVICE_RECIPIENTS_MAP[`loc_${group.key}`] || '');
     const chipsHtml = currentEmails
@@ -1307,15 +1304,13 @@ function populateNameEditor() {
         <button class="btn-add-chip" onclick="addDeviceChip('loc_${group.key}')">+ Add</button>
       </div>
 
-      <!-- Individual Save Button -->
       <button
-       <button
-  onclick="saveLocationRecipients('loc_${group.key}', '${group.label}')"
-  style="width:100%;padding:10px;background:#2563eb;
-    color:#ffffff !important;border:none;border-radius:10px;font-size:0.85rem;font-weight:700;
-    cursor:pointer;transition:all 0.2s ease;-webkit-text-fill-color:#ffffff;">
-  Save ${group.label} Recipients
-</button>
+        onclick="saveLocationRecipients('loc_${group.key}', '${group.label}')"
+        style="width:100%;padding:10px;background:#2563eb;
+          color:#ffffff !important;border:none;border-radius:10px;font-size:0.85rem;font-weight:700;
+          cursor:pointer;transition:all 0.2s ease;-webkit-text-fill-color:#ffffff;">
+        Save ${group.label} Recipients
+      </button>
     `;
     list.appendChild(card);
   });
@@ -1336,8 +1331,9 @@ function populateNameEditor() {
     const friendlyName = DEVICE_NAME_MAP[deviceId];
     const isSamudra = ['Meter_01','Meter_04','Meter_05','Meter_06','Meter_07','Meter_08','Meter_09'].includes(deviceId);
     const isRD      = ['Meter_02'].includes(deviceId);
-    const locLabel  = isSamudra ? 'Samudra' : isRD ? 'R&D' : 'BNG';
-    const locColor  = isSamudra ? 'var(--accent-blue)' : isRD ? '#a855f7' : 'var(--accent-cyan)';
+    const isAndhra  = ['Meter_14','Meter_15','Meter_16'].includes(deviceId);
+    const locLabel  = isSamudra ? 'Samudra' : isRD ? 'R&D' : isAndhra ? 'Andhra' : 'BNG';
+    const locColor  = isSamudra ? 'var(--accent-blue)' : isRD ? '#a855f7' : isAndhra ? '#f97316' : 'var(--accent-cyan)';
 
     const card = document.createElement('div');
     card.style.cssText = `
@@ -1372,15 +1368,14 @@ function populateNameEditor() {
         </span>
       </div>
 
-      <!-- Individual Save Button -->
-     <button
-  onclick="saveDeviceName('${deviceId}')"
-  style="width:100%;padding:9px;background:#2563eb;
-    color:#ffffff !important;border:none;
-    border-radius:10px;font-size:0.82rem;font-weight:700;
-    cursor:pointer;transition:all 0.2s ease;-webkit-text-fill-color:#ffffff;">
-  Save Name
-</button>
+      <button
+        onclick="saveDeviceName('${deviceId}')"
+        style="width:100%;padding:9px;background:#2563eb;
+          color:#ffffff !important;border:none;
+          border-radius:10px;font-size:0.82rem;font-weight:700;
+          cursor:pointer;transition:all 0.2s ease;-webkit-text-fill-color:#ffffff;">
+        Save Name
+      </button>
     `;
     list.appendChild(card);
   });
@@ -1427,8 +1422,8 @@ async function saveDeviceName(deviceId) {
     showToast(`❌ Failed to save: ${e.message}`, 'error');
   }
 }
+
 async function saveDeviceNames() {
-  // Collect updated device names
   const inputs = document.querySelectorAll('.name-editor-input');
   inputs.forEach(inp => {
     const deviceId = inp.dataset.device;
@@ -1436,9 +1431,8 @@ async function saveDeviceNames() {
     if (deviceId && newName) DEVICE_NAME_MAP[deviceId] = newName;
   });
 
-  // Collect location-based recipients (loc_samudra, loc_bng, loc_rd)
   const newRecipientsMap = {};
-  ['loc_samudra', 'loc_bng', 'loc_rd'].forEach(key => {
+  ['loc_samudra', 'loc_bng', 'loc_rd', 'loc_andhra'].forEach(key => {
     const container = document.getElementById(`chips-${key}`);
     if (container) {
       const emails = Array.from(container.querySelectorAll('.recipient-chip'))

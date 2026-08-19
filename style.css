@@ -1468,3 +1468,7 @@ body {
   0%, 100% { opacity: 1; }
   50%       { opacity: 0; }
 }
+
+.loc-btn-andhra { color:#f97316; border-color:rgba(249,115,22,0.3); }
+.loc-btn-andhra.active, .loc-btn-andhra:hover { background:rgba(249,115,22,0.1); border-color:#f97316; box-shadow:0 4px 16px rgba(249,115,22,0.2); }
+.loc-dot-andhra { background:#f97316; }

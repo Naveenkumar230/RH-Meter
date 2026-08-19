@@ -1,0 +1,70 @@
+// ============================================================
+//  MINIMAL LCD TEST — confirms library + wiring before merging
+//  back into the main FactoryMonitor firmware.
+//
+//  Library required (add to platformio.ini lib_deps):
+//      mathertel/LiquidCrystal_PCF8574 @ ^2.2.0
+//
+//  Why this library specifically:
+//  marcoschwartz/LiquidCrystal_I2C (the old one) hardcodes the
+//  default Wire bus and CANNOT talk to a second I2C bus (Wire1).
+//  mathertel/LiquidCrystal_PCF8574 supports begin(cols, rows, TwoWire&)
+//  so we can explicitly point it at Wire1 — which is what your
+//  LCD is physically wired to (GPIO 21/23).
+// ============================================================
+
+#include <Wire.h>
+#include <LiquidCrystal_PCF8574.h>
+
+// ── Pins — change if your wiring differs ─────────────────────
+constexpr int LCD_SDA  = 21;
+constexpr int LCD_SCL  = 23;
+constexpr uint8_t LCD_ADDR = 0x27;   // will be confirmed/corrected by the scan below
+
+LiquidCrystal_PCF8574 lcd(LCD_ADDR);
+
+void setup() {
+    Serial.begin(115200);
+    delay(1500);
+    Serial.println("\n=== LCD Test Sketch ===");
+
+    Wire1.begin(LCD_SDA, LCD_SCL, 100000);
+
+    // ── Scan Wire1 to confirm the real address before trying to init ──
+    Serial.println("[I2C] Scanning Wire1...");
+    uint8_t foundAddr = 0;
+    for (uint8_t addr = 1; addr < 127; addr++) {
+        Wire1.beginTransmission(addr);
+        if (Wire1.endTransmission() == 0) {
+            Serial.printf("[I2C] Device found at 0x%02X\n", addr);
+            foundAddr = addr;
+        }
+    }
+
+    if (foundAddr == 0) {
+        Serial.println("[I2C] No device found on Wire1 — check SDA/SCL wiring before continuing.");
+        return;
+    }
+
+    if (foundAddr != LCD_ADDR) {
+        Serial.printf("[I2C] Note: found 0x%02X, code is set to 0x%02X — using found address.\n",
+                      foundAddr, LCD_ADDR);
+    }
+
+    lcd = LiquidCrystal_PCF8574(foundAddr);  // re-init with the actual detected address
+    lcd.begin(16, 2, Wire1);                 // <-- key line: explicit Wire1
+    lcd.setBacklight(255);
+    lcd.clear();
+
+    lcd.setCursor(0, 0);
+    lcd.print("Hello, World!");
+    lcd.setCursor(0, 1);
+    lcd.print("LCD OK 0x");
+    lcd.print(foundAddr, HEX);
+
+    Serial.println("[LCD] Hello World written to display.");
+}
+
+void loop() {
+    // nothing — static test
+}

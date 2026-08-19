@@ -19,9 +19,9 @@
 #include <Adafruit_SHT31.h>
 
 // ── Display ──────────────────────────────────────────────────
-#include <LiquidCrystal_I2C.h>
+#include <LiquidCrystal_PCF8574.h>
 
-// ── Web / Time ───────────────────────────────────────────────
+// ── Web / Time ────────────────────────────────────────────────
 #include <WebServer.h>
 #include <time.h>
 
@@ -73,7 +73,7 @@ namespace Config {
     // constexpr const char* DEVICE_ID    = "Meter_02";  // old code
     // constexpr const char* DEVICE_ID    = "Meter_03";  // new code 
     //    constexpr const char* DEVICE_ID    = "Meter_04";  // new code
-    constexpr const char* DEVICE_ID    = "Meter_05"; //new code
+    // constexpr const char* DEVICE_ID    = "Meter_05"; //new code
     // constexpr const char* DEVICE_ID    = "Meter_06"; //new code 
     // constexpr const char* DEVICE_ID    = "Meter_07"; //new code
     // constexpr const char* DEVICE_ID    = "Meter_08"; // old code
@@ -82,7 +82,9 @@ namespace Config {
     // constexpr const char* DEVICE_ID    = "Meter_11";   //completed
     // constexpr const char* DEVICE_ID    = "Meter_12"; // completed
     // constexpr const char* DEVICE_ID    = "Meter_13"; // completed
-    // constexpr const char* DEVICE_ID    = "Meter_14";  
+    constexpr const char* DEVICE_ID    = "Meter_14";
+    // constexpr const char* DEVICE_ID    = "Meter_15";
+    // constexpr const char* DEVICE_ID    = "Meter_16";
 
     // ── HiveMQ Broker ────────────────────────────────────────
     constexpr const char* MQTT_HOST    = "d034db44805b4258a6c72c3efe0f9019.s1.eu.hivemq.cloud";
@@ -94,7 +96,7 @@ namespace Config {
     // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_02/telemetry";
     // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_03/telemetry";
     // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_04/telemetry";
-    constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_05/telemetry";
+    // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_05/telemetry";
     // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_06/telemetry";
     // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_07/telemetry";
     // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_08/telemetry";
@@ -103,7 +105,9 @@ namespace Config {
     // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_11/telemetry";    //Reclaribation done
     // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_12/telemetry";  // Reclaribation done
     //    constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_13/telemetry";     //ReCalibration Done 
-    // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_14/telemetry";
+    constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_14/telemetry";
+    // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_15/telemetry";
+    // constexpr const char* MQTT_TOPIC = "AIPL/RH_Meter/Meter_16/telemetry";
 
     // OTA
     constexpr const char* OTA_HOSTNAME    = "FactoryMonitor";
@@ -116,7 +120,7 @@ namespace Config {
 
     // Calibration
     constexpr float TEMP_OFFSET           = 0.4f;
-    constexpr float HUM_OFFSET            = 2.0f;
+    constexpr float HUM_OFFSET            = -5.0f;
 
     // Thresholds
     constexpr float TEMP_NORMAL           = 27.0f;
@@ -168,10 +172,11 @@ enum LcdChar : uint8_t { CHR_DEG=0, CHR_UP, CHR_DN, CHR_DROP, CHR_THERM, CHR_CHE
 // ============================================================
 //  GLOBAL OBJECTS
 // ============================================================
-Adafruit_SHT31    sht30;
-LiquidCrystal_I2C lcd(Config::LCD_ADDR, 16, 2);
-WebServer         webServer(80);
-Preferences       prefs;
+Adafruit_SHT31       sht30;
+LiquidCrystal_PCF8574 lcd(Config::LCD_ADDR);   // CHANGED: constructor now takes only the I2C address;
+                                                // cols/rows/bus are passed to lcd.begin() in setup()
+WebServer             webServer(80);
+Preferences           prefs;
 
 WiFiClientSecure  secureClient;
 PubSubClient      mqttClient(secureClient);
@@ -194,6 +199,7 @@ bool  wifiOnline  = false;
 bool  mqttOnline  = false;
 bool  otaActive   = false;
 bool  sensorReady = false;
+bool  lcdReady    = false;   // NEW: tracks whether the LCD actually ACKed on Wire1
 
 uint32_t tLastSensor  = 0;
 uint32_t tLastCloud   = 0;
@@ -263,6 +269,7 @@ void pushHistory(float t, float h) {
 //  LCD HELPERS
 // ============================================================
 void lcdCreateChars() {
+    if (!lcdReady) return;
     lcd.createChar(CHR_DEG,   gDegree);
     lcd.createChar(CHR_UP,    gUpArrow);
     lcd.createChar(CHR_DN,    gDownArrow);
@@ -274,6 +281,7 @@ void lcdCreateChars() {
 }
 
 void lcdRow(uint8_t row, const String& text, uint8_t width = 16) {
+    if (!lcdReady) return;
     lcd.setCursor(0, row);
     String s = text;
     while ((int)s.length() < width) s += ' ';
@@ -281,6 +289,7 @@ void lcdRow(uint8_t row, const String& text, uint8_t width = 16) {
 }
 
 void lcdPageTemperature() {
+    if (!lcdReady) return;
     lcdRow(0, " TEMPERATURE");
     lcd.setCursor(2, 1);
     lcd.write(CHR_THERM);
@@ -299,6 +308,7 @@ void lcdPageTemperature() {
 }
 
 void lcdPageHumidity() {
+    if (!lcdReady) return;
     lcdRow(0, "  HUMIDITY");
     lcd.setCursor(2, 1);
     lcd.write(CHR_DROP);
@@ -314,6 +324,7 @@ void lcdPageHumidity() {
 }
 
 void lcdSplash() {
+    if (!lcdReady) return;
     lcd.clear();
     lcdRow(0, "Factory Monitor");
     lcdRow(1, "Initializing...");
@@ -328,9 +339,11 @@ void setupOTA() {
 
     ArduinoOTA.onStart([]() {
         otaActive = true;
-        lcd.clear();
-        lcdRow(0, "** OTA UPDATE **");
-        lcdRow(1, "Do NOT power off");
+        if (lcdReady) {
+            lcd.clear();
+            lcdRow(0, "** OTA UPDATE **");
+            lcdRow(1, "Do NOT power off");
+        }
         Serial.println("[OTA] Update started");
     });
     ArduinoOTA.onEnd([]() {
@@ -446,6 +459,7 @@ void sensorTask() {
 //  LCD TASK
 // ============================================================
 void lcdTask() {
+    if (!lcdReady) return;
     if (millis() - tLCDPage > Config::LCD_PAGE_MS) {
         lcdPage = (lcdPage + 1) % 2;
         lcd.clear();
@@ -539,15 +553,40 @@ void setup() {
         sensorReady = true;
     }
 
-    // ── 2. LCD on Wire1 (GPIO 21/23) — separate bus ──────────
     Wire1.begin(Config::LCD_SDA, Config::LCD_SCL, 100000);
-    lcd.init();
-    delay(500);
-    lcd.backlight();
-    lcd.clear();
-    lcdCreateChars();
-    lcdSplash();
-    Serial.println("[LCD] Ready");
+
+    Wire1.beginTransmission(Config::LCD_ADDR);
+    lcdReady = (Wire1.endTransmission() == 0);
+
+    if (lcdReady) {
+        lcd.begin(16, 2, Wire1);   // <-- key fix: bus passed explicitly
+        delay(500);
+        lcd.setBacklight(255);     // replaces lcd.backlight()
+        lcd.clear();
+        lcdCreateChars();
+        lcdSplash();
+        Serial.println("[LCD] Ready");
+    } else {
+        Serial.println("[LCD] NOT FOUND on Wire1 (0x27) — running full address scan...");
+        // DIAGNOSTIC: scan every possible 7-bit I2C address on Wire1 (GPIO 21/23)
+        // to see if ANY device answers, and at what address.
+        int found = 0;
+        for (uint8_t addr = 1; addr < 127; addr++) {
+            Wire1.beginTransmission(addr);
+            if (Wire1.endTransmission() == 0) {
+                Serial.printf("[I2C-Wire1] Device found at 0x%02X\n", addr);
+                found++;
+            }
+        }
+        if (found == 0) {
+            Serial.println("[I2C-Wire1] No devices found at all — SDA/SCL wiring problem"
+                            " (loose wire, wrong pins, or swapped SDA/SCL).");
+        } else {
+            Serial.printf("[I2C-Wire1] %d device(s) found — update Config::LCD_ADDR to match"
+                          " if it isn't 0x27.\n", found);
+        }
+        Serial.println("[LCD] Continuing boot without LCD.");
+    }
 
     nvsInit();
 
@@ -558,9 +597,11 @@ void setup() {
 
     wm.setAPCallback([](WiFiManager* m){
         Serial.println("[WiFi] Config portal: FactoryMonitor_Setup");
-        lcd.clear();
-        lcdRow(0, "Connect to WiFi:");
-        lcdRow(1, "FactoryMonitor_AP");
+        if (lcdReady) {
+            lcd.clear();
+            lcdRow(0, "Connect to WiFi:");
+            lcdRow(1, "FactoryMonitor_AP");
+        }
     });
 
     if (!wm.autoConnect("FactoryMonitor_Setup", "password123")) {
