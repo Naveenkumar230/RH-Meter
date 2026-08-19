@@ -3,12 +3,9 @@
 //  Multi-device | DEVICE_NAME_MAP | Dynamic URL params
 // ============================================================
 // const SERVER_URL = 'http://localhost:3000';
-const SERVER_URL = 'rh-meter-production-dd73.up.railway.app';
-
-// const SERVER_URL = 'https://rh-meter-production-de5e.up.railway.app'; 
-
-// const SERVER_URL = 'https://rh-meter-production-ed87.up.railway.app';
-
+// const SERVER_URL = 'rh-meter-production-dd73.up.railway.app';
+const SERVER_URL = 'https://rh-meter-production-dd73.up.railway.app';
+ 
 // ════════════════════════════════════════════════════════════
 //  DEVICE NAME MAP
 //  Keys   → technical IDs (never change, match MQTT/MongoDB)
