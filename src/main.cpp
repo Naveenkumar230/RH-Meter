@@ -120,7 +120,7 @@ namespace Config {
 
     // Calibration
     constexpr float TEMP_OFFSET           = 0.4f;
-    constexpr float HUM_OFFSET            = -5.0f;
+    constexpr float HUM_OFFSET            = -19.0f;
 
     // Thresholds
     constexpr float TEMP_NORMAL           = 27.0f;

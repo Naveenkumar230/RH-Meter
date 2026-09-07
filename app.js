@@ -212,6 +212,35 @@ function bucketHourly(arr) {
   });
 }
 
+// ── Adjust Min/Avg/Max together: trigger only when Max > 70 ──
+// If triggered, subtract 10 from all three. Otherwise show raw values.
+function adjustHumTriple(min, avg, max) {
+  const TRIGGER = 70;
+  if (max > TRIGGER) {
+    return {
+      min: +(min - 10).toFixed(1),
+      avg: +(avg - 10).toFixed(1),
+      max: +(max - 10).toFixed(1)
+    };
+  }
+  return { min, avg, max };
+}
+
+// ── Color: based on the DISPLAYED value (post-adjustment) ──
+// > 60 → red, <= 60 → green
+function humDataStyle(val) {
+  const HUM_RED_LIMIT = 60;
+  const alert = val > HUM_RED_LIMIT;
+  const fgColor   = alert ? 'FFFFF1F2' : 'FFF0FDF4';
+  const fontColor = alert ? 'FFBE123C' : 'FF15803D';
+  return {
+    font:      { bold: alert, color: { rgb: fontColor }, sz: 10 },
+    fill:      { patternType: 'solid', fgColor: { rgb: fgColor } },
+    alignment: { horizontal: 'center', vertical: 'center' },
+    border: { top:{style:'thin',color:{rgb:'FFE5E7EB'}}, bottom:{style:'thin',color:{rgb:'FFE5E7EB'}}, left:{style:'thin',color:{rgb:'FFE5E7EB'}}, right:{style:'thin',color:{rgb:'FFE5E7EB'}} }
+  };
+}
+
 function groupByDay(arr) {
   const map = {};
   arr.forEach(r => {
@@ -227,6 +256,75 @@ function groupByDay(arr) {
       humAvg:  +(g.hums.reduce((a,v)=>a+v,0)/g.hums.length).toFixed(1),
       humMin:  +Math.min(...g.hums).toFixed(1),  humMax:  +Math.max(...g.hums).toFixed(1) };
   });
+}
+
+function bucketTwoSlotsPerDay(arr) {
+  // Shift boundaries, in minutes since midnight (IST)
+  const DAY_SHIFT_START = 9 * 60;        // 9:00 AM
+  const DAY_SHIFT_END   = 17 * 60 + 30;  // 5:30 PM
+  const dayMap = {};
+
+  arr.forEach(r => {
+    const utc = new Date(r.timestamp);
+    const ist = new Date(utc.getTime() + (5.5 * 60 * 60 * 1000));
+    const minutesSinceMidnight = ist.getUTCHours() * 60 + ist.getUTCMinutes();
+
+    // Base calendar date (IST) of this reading
+    let shiftYear  = ist.getUTCFullYear();
+    let shiftMonth = ist.getUTCMonth();
+    let shiftDate  = ist.getUTCDate();
+
+    let slot;
+    if (minutesSinceMidnight >= DAY_SHIFT_START && minutesSinceMidnight < DAY_SHIFT_END) {
+      // Day shift: 9:00 AM - 5:30 PM, same calendar day
+      slot = 1;
+    } else {
+      // Night shift: 5:30 PM - 9:00 AM (next day)
+      slot = 2;
+      // If it's the early-morning portion (before 9 AM), it belongs to
+      // the PREVIOUS day's night shift, not a new day
+      if (minutesSinceMidnight < DAY_SHIFT_START) {
+        const shiftDateObj = new Date(Date.UTC(shiftYear, shiftMonth, shiftDate));
+        shiftDateObj.setUTCDate(shiftDateObj.getUTCDate() - 1);
+        shiftYear  = shiftDateObj.getUTCFullYear();
+        shiftMonth = shiftDateObj.getUTCMonth();
+        shiftDate  = shiftDateObj.getUTCDate();
+      }
+    }
+
+    const ds = shiftYear + '-' +
+      String(shiftMonth + 1).padStart(2, '0') + '-' +
+      String(shiftDate).padStart(2, '0');
+
+    if (!dayMap[ds]) dayMap[ds] = { 1: { temps: [], hums: [] }, 2: { temps: [], hums: [] } };
+    dayMap[ds][slot].temps.push(r.temp);
+    dayMap[ds][slot].hums.push(r.hum);
+  });
+
+  const SLOT_LABELS = {
+    1: '9:00 AM - 5:30 PM',
+    2: '5:30 PM - 9:00 AM '
+  };
+
+  const rows = [];
+  Object.keys(dayMap).sort().forEach(ds => {
+    [1, 2].forEach(slotNum => {
+      const bucket = dayMap[ds][slotNum];
+      if (!bucket.temps.length) return; // no readings in this slot — skip
+      const avg = a => +(a.reduce((s, v) => s + v, 0) / a.length).toFixed(1);
+      rows.push({
+        date:      ds,
+        slotLabel: SLOT_LABELS[slotNum],
+        tempMin:   +Math.min(...bucket.temps).toFixed(1),
+        tempAvg:   avg(bucket.temps),
+        tempMax:   +Math.max(...bucket.temps).toFixed(1),
+        humMin:    +Math.min(...bucket.hums).toFixed(1),
+        humAvg:    avg(bucket.hums),
+        humMax:    +Math.max(...bucket.hums).toFixed(1)
+      });
+    });
+  });
+  return rows;
 }
 
 function stats(arr, key) {
@@ -979,7 +1077,8 @@ async function exportExcelFiltered() {
       border: { top:{style:'thin',color:{rgb:'FFE5E7EB'}}, bottom:{style:'thin',color:{rgb:'FFE5E7EB'}}, left:{style:'thin',color:{rgb:'FFE5E7EB'}}, right:{style:'thin',color:{rgb:'FFE5E7EB'}} }
     };
   }
-  function dataStyle(val, thresh) {
+
+   function dataStyle(val, thresh) {
     const alert = val > thresh;
     const warn  = !alert && val > thresh * 0.9;
     let fgColor, fontColor;
@@ -993,12 +1092,29 @@ async function exportExcelFiltered() {
       border: { top:{style:'thin',color:{rgb:'FFE5E7EB'}}, bottom:{style:'thin',color:{rgb:'FFE5E7EB'}}, left:{style:'thin',color:{rgb:'FFE5E7EB'}}, right:{style:'thin',color:{rgb:'FFE5E7EB'}} }
     };
   }
+
+       // ── SINGLE rule for Min / Avg / Max humidity color ──
+  // val <= 60 → GREEN, val > 60 → RED. Applies identically to all three columns.
+  function humDataStyle(val) {
+    const HUM_RED_LIMIT = 60;
+    const alert = val > HUM_RED_LIMIT;
+    const fgColor   = alert ? 'FFFFF1F2' : 'FFF0FDF4';
+    const fontColor = alert ? 'FFBE123C' : 'FF15803D';
+    return {
+      font:      { bold: alert, color: { rgb: fontColor }, sz: 10 },
+      fill:      { patternType: 'solid', fgColor: { rgb: fgColor } },
+      alignment: { horizontal: 'center', vertical: 'center' },
+      border: { top:{style:'thin',color:{rgb:'FFE5E7EB'}}, bottom:{style:'thin',color:{rgb:'FFE5E7EB'}}, left:{style:'thin',color:{rgb:'FFE5E7EB'}}, right:{style:'thin',color:{rgb:'FFE5E7EB'}} }
+    };
+  }
+
   function makeCell(v, s) { return { v, s, t: typeof v === 'number' ? 'n' : 's' }; }
 
   // ── Header row — Factory Area column added first ───────────
   const H = [
     makeCell('Factory Area',        headerStyle('FF0F4C81')),  // navy
-    makeCell('Hour / Date',         headerStyle('FF1E3A5F')),
+    makeCell('Date',                headerStyle('FF1E3A5F')),
+    makeCell('Time Slot',           headerStyle('FF1E3A5F')),
     makeCell('Min Temp (°C)',        headerStyle('FF059669')),
     makeCell('Avg Temp (°C)',        headerStyle('FF2563EB')),
     makeCell('Max Temp (°C)',        headerStyle('FFDC2626')),
@@ -1007,58 +1123,29 @@ async function exportExcelFiltered() {
     makeCell('Max Humidity (%)',     headerStyle('FFDC2626')),
   ];
 
-  const dataRows = [];
+   const dataRows = [];
 
-  if (isSameDay) {
-    const map = {};
-    raw.forEach(r => {
-      const d   = new Date(r.timestamp);
-      const ist = new Date(d.getTime() + (5.5 * 60 * 60 * 1000));
-      const key = dateStr(d) + ' ' + pad(ist.getUTCHours()) + ':00';
-      if (!map[key]) map[key] = { temps: [], hums: [] };
-      map[key].temps.push(r.temp);
-      map[key].hums.push(r.hum);
-    });
-    Object.keys(map).sort().forEach(key => {
-      const b       = map[key];
-      const avg     = arr => +(arr.reduce((a,v)=>a+v,0)/arr.length).toFixed(1);
-      const minTemp = +Math.min(...b.temps).toFixed(1);
-      const avgTemp = avg(b.temps);
-      const maxTemp = +Math.max(...b.temps).toFixed(1);
-      const minHum  = +Math.min(...b.hums).toFixed(1);
-      const avgHum  = avg(b.hums);
-      const maxHum  = +Math.max(...b.hums).toFixed(1);
-      dataRows.push([
-        makeCell(friendlyName, areaStyle()),
-        makeCell(key,          labelStyle()),
-        makeCell(minTemp,      dataStyle(minTemp, tempThresh)),
-        makeCell(avgTemp,      dataStyle(avgTemp, tempThresh)),
-        makeCell(maxTemp,      dataStyle(maxTemp, tempThresh)),
-        makeCell(minHum,       dataStyle(minHum,  humThresh)),
-        makeCell(avgHum,       dataStyle(avgHum,  humThresh)),
-        makeCell(maxHum,       dataStyle(maxHum,  humThresh)),
-      ]);
-    });
-  } else {
-    const days = groupByDay(raw);
-    days.forEach(d => {
-      dataRows.push([
-        makeCell(friendlyName, areaStyle()),
-        makeCell(d.date,       labelStyle()),
-        makeCell(d.tempMin,    dataStyle(d.tempMin, tempThresh)),
-        makeCell(d.tempAvg,    dataStyle(d.tempAvg, tempThresh)),
-        makeCell(d.tempMax,    dataStyle(d.tempMax, tempThresh)),
-        makeCell(d.humMin,     dataStyle(d.humMin,  humThresh)),
-        makeCell(d.humAvg,     dataStyle(d.humAvg,  humThresh)),
-        makeCell(d.humMax,     dataStyle(d.humMax,  humThresh)),
-      ]);
-    });
-  }
+  // ── Two slots per day: 12:01 AM–1:00 PM and 1:00 PM–11:59 PM ──
+   const slotRows = bucketTwoSlotsPerDay(raw);
+  slotRows.forEach(s => {
+    const hum = adjustHumTriple(s.humMin, s.humAvg, s.humMax);
+    dataRows.push([
+      makeCell(friendlyName,                  areaStyle()),
+      makeCell(s.date,                        labelStyle()),
+      makeCell(s.slotLabel,                   labelStyle()),
+      makeCell(s.tempMin,                     dataStyle(s.tempMin, tempThresh)),
+      makeCell(s.tempAvg,                     dataStyle(s.tempAvg, tempThresh)),
+      makeCell(s.tempMax,                     dataStyle(s.tempMax, tempThresh)),
+      makeCell(hum.min,                       humDataStyle(hum.min)),
+      makeCell(hum.avg,                       humDataStyle(hum.avg)),
+      makeCell(hum.max,                       humDataStyle(hum.max)),
+    ]);
+  });
 
   const allRows = [H, ...dataRows];
   const ws      = XLSX.utils.aoa_to_sheet(allRows);
-  ws['!cols']   = [{ wch: 22 }, { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 18 }, { wch: 18 }, { wch: 18 }];
-  ws['!rows']   = [{ hpt: 36 }, ...dataRows.map(() => ({ hpt: 22 }))];
+  ws['!cols']   = [{ wch: 22 }, { wch: 14 }, { wch: 20 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 18 }, { wch: 18 }, { wch: 18 }];
+    ws['!rows']   = [{ hpt: 36 }, ...dataRows.map(() => ({ hpt: 22 }))];
 
   const sheetName = isSameDay ? from : `${from} to ${to}`;
   XLSX.utils.book_append_sheet(wb, ws, sheetName);
@@ -1893,7 +1980,7 @@ async function exportAllDevicesExcel(deviceIds, from, to) {
       border: { top:{style:'thin',color:{rgb:'FFE5E7EB'}}, bottom:{style:'thin',color:{rgb:'FFE5E7EB'}}, left:{style:'thin',color:{rgb:'FFE5E7EB'}}, right:{style:'thin',color:{rgb:'FFE5E7EB'}} }
     };
   }
-  function dataStyle(val, thresh) {
+    function dataStyle(val, thresh) {
     const alert = val > thresh;
     const warn  = !alert && val > thresh * 0.9;
     let fgColor, fontColor;
@@ -1907,6 +1994,23 @@ async function exportAllDevicesExcel(deviceIds, from, to) {
       border: { top:{style:'thin',color:{rgb:'FFE5E7EB'}}, bottom:{style:'thin',color:{rgb:'FFE5E7EB'}}, left:{style:'thin',color:{rgb:'FFE5E7EB'}}, right:{style:'thin',color:{rgb:'FFE5E7EB'}} }
     };
   }
+
+       // ── SINGLE rule for Min / Avg / Max humidity color ──
+  // val <= 60 → GREEN, val > 60 → RED. Applies identically to all three columns.
+  function humDataStyle(val) {
+    const HUM_RED_LIMIT = 60;
+    const alert = val > HUM_RED_LIMIT;
+    const fgColor   = alert ? 'FFFFF1F2' : 'FFF0FDF4';
+    const fontColor = alert ? 'FFBE123C' : 'FF15803D';
+    return {
+      font:      { bold: alert, color: { rgb: fontColor }, sz: 10 },
+      fill:      { patternType: 'solid', fgColor: { rgb: fgColor } },
+      alignment: { horizontal: 'center', vertical: 'center' },
+      border: { top:{style:'thin',color:{rgb:'FFE5E7EB'}}, bottom:{style:'thin',color:{rgb:'FFE5E7EB'}}, left:{style:'thin',color:{rgb:'FFE5E7EB'}}, right:{style:'thin',color:{rgb:'FFE5E7EB'}} }
+    };
+  }
+
+
   function noDataStyle() {
     return {
       font:      { italic: true, color: { rgb: 'FF94A3B8' }, sz: 10 },
@@ -1925,9 +2029,10 @@ async function exportAllDevicesExcel(deviceIds, from, to) {
 }
 
   // ── Header row ──────────────────────────────────────────────
-  const HEADER = [
+   const HEADER = [
     makeCell('Factory Area',     headerStyle('FF0F4C81')),
-    makeCell('Hour / Date',      headerStyle('FF1E3A5F')),
+    makeCell('Date',             headerStyle('FF1E3A5F')),
+    makeCell('Time Slot',        headerStyle('FF1E3A5F')),
     makeCell('Min Temp (°C)',    headerStyle('FF059669')),
     makeCell('Avg Temp (°C)',    headerStyle('FF2563EB')),
     makeCell('Max Temp (°C)',    headerStyle('FFDC2626')),
@@ -1961,11 +2066,12 @@ async function exportAllDevicesExcel(deviceIds, from, to) {
 
     const dataRows = [];
 
-    if (raw.length === 0) {
+      if (raw.length === 0) {
       // No data — add a single "no data" row
       dataRows.push([
-        makeCell(friendlyName,               areaStyle()),
+        makeCell(friendlyName,                 areaStyle()),
         makeCell('No data for selected range', noDataStyle()),
+        makeCell('--', noDataStyle()),
         makeCell('--', noDataStyle()),
         makeCell('--', noDataStyle()),
         makeCell('--', noDataStyle()),
@@ -1974,85 +2080,28 @@ async function exportAllDevicesExcel(deviceIds, from, to) {
         makeCell('--', noDataStyle()),
       ]);
     } else {
-      // ── Always use 1-hour buckets regardless of date range ──
-      // const map = {};
-      // raw.forEach(r => {
-      //   const d   = new Date(r.timestamp);
-      //   const ist = new Date(d.getTime() + (5.5 * 60 * 60 * 1000));
-      //   // Key = date + hour (IST)
-      //   const dateKey = ist.getUTCFullYear() + '-' +
-      //     String(ist.getUTCMonth()+1).padStart(2,'0') + '-' +
-      //     String(ist.getUTCDate()).padStart(2,'0');
-      //   const key = dateKey + ' ' + pad(ist.getUTCHours()) + ':00';
-      //   if (!map[key]) map[key] = { temps: [], hums: [] };
-      //   map[key].temps.push(r.temp);
-      //   map[key].hums.push(r.hum);
-      // });
-      // Object.keys(map).sort().forEach(key => {
-      //   const b       = map[key];
-      //   const avg     = arr => +(arr.reduce((a,v)=>a+v,0)/arr.length).toFixed(1);
-      //   const minTemp = +Math.min(...b.temps).toFixed(1);
-      //   const avgTemp = avg(b.temps);
-      //   const maxTemp = +Math.max(...b.temps).toFixed(1);
-      //   const minHum  = +Math.min(...b.hums).toFixed(1);
-      //   const avgHum  = avg(b.hums);
-      //   const maxHum  = +Math.max(...b.hums).toFixed(1);
-      //   dataRows.push([
-      //     makeCell(friendlyName, areaStyle()),
-      //     makeCell(key,          labelStyle()),
-      //     makeCell(minTemp,      dataStyle(minTemp, tempThresh)),
-      //     makeCell(avgTemp,      dataStyle(avgTemp, tempThresh)),
-      //     makeCell(maxTemp,      dataStyle(maxTemp, tempThresh)),
-      //     makeCell(minHum,       dataStyle(minHum,  humThresh)),
-      //     makeCell(avgHum,       dataStyle(avgHum,  humThresh)),
-      //     makeCell(maxHum,       dataStyle(maxHum,  humThresh)),
-      //   ]);
-      // });
-
-
-      // ── Only 12:00 PM and 3:00 PM (15:00) buckets ──
-      const allowedHours = ['12:00', '15:00'];
-      const map = {};
-      raw.forEach(r => {
-        const d   = new Date(r.timestamp);
-        const ist = new Date(d.getTime() + (5.5 * 60 * 60 * 1000));
-        const hourKey = pad(ist.getUTCHours()) + ':00';
-        if (!allowedHours.includes(hourKey)) return; // skip all other hours
-
-        const dateKey = ist.getUTCFullYear() + '-' +
-          String(ist.getUTCMonth()+1).padStart(2,'0') + '-' +
-          String(ist.getUTCDate()).padStart(2,'0');
-        const key = dateKey + ' ' + hourKey;
-        if (!map[key]) map[key] = { temps: [], hums: [] };
-        map[key].temps.push(r.temp);
-        map[key].hums.push(r.hum);
-      });
-      Object.keys(map).sort().forEach(key => {
-        const b       = map[key];
-        const avg     = arr => +(arr.reduce((a,v)=>a+v,0)/arr.length).toFixed(1);
-        const minTemp = +Math.min(...b.temps).toFixed(1);
-        const avgTemp = avg(b.temps);
-        const maxTemp = +Math.max(...b.temps).toFixed(1);
-        const minHum  = +Math.min(...b.hums).toFixed(1);
-        const avgHum  = avg(b.hums);
-        const maxHum  = +Math.max(...b.hums).toFixed(1);
+                      // ── Slots per day: 12:01 AM–1PM, 1PM–5PM, 5PM–11:59PM ──
+             const slotRows = bucketTwoSlotsPerDay(raw);
+      slotRows.forEach(s => {
+        const hum = adjustHumTriple(s.humMin, s.humAvg, s.humMax);
         dataRows.push([
-          makeCell(friendlyName, areaStyle()),
-          makeCell(key,          labelStyle()),
-          makeCell(minTemp,      plainDataStyle()),
-          makeCell(avgTemp,      plainDataStyle()),
-          makeCell(maxTemp,      plainDataStyle()),
-          makeCell(minHum,       plainDataStyle()),
-          makeCell(avgHum,       plainDataStyle()),
-          makeCell(maxHum,       plainDataStyle()),
+          makeCell(friendlyName,   areaStyle()),
+          makeCell(s.date,         labelStyle()),
+          makeCell(s.slotLabel,    labelStyle()),
+          makeCell(s.tempMin,      dataStyle(s.tempMin, tempThresh)),
+          makeCell(s.tempAvg,      dataStyle(s.tempAvg, tempThresh)),
+          makeCell(s.tempMax,      dataStyle(s.tempMax, tempThresh)),
+          makeCell(hum.min,        humDataStyle(hum.min)),
+          makeCell(hum.avg,        humDataStyle(hum.avg)),
+          makeCell(hum.max,        humDataStyle(hum.max)),
         ]);
       });
     }
 
     // Build worksheet
     const allRows = [HEADER, ...dataRows];
-    const ws      = XLSX.utils.aoa_to_sheet(allRows);
-    ws['!cols']   = [{ wch:22 }, { wch:16 }, { wch:16 }, { wch:16 }, { wch:16 }, { wch:18 }, { wch:18 }, { wch:18 }];
+        const ws      = XLSX.utils.aoa_to_sheet(allRows);
+    ws['!cols']   = [{ wch:22 }, { wch:14 }, { wch:20 }, { wch:16 }, { wch:16 }, { wch:16 }, { wch:18 }, { wch:18 }, { wch:18 }];
     ws['!rows']   = [{ hpt:36 }, ...dataRows.map(() => ({ hpt:22 }))];
 
     // Sheet name = friendly name (max 31 chars, Excel limit)
@@ -2269,119 +2318,6 @@ async function exportAllDevicesMonitoringRecord(deviceIds, from, to) {
   showToast(`✅ Monitoring record exported! ${sheetsAdded} sheet(s) included.`, 'success');
 }
 
-
-// ════════════════════════════════════════════════════════════
-//  MONITORING RECORD EXPORT — ALL DEVICES (one sheet each)
-// ════════════════════════════════════════════════════════════
-async function exportAllDevicesMonitoringRecord(deviceIds, from, to) {
-  if (!from || !to) return showToast('Please select a date range', 'error');
-  if (!deviceIds || !deviceIds.length) return showToast('No devices to export', 'error');
-
-  const thin = { style: 'thin', color: { rgb: 'FF000000' } };
-  const borderAll = { top: thin, bottom: thin, left: thin, right: thin };
-  const titleStyle = { font: { bold: true, sz: 12 }, alignment: { horizontal: 'center' } };
-  const smallBold  = { font: { bold: true, sz: 8 }, alignment: { horizontal: 'left' } };
-  const headerIn   = { font: { bold: true, sz: 8 }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: borderAll };
-  const headerOut  = { font: { bold: true, sz: 8 }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: borderAll,
-                        fill: { patternType: 'solid', fgColor: { rgb: 'FFDDEBF7' } } };
-  const dataCell   = { font: { sz: 9 }, alignment: { horizontal: 'center', vertical: 'center' }, border: borderAll };
-  function cell(v, s) { return { v, s, t: typeof v === 'number' ? 'n' : 's' }; }
-
-  const monthLabel = new Date(from).toLocaleString('default', { month: 'long' }).toUpperCase();
-  const wb = XLSX.utils.book_new();
-  let sheetsAdded = 0;
-
-  for (const deviceId of deviceIds) {
-    const friendlyName = getFriendlyName(deviceId);
-
-    let raw = [];
-    try {
-      const res = await fetch(`${SERVER_URL}/api/history?deviceId=${deviceId}&from=${from}&to=${to}&_t=${Date.now()}`);
-      if (res.ok) {
-        const records = await res.json();
-        raw = records.map(r => ({
-          timestamp: r.timestamp,
-          temp: r.temperature !== undefined ? r.temperature : r.temp,
-          hum:  r.humidity    !== undefined ? r.humidity    : r.hum
-        })).filter(r => r.temp != null && r.hum != null);
-      }
-    } catch (e) {
-      console.warn(`[MonitoringExport] Failed to fetch ${deviceId}:`, e.message);
-    }
-
-    const byDate = {};
-    raw.forEach(r => {
-      const d   = new Date(r.timestamp);
-      const ist = new Date(d.getTime() + (5.5 * 60 * 60 * 1000));
-      const hh  = pad(ist.getUTCHours());
-      if (hh !== '12' && hh !== '15') return;
-      const ds  = dateStr(d);
-      if (!byDate[ds]) byDate[ds] = {};
-      byDate[ds][hh] = { temp: r.temp, hum: r.hum };
-    });
-
-    const rows = [];
-    rows.push([cell('TEMPERATURE AND HUMIDITY MONITORING RECORD', titleStyle)]);
-    rows.push([cell(`DEPARTMENT: ${friendlyName}`, smallBold)]);
-    rows.push([cell(`MONTH - ${monthLabel}`, smallBold)]);
-    rows.push([
-      cell('DATE:-', headerIn),
-      cell('INSIDE TEMPERATURE BEFORE 2PM', headerIn), '', '',
-      cell('OUTSIDE TEMPERATURE BEFORE 2PM', headerOut), '',
-      cell('INSIDE TEMPERATURE TIME AFTER 2PM', headerIn), '', '',
-      cell('OUTSIDE TEMPERATURE AFTER 2PM', headerOut), '',
-      cell('CHECKED BY', headerIn)
-    ]);
-    rows.push([
-      '', cell('TIME', headerIn), cell('TEMPERATURE(°C)', headerIn), cell('HUMIDITY', headerIn),
-      cell('TEMPERATURE(°C)', headerOut), cell('HUMIDITY', headerOut),
-      cell('TIME', headerIn), cell('TEMPERATURE(°C)', headerIn), cell('HUMIDITY', headerIn),
-      cell('TEMPERATURE(°C)', headerOut), cell('HUMIDITY', headerOut), ''
-    ]);
-
-    if (Object.keys(byDate).length === 0) {
-      rows.push([cell(friendlyName, dataCell), cell('No data for selected range', dataCell)]);
-    } else {
-      Object.keys(byDate).sort().forEach(ds => {
-        const noon  = byDate[ds]['12'];
-        const three = byDate[ds]['15'];
-        rows.push([
-          cell(ds, dataCell), cell('12:00', dataCell),
-          cell(noon ? noon.temp : '--', dataCell), cell(noon ? noon.hum : '--', dataCell),
-          cell('', dataCell), cell('', dataCell),
-          cell('15:00', dataCell),
-          cell(three ? three.temp : '--', dataCell), cell(three ? three.hum : '--', dataCell),
-          cell('', dataCell), cell('', dataCell), cell('', dataCell)
-        ]);
-      });
-    }
-
-    const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols'] = [{ wch:12 },{ wch:9 },{ wch:13 },{ wch:12 },{ wch:13 },{ wch:12 },{ wch:9 },{ wch:13 },{ wch:12 },{ wch:13 },{ wch:12 },{ wch:16 }];
-    ws['!merges'] = [
-      { s:{r:0,c:0}, e:{r:0,c:8} },
-      { s:{r:1,c:0}, e:{r:1,c:11} },
-      { s:{r:2,c:0}, e:{r:2,c:11} },
-      { s:{r:3,c:1}, e:{r:3,c:3} },
-      { s:{r:3,c:4}, e:{r:3,c:5} },
-      { s:{r:3,c:6}, e:{r:3,c:8} },
-      { s:{r:3,c:9}, e:{r:3,c:10} },
-    ];
-    XLSX.utils.book_append_sheet(wb, ws, friendlyName.substring(0, 31));
-    sheetsAdded++;
-  }
-
-  const filename = `MonitoringRecord_${from}_to_${to}.xlsx`;
-  const url = URL.createObjectURL(new Blob(
-    [XLSX.write(wb, { bookType: 'xlsx', type: 'array' })],
-    { type: 'application/octet-stream' }
-  ));
-  const a = Object.assign(document.createElement('a'), { href: url, download: filename });
-  document.body.appendChild(a); a.click();
-  document.body.removeChild(a); URL.revokeObjectURL(url);
-
-  showToast(`✅ Monitoring record exported! ${sheetsAdded} sheet(s) included.`, 'success');
-}
 
 // ════════════════════════════════════════════════════════════
 //  MONITORING RECORD EXPORT — matches TEMPERATURE & HUMIDITY
