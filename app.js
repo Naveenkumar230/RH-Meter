@@ -4,7 +4,10 @@
 // ============================================================
 // const SERVER_URL = 'http://localhost:3000';
 // const SERVER_URL = 'rh-meter-production-dd73.up.railway.app';
-const SERVER_URL = 'https://rh-meter-production-dd73.up.railway.app';
+// const SERVER_URL = 'https://rh-meter-production-dd73.up.railway.app';
+const SERVER_URL = 'https://rh-meter-production-e317.up.railway.app';
+
+
  
 // ════════════════════════════════════════════════════════════
 //  DEVICE NAME MAP
