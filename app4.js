@@ -2,13 +2,10 @@
 //  Factory Monitor Pro — app.js  v3.0
 //  Multi-device | DEVICE_NAME_MAP | Dynamic URL params
 // ============================================================
-// const SERVER_URL = 'http://localhost:3000';
-// const SERVER_URL = 'rh-meter-production-dd73.up.railway.app';
-// const SERVER_URL = 'https://rh-meter-production-dd73.up.railway.app';
-const SERVER_URL = 'https://rh-meter-production-e317.up.railway.app';
+// const SERVER_URL = 'https://rh-meter-production-e317.up.railway.app';
 
+   const SERVER_URL = window.location.origin;
 
- 
 // ════════════════════════════════════════════════════════════
 //  DEVICE NAME MAP
 //  Keys   → technical IDs (never change, match MQTT/MongoDB)
